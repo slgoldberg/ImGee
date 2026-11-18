@@ -275,5 +275,38 @@ using ImFontRole = ImGui::ImFontRole;
 #pragma pop_macro("min")
 #endif
 
+#define IMGUI_FONT_ROLES_READY 1
+
+#if defined(IMGUI_TOOLTIP_EXT_READY) && !defined(IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED)
+#define IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED
+namespace ImGui {
+namespace TimedTooltip {
+namespace Detail {
+    inline ImFont* ResolveBaseFontViaTypographyRole() {
+        if (ImFont* explicit_role = ImGui::Detail::GetFontRoleSlot(ImGui::ImFontRole::Regular)) {
+            return explicit_role;
+        }
+        if (ImGui::GetCurrentContext()) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.FontDefault) {
+                return io.FontDefault;
+            }
+            if (io.Fonts && io.Fonts->Fonts.Size > 0) {
+                return ImGui::GetFont(ImGui::ImFontRole::Regular);
+            }
+        }
+        return nullptr;
+    }
+    struct TimedTooltipTypographyBridgeRunner {
+        TimedTooltipTypographyBridgeRunner() {
+            GetBaseFontResolver() = &ResolveBaseFontViaTypographyRole;
+        }
+    };
+    static TimedTooltipTypographyBridgeRunner s_TimedTooltipTypographyBridgeRunner;
+} // namespace Detail
+} // namespace TimedTooltip
+} // namespace ImGui
+#endif
+
 #endif // IMGUI_FONT_ROLES_H
 #endif // !IMGEE_DISABLE_TYPOGRAPHY

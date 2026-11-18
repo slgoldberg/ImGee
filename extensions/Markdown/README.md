@@ -316,14 +316,17 @@ Standard CommonMark pipe tables render as full-featured, interactive Dear ImGui 
   * **Rightmost Width Grip Handle:** An interactive grab-handle on the rightmost edge of the table allows stretching or contracting the overall table width up to 5x available window space.
   * **Horizontal Scroll Protection:** If the containing window has `ImGuiWindowFlags_HorizontalScrollbar`, tables retain their natural readable widths without being squished when the host window is narrow.
   * **Double-Click A/B Toggle Memory:** Double-clicking the right border grip toggles back and forth between the baseline preset dimensions and the user's customized geometry (`cols=` and `width=`), preserving custom column widths across multi-cycle toggling.
+  * **Context-Aware Delayed Tooltips:** When `TimedTooltip` is compiled in (in any include order), sortable headers announce the next step in the tristate cycle (`"Sort table by **<col>** (A to Z)"` -> `"Sort **<col>** in descending order (Z to A)"` -> `"Clear sort on **<col>** (restore default order)"`), while column dividers and the right-edge border grip explain drag-to-resize and double-click auto-fit / A-B toggle actions. Controlled globally via `mdConfig.enableTableTooltips = true` and `mdConfig.tableTooltipCallback`, or per-table via `<!-- table-preset: tooltips=off -->`, `col-tooltips="First tip||off"`, and `tip0="..."`. If `TimedTooltip` is omitted and `tableTooltipCallback` is null, table controls remain silent (never falling back to instant-pop `ImGui::SetTooltip`).
 
 ##### Two-Tier Markdown Directives
 Table configuration is persisted directly inside the Markdown text via invisible HTML comment chasers docked immediately beneath the table:
 
 1. **Author Baseline Preset (`<!-- table-preset: ... -->` or `<!-- table: default ... -->`):**
-   * Placed by document authors to define reference geometry and default sort order:
+   * Placed by document authors to define reference geometry, default sort order, and optional tooltip overrides:
      ```markdown
      <!-- table-preset: width=450 sort="Waypoint" asc -->
+     <!-- table-preset: tooltips=off -->
+     <!-- table-preset: col-tooltips="Sort by **Waypoint** identifier||off" tip1="Sort by **Target Altitude**" -->
      ```
 2. **Active User State (`<!-- table-state: ... -->` or `<!-- table: user ... -->`):**
    * Generated automatically when a user modifies column widths, total width, or sort column/direction:

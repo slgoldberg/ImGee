@@ -176,7 +176,7 @@ namespace TimedTooltip {
         TooltipFontScalePolicy font_scale_policy = TooltipFontScale_Damped; // Policy: Damped (default), FixedChrome, or LinearInherit
         float font_scale_multiplier = 1.0f;                                // Channel 1: Relative multiplier (floored at 0.90x safety floor)
         float font_scale = 0.0f;                                           // Channel 2: 0.0f = auto / damped; >0.0f = AbsoluteOverride [0.75f, 2.25f]
-        ImFont* font = nullptr;                                            // Custom font for tooltip overlay window (if nullptr, uses ambient)
+        ImFont* font = nullptr;                                            // Custom font for tooltip overlay window (if nullptr, resolves base Regular/Default UI font)
         
         ImVec4 bg_color = ImVec4(1.0f, 0.95f, 0.6f, 1.0f);      // Yellow Sticky Note (100% opaque)
         ImVec4 border_color = ImVec4(0.8f, 0.75f, 0.4f, 1.0f);   // Slightly darker border
@@ -224,10 +224,65 @@ namespace TimedTooltip {
         return GetCurrentTooltipConfig();
     }
 
+    namespace Detail {
+        typedef ImFont* (*BaseFontResolverFn)();
+
+        inline BaseFontResolverFn& GetBaseFontResolver() {
+            static BaseFontResolverFn s_Resolver = nullptr;
+            return s_Resolver;
+        }
+
+        // Resolves the isolated base font for tooltips so transient caller PushFont(...) scopes
+        // (such as compact toolbar footers) never shrink tooltip body text relative to inline roles.
+        inline ImFont* ResolveBaseTooltipFont(const TooltipConfig* config = nullptr) {
+            if (config && config->font) {
+                return config->font;
+            }
+            BaseFontResolverFn resolver = GetBaseFontResolver();
+            if (resolver) {
+                if (ImFont* role_font = resolver()) {
+                    return role_font;
+                }
+            }
+            if (ImGui::GetCurrentContext()) {
+                ImGuiIO& io = ImGui::GetIO();
+                if (io.FontDefault) {
+                    return io.FontDefault;
+                }
+                if (io.Fonts && io.Fonts->Fonts.Size > 0) {
+                    return io.Fonts->Fonts[0];
+                }
+            }
+            return nullptr;
+        }
+
+        inline float GetFontNativePixelSize(const ImFont* font) {
+            if (!font) return 0.0f;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19190)
+            if (font->LegacySize > 0.0f) return font->LegacySize;
+#else
+            if (font->FontSize > 0.0f) return font->FontSize;
+#endif
+            return 0.0f;
+        }
+    } // namespace Detail
+
     // Resolves the active font scale using the v2.4 Open-Sky Damped Curve & Two-Channel Override system:
     inline float GetActiveFontScale(const TooltipConfig* config = nullptr) {
         float window_scale = 1.0f;
         float base_font_size = ImGui::GetFontSize();
+        if (GImGui && GImGui->Font) {
+            ImFont* isolated_base = Detail::ResolveBaseTooltipFont(nullptr);
+            float isolated_native = Detail::GetFontNativePixelSize(isolated_base);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
+            float ambient_native = (GImGui->FontSizeBase > 0.0f) ? GImGui->FontSizeBase : Detail::GetFontNativePixelSize(GImGui->Font);
+#else
+            float ambient_native = Detail::GetFontNativePixelSize(GImGui->Font);
+#endif
+            if (isolated_native > 0.0f && ambient_native > 0.0f && base_font_size > 0.0f) {
+                base_font_size = isolated_native * (base_font_size / ambient_native);
+            }
+        }
         float font_scale = (base_font_size > 0.0f) ? (base_font_size / 14.0f) : 1.0f;
 
         if (GImGui && GImGui->CurrentWindow) {
@@ -260,6 +315,7 @@ namespace TimedTooltip {
         ImVec2 last_size = ImVec2(0, 0);
         ImVec2 perfect_size = ImVec2(0, 0);
         float last_scale = 1.0f;
+        ImGuiID last_text_hash = 0;
         bool is_displayed = false;
         bool is_cooldown = false; // Prevents reappearing if they remain perfectly still after auto-hide
         bool font_pushed = false;
@@ -519,8 +575,9 @@ else // only *add* to max timeout if it's not very short per above:
             ImGui::ImGeeCompat::SetWindowFontScale(scale);
             ImGui::PushStyleColor(ImGuiCol_Text, config->text_color); // Pushed AFTER Begin to affect window contents!
             ImGui::PushStyleColor(ImGuiCol_Separator, config->text_color); // Ensures markdown horizontal lines match the text color!
-            if (config->font) {
-                ImGui::ImGeeCompat::PushFont(config->font);
+            ImFont* target_font = Detail::ResolveBaseTooltipFont(config);
+            if (target_font) {
+                ImGui::ImGeeCompat::PushFont(target_font);
                 state.font_pushed = true;
             } else {
                 state.font_pushed = false;
@@ -830,36 +887,51 @@ namespace TimedTooltip {
         float target_w = (config->default_wrap_width > 0.0f) ? (config->default_wrap_width * scale) : (360.0f * scale);
         float wrap_limit = (target_w < min_w) ? min_w : (target_w > max_w) ? max_w : target_w;
         if (wrap_limit > max_screen_w) wrap_limit = max_screen_w;
-        if (state.perfect_size.x <= 0.0f && fmt) {
+        if (fmt && (state.perfect_size.x <= 0.0f || is_hovered || state.is_displayed || state.hover_cycles > 0)) {
             va_list args_sz;
             va_copy(args_sz, args);
             char sz_buf[4096];
             vsnprintf(sz_buf, sizeof(sz_buf), fmt, args_sz);
             va_end(args_sz);
 
-            ImFont* font = config->font ? config->font : ImGui::GetFont();
-            float base_font_size = 14.0f;
-            if (config->font) {
-#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 19190
-                base_font_size = config->font->LegacySize;
-#else
-                base_font_size = config->font->FontSize;
-#endif
-            } else {
-                float parent_scale = (GImGui && GImGui->CurrentWindow && GImGui->CurrentWindow->FontWindowScale > 0.0f) 
-                    ? GImGui->CurrentWindow->FontWindowScale : 1.0f;
-                base_font_size = ImGui::GetFontSize() / parent_scale;
+            ImGuiID cur_text_hash = ImHashStr(sz_buf);
+            if (cur_text_hash != state.last_text_hash) {
+                state.last_text_hash = cur_text_hash;
+                state.perfect_size = ImVec2(0.0f, 0.0f);
+                state.last_size = ImVec2(0.0f, 0.0f);
             }
-            if (base_font_size <= 0.0f) base_font_size = 14.0f;
-            float effective_font_size = base_font_size * scale;
 
-            if (config->default_wrap_width < 0.0f) {
-                state.perfect_size = font->CalcTextSizeA(effective_font_size, FLT_MAX, -1.0f, sz_buf);
-            } else {
-                state.perfect_size = font->CalcTextSizeA(effective_font_size, FLT_MAX, wrap_limit, sz_buf);
+            if (state.perfect_size.x <= 0.0f) {
+                ImFont* font = Detail::ResolveBaseTooltipFont(config);
+                if (!font) font = ImGui::GetFont();
+                float base_font_size = Detail::GetFontNativePixelSize(font);
+                if (base_font_size <= 0.0f) {
+                    float parent_scale = (GImGui && GImGui->CurrentWindow && GImGui->CurrentWindow->FontWindowScale > 0.0f) 
+                        ? GImGui->CurrentWindow->FontWindowScale : 1.0f;
+                    base_font_size = ImGui::GetFontSize() / parent_scale;
+                }
+                if (base_font_size <= 0.0f) base_font_size = 14.0f;
+                float global_font_scale = 1.0f;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
+                if (GImGui) {
+                    global_font_scale = GImGui->Style.FontScaleMain * GImGui->Style.FontScaleDpi;
+                }
+#else
+                if (ImGui::GetIO().FontGlobalScale > 0.0f) {
+                    global_font_scale = ImGui::GetIO().FontGlobalScale;
+                }
+#endif
+                if (global_font_scale <= 0.0f) global_font_scale = 1.0f;
+                float effective_font_size = base_font_size * global_font_scale * scale;
+
+                if (config->default_wrap_width < 0.0f) {
+                    state.perfect_size = font->CalcTextSizeA(effective_font_size, FLT_MAX, -1.0f, sz_buf);
+                } else {
+                    state.perfect_size = font->CalcTextSizeA(effective_font_size, FLT_MAX, wrap_limit, sz_buf);
+                }
+                state.perfect_size.x = ceilf(state.perfect_size.x);
+                state.perfect_size.y = ceilf(state.perfect_size.y);
             }
-            state.perfect_size.x = ceilf(state.perfect_size.x);
-            state.perfect_size.y = ceilf(state.perfect_size.y);
         }
 
         bool displayed = false;
@@ -1034,6 +1106,39 @@ namespace TimedTooltip {
 #if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
 #pragma pop_macro("max")
 #pragma pop_macro("min")
+#endif
+
+#define IMGUI_TOOLTIP_EXT_READY 1
+
+#if defined(IMGUI_FONT_ROLES_READY) && !defined(IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED)
+#define IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED
+namespace ImGui {
+namespace TimedTooltip {
+namespace Detail {
+    inline ImFont* ResolveBaseFontViaTypographyRole() {
+        if (ImFont* explicit_role = ImGui::Detail::GetFontRoleSlot(ImGui::ImFontRole::Regular)) {
+            return explicit_role;
+        }
+        if (ImGui::GetCurrentContext()) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.FontDefault) {
+                return io.FontDefault;
+            }
+            if (io.Fonts && io.Fonts->Fonts.Size > 0) {
+                return ImGui::GetFont(ImGui::ImFontRole::Regular);
+            }
+        }
+        return nullptr;
+    }
+    struct TimedTooltipTypographyBridgeRunner {
+        TimedTooltipTypographyBridgeRunner() {
+            GetBaseFontResolver() = &ResolveBaseFontViaTypographyRole;
+        }
+    };
+    static TimedTooltipTypographyBridgeRunner s_TimedTooltipTypographyBridgeRunner;
+} // namespace Detail
+} // namespace TimedTooltip
+} // namespace ImGui
 #endif
 
 #if defined(IMGUI_MARKDOWN_EXT_READY) && !defined(IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED)

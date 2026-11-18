@@ -170,7 +170,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for exe in build/imgee_standalone_tests.exe build/imgee_external_stbi_test.exe build/imgee_force_relative_test.exe; do
+          for exe in build/*.exe; do
             echo "=== Inspecting PE DLL imports: $exe ==="
             DLLS="$(x86_64-w64-mingw32-objdump -p "$exe" | grep 'DLL Name:' || true)"
             echo "$DLLS"

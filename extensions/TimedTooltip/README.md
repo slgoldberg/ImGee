@@ -192,11 +192,12 @@ In X-Plane 12's modern **Panel Graphics** pipeline (Metal on macOS, Vulkan on Wi
 
 To ensure crisp, dark typography without background wash-out, `TooltipConfig::bg_color` defaults to **`1.0f` solid opacity** (`ImVec4(1.0f, 0.95f, 0.6f, 1.0f)`).
 
-### 2. Automatic Ambient Font Scale Inheritance
-When `TooltipConfig::font_scale` is left at `0.0f` (the default), the tooltip engine automatically queries and inherits the ambient window font scale of the calling widget:
+### 2. Automatic Ambient Font Scale Inheritance & Base-Font Isolation
+When `TooltipConfig::font_scale` is left at `0.0f` (the default), the tooltip engine automatically queries and inherits the ambient window font scale of the calling widget while isolating the tooltip's base font against transient caller `PushFont(...)` scopes:
+* **Base-Font Isolation (`TooltipConfig::font == nullptr`):** Resolves `ImGui::GetFont(ImFontRole::Regular)` via an order-independent `TimedTooltip <-> Typography` bridge (falling back to `io.FontDefault`, then `io.Fonts->Fonts[0]` when `io.FontDefault` is null) for both dry-run `perfect_size` pre-measurement and tooltip window rendering. Calling `TimedTooltip::Text` or `TextMD` inside a compact toolbar's `PushFont(...)` block keeps body text aligned with 14px inline bold, italic, and monospace spans.
 * **Custom Window Zoom:** If a child window or floating palette is zoomed to 124%, hovering a widget inside that window renders the tooltip scaled at that exact same 124% factor.
 * **Accessibility / Senior Citizen Mode:** If a global or per-window 17pt font mode is active, the tooltip inherits the enlarged scale seamlessly.
-* **Pre-Calculation Accuracy:** The 2-pass size pre-calculator (`MD::CalcMarkdownSize`) computes wrap boundaries and vertical heights using this exact inherited scale factor, guaranteeing zero text clipping and zero scrollbar flutter.
+* **Pre-Calculation Accuracy:** Both `TextProxyV` and the 2-pass Markdown size pre-calculator (`MD::CalcMarkdownSize`) measure wrap boundaries and vertical heights using the isolated base font and inherited scale factor, guaranteeing zero text clipping and zero scrollbar flutter on Frame 1.
 
 ---
 

@@ -95,3 +95,19 @@ add_executable(imgee_force_relative_test
 target_link_libraries(imgee_force_relative_test PRIVATE imgui_core)
 imgee_apply_strict_warnings(imgee_force_relative_test)
 add_test(NAME imgee_force_relative COMMAND imgee_force_relative_test)
+
+# 5. Silent Table Tooltip Fallback when TimedTooltip is Disabled (-DIMGEE_DISABLE_TIMED_TOOLTIP)
+add_executable(imgee_no_tooltip_test
+    tu_no_tooltip.cpp
+)
+target_link_libraries(imgee_no_tooltip_test PRIVATE imgui_core)
+imgee_apply_strict_warnings(imgee_no_tooltip_test)
+add_test(NAME imgee_no_tooltip COMMAND imgee_no_tooltip_test)
+
+# 6. Base-Font Isolation Fallback when Typography is Disabled (-DIMGEE_DISABLE_TYPOGRAPHY)
+add_executable(imgee_no_typography_test
+    tu_no_typography.cpp
+)
+target_link_libraries(imgee_no_typography_test PRIVATE imgui_core)
+imgee_apply_strict_warnings(imgee_no_typography_test)
+add_test(NAME imgee_no_typography COMMAND imgee_no_typography_test)

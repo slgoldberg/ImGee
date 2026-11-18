@@ -236,6 +236,7 @@ ImGui::TimedTooltip::TextMD(
 * **Stationary Anchor:** Freezes in position once visible, allowing effortless, relaxed reading.
 * **Smart Screen Clamping:** Automatically nudges inside the simulator or host window boundaries.
 * **Wheel-Defeat Dismissal:** Rolling the mouse wheel immediately closes the tooltip so it never blocks scrolling views.
+* **Base-Font Isolation:** When `TooltipConfig::font` is left `nullptr`, tooltips automatically resolve the base UI font (`ImFontRole::Regular`, `io.FontDefault`, or `io.Fonts->Fonts[0]`) during both pre-measurement and rendering -- so calling `TimedTooltip` inside a compact caller `PushFont(...)` scope never shrinks body text relative to inline bold, italic, or monospace spans.
 * **Font Scaling & Damped Compression:** Automatically dampens font zoom (using a non-linear curve with a 0.90f floor and 1.65f ceiling) so tooltips stay readable without ballooning into unwieldy screen-filling rectangles on ultra-wide or 4K monitors.
 
 ![Stationary Timed Tooltip: Anti-jitter hover tooltip with dwell timeout and embedded status pills](images/fig_timed_tooltips.png)
@@ -266,7 +267,8 @@ ImGui::Markdown::Text(doc);
 ```
 
 ### Key Markdown Affordances:
-* **Tristate Column Sorting:** Click any column header to cycle Ascending → Descending → Default sort.
+* **Tristate Column Sorting:** Click any column header to cycle Ascending -> Descending -> Default sort.
+* **Delayed Table Control Tooltips:** Sortable headers, column dividers, and the right-edge width grip automatically display context-aware `TimedTooltip` guidance (announcing the next step in the tristate sort cycle or A/B layout toggle), with `MarkdownConfig::enableTableTooltips`, `MarkdownConfig::tableTooltipCallback`, and per-table `<!-- table-preset: tooltips=off ... -->` or per-column `col-tooltips="A|B|off"` / `tip0="..."` overrides. When `TimedTooltip` is disabled and no custom callback is set, table controls stay silent rather than falling back to instant-pop tooltips.
 * **Interactive Drag Sizing:** Adjust column dividers directly with instant mouse feedback.
 * **Persistent Presets:** Save and restore column widths via inline comment tags (`<!-- table-state: ... -->`).
 * **Code Block Copy Buttons:** Shaded code blocks automatically include one-click clipboard copying with 1.5s visual feedback.

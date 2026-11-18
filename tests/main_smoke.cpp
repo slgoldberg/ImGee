@@ -10,9 +10,14 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <vector>
 
 #if defined(IMGEE_HAS_IMGWINDOW)
 #error "IMGEE_HAS_IMGWINDOW must not be defined in pure standalone builds"
+#endif
+
+#if !defined(IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED)
+#error "Forward include order (TimedTooltip BEFORE Typography in imgee.h) failed to activate TimedTooltip <-> Typography bridge"
 #endif
 
 #if IMGEE_FILEPATHS_FORCE_RELATIVE != 0
@@ -76,8 +81,29 @@ struct StackSnapshot {
     }
 };
 
-static void PrepareHeadlessFontAtlas(ImGuiIO& io) {
-    io.Fonts->AddFontDefault();
+struct AtlasFonts {
+    ImFont* regular16 = nullptr;
+    ImFont* bold16    = nullptr;
+    ImFont* small9    = nullptr;
+};
+
+static AtlasFonts PrepareHeadlessFontAtlas(ImGuiIO& io) {
+    AtlasFonts fonts;
+    ImFontConfig regCfg;
+    regCfg.SizePixels = 16.0f;
+    fonts.regular16 = io.Fonts->AddFontDefault(&regCfg);
+
+    ImFontConfig boldCfg;
+    boldCfg.SizePixels = 16.0f;
+    fonts.bold16 = io.Fonts->AddFontDefault(&boldCfg);
+
+    ImFontConfig smallCfg;
+    smallCfg.SizePixels = 9.0f;
+    fonts.small9 = io.Fonts->AddFontDefault(&smallCfg);
+
+    // Intentionally leave io.FontDefault == nullptr to verify X-Plane / ImgWindow fallback behavior
+    io.FontDefault = nullptr;
+
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
     io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 #else
@@ -88,6 +114,7 @@ static void PrepareHeadlessFontAtlas(ImGuiIO& io) {
     IMGEE_TEST_CHECK(pixels != nullptr && width > 0 && height > 0);
     io.Fonts->SetTexID((ImTextureID)(uintptr_t)1);
 #endif
+    return fonts;
 }
 
 static void CompleteHeadlessRenderTextures() {
@@ -170,7 +197,10 @@ int main(int argc, char** argv) {
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize = ImVec2(1280.0f, 800.0f);
     io.DeltaTime = 1.0f / 60.0f;
-    PrepareHeadlessFontAtlas(io);
+    AtlasFonts atlasFonts = PrepareHeadlessFontAtlas(io);
+    IMGEE_TEST_CHECK(atlasFonts.regular16 != nullptr && atlasFonts.small9 != nullptr);
+    IMGEE_TEST_CHECK(io.FontDefault == nullptr);
+    IMGEE_TEST_CHECK(ImGui::TimedTooltip::Detail::GetBaseFontResolver() != nullptr);
 
     // Verify all curated theme presets maintain balanced stacks and valid style colors
     ImGui::StyleColorsCharcoal();
@@ -287,6 +317,215 @@ int main(int argc, char** argv) {
 
         ImGui::Render();
         CompleteHeadlessRenderTextures();
+    }
+
+    // -------------------------------------------------------------------------
+    // Wave 1A Test 1: TimedTooltip Base-Font Isolation & perfect_size Parity
+    // -------------------------------------------------------------------------
+    {
+        TimedTooltip::TooltipConfig instantCfg = TimedTooltip::GetConfig();
+        instantCfg.hover_delay_cycles = 1;
+
+        ImGuiID idTxtBase   = 0x77000101u;
+        ImGuiID idTxtSmall  = 0x77000102u;
+        ImGuiID idMdBase    = 0x77000103u;
+        ImGuiID idMdSmall   = 0x77000104u;
+        ImGuiID idProxyOpen = 0x77000105u;
+
+        auto runSingleTooltipFrame = [&](int mode) {
+            ImGui::NewFrame();
+            StackSnapshot rootSnap = StackSnapshot::Capture();
+            ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f));
+            ImGui::SetNextWindowSize(ImVec2(600.0f, 400.0f));
+            ImGui::Begin("FontIsolationTestWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+            IMGEE_TEST_CHECK(ImGui::GetFont() == atlasFonts.regular16);
+            if (mode == 0) {
+                (void)TimedTooltip::TextProxy(idTxtBase, true, &instantCfg, "%s",
+                    "Stationary base-font isolation check across multiple words for wrapping parity.");
+            } else if (mode == 1) {
+                (void)TimedTooltip::TextMDProxy(idMdBase, true, &instantCfg, "%s",
+                    "Stationary **Markdown** *inline* `code` isolation check across words.");
+            } else {
+                // Enter a compact caller PushFont(small9) scope (simulating a footer toolbar)
+                StackSnapshot smallSnap = StackSnapshot::Capture();
+                ImGui::ImGeeCompat::PushFont(atlasFonts.small9);
+                IMGEE_TEST_CHECK(ImGui::GetFont() == atlasFonts.small9);
+                IMGEE_TEST_CHECK(ImGui::GetFontSize() < 12.0f);
+
+                if (mode == 2) {
+                    (void)TimedTooltip::TextProxy(idTxtSmall, true, &instantCfg, "%s",
+                        "Stationary base-font isolation check across multiple words for wrapping parity.");
+                } else if (mode == 3) {
+                    (void)TimedTooltip::TextMDProxy(idMdSmall, true, &instantCfg, "%s",
+                        "Stationary **Markdown** *inline* `code` isolation check across words.");
+                } else if (mode == 4) {
+                    bool opened = TimedTooltip::BeginStationaryTooltipProxy(idProxyOpen, true, &instantCfg);
+                    IMGEE_TEST_CHECK(opened);
+                    if (opened) {
+                        // Inside the tooltip window, the active font MUST be isolated to regular16, NOT small9!
+                        IMGEE_TEST_CHECK(ImGui::GetFont() == atlasFonts.regular16);
+                        IMGEE_TEST_CHECK(ImGui::GetFontSize() >= 15.0f);
+                        ImGui::TextUnformatted("Isolated body copy");
+                        TimedTooltip::EndStationaryTooltip(idProxyOpen);
+                    }
+                }
+
+                // Caller's small9 font must still be active on the caller window before PopFont!
+                IMGEE_TEST_CHECK(ImGui::GetFont() == atlasFonts.small9);
+                ImGui::PopFont();
+                smallSnap.VerifyBalanced("TimedTooltip Base-Font Isolation");
+            }
+
+            TimedTooltip::ClearActiveTooltip();
+            ImGui::End();
+            rootSnap.VerifyBalanced("FontIsolationTestWindow Root");
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        for (int mode = 0; mode < 5; ++mode) {
+            runSingleTooltipFrame(mode);
+        }
+
+        const auto& stateMap = TimedTooltip::GetTooltipStateMap();
+        const auto& stTxtBase  = stateMap.at(idTxtBase);
+        const auto& stTxtSmall = stateMap.at(idTxtSmall);
+        const auto& stMdBase   = stateMap.at(idMdBase);
+        const auto& stMdSmall  = stateMap.at(idMdSmall);
+
+        IMGEE_TEST_CHECK(stTxtBase.perfect_size.x > 0.0f && stTxtBase.perfect_size.y > 0.0f);
+        IMGEE_TEST_CHECK(stTxtBase.perfect_size.x == stTxtSmall.perfect_size.x);
+        IMGEE_TEST_CHECK(stTxtBase.perfect_size.y == stTxtSmall.perfect_size.y);
+
+        IMGEE_TEST_CHECK(stMdBase.perfect_size.x > 0.0f && stMdBase.perfect_size.y > 0.0f);
+        IMGEE_TEST_CHECK(stMdBase.perfect_size.x == stMdSmall.perfect_size.x);
+        IMGEE_TEST_CHECK(stMdBase.perfect_size.y == stMdSmall.perfect_size.y);
+    }
+
+    // -------------------------------------------------------------------------
+    // Wave 1A Test 2: Interactive Markdown Table Tooltips (% Safety, Tristate
+    // Sort Cycle, Resize Grips, and <!-- table-preset: ... --> Overrides)
+    // -------------------------------------------------------------------------
+    {
+        struct CapturedTableTips {
+            std::vector<std::string> texts;
+        } captured;
+
+        const std::string pctTableMd =
+            "| Fuel % | Thrust % |\n"
+            "| :--- | ---: |\n"
+            "| 45% | 92% |\n"
+            "| 80% | 65% |\n";
+
+        const std::string suppressedTableMd =
+            "| Bus | Volts |\n"
+            "| :--- | ---: |\n"
+            "| ESS | 28.0V |\n"
+            "<!-- table-preset: tooltips=off -->\n";
+
+        const std::string customTipsTableMd =
+            "| ICAO | Alt | Mode |\n"
+            "| :--- | ---: | :---: |\n"
+            "| KSEA | 433 | ILS |\n"
+            "<!-- table-preset: col-tooltips=\"Custom **ICAO %s** tip||off\" tip1=\"Custom **Alt** tip\" -->\n";
+
+        auto containsTip = [&](const std::string& needle) -> bool {
+            for (const std::string& s : captured.texts) {
+                if (s == needle) return true;
+            }
+            return false;
+        };
+
+        ImGui::MarkdownConfig tblCfg;
+        tblCfg.userData = &captured;
+        tblCfg.tableTooltipCallback = [](ImGuiID, bool, const char* mdText, void* ud) {
+            auto* out = static_cast<CapturedTableTips*>(ud);
+            if (mdText) out->texts.emplace_back(mdText);
+        };
+
+        // Pass A: Verify unsorted tristate header copy, divider grip copy, right-edge grip copy,
+        // per-table tooltips=off suppression, and per-column custom/suppressed overrides.
+        ImVec2 header0Center(0.0f, 0.0f);
+        for (int pass = 0; pass < 2; ++pass) {
+            captured.texts.clear();
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddMousePosEvent(50.0f, 45.0f);
+            io.AddMouseButtonEvent(0, false);
+#else
+            io.MousePos = ImVec2(50.0f, 45.0f);
+            io.MouseDown[0] = false;
+#endif
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+            ImGui::SetNextWindowSize(ImVec2(600.0f, 500.0f));
+            ImGui::Begin("TableTooltipsTestWindow", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
+            ImVec2 tableTopLeft = ImGui::GetCursorScreenPos();
+            header0Center = ImVec2(tableTopLeft.x + 30.0f, tableTopLeft.y + 12.0f);
+            MD::Text(pctTableMd, &tblCfg);
+
+            size_t countAfterPct = captured.texts.size();
+            MD::Text(suppressedTableMd, &tblCfg);
+            // tooltips=off must emit zero tooltip callbacks!
+            IMGEE_TEST_CHECK(captured.texts.size() == countAfterPct);
+
+            size_t countBeforeCustom = captured.texts.size();
+            MD::Text(customTipsTableMd, &tblCfg);
+            IMGEE_TEST_CHECK(captured.texts.size() > countBeforeCustom);
+
+            // Also render pctTableMd through default TimedTooltip::TextMDProxy (tableTooltipCallback = nullptr)
+            // while hovered to prove literal '%' characters never misformat or crash vsnprintf!
+            ImGui::MarkdownConfig bridgeCfg;
+            MD::Text("| N1 %s %d %% | EGT % |\n| :--- | ---: |\n| 98% | 720C |\n", &bridgeCfg);
+
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        }
+
+        IMGEE_TEST_CHECK(containsTip("Sort table by **Fuel %** (A to Z)"));
+        IMGEE_TEST_CHECK(containsTip("Sort table by **Thrust %** (A to Z)"));
+        IMGEE_TEST_CHECK(containsTip("Drag to resize **Fuel %** column\nDouble-click to auto-fit"));
+        IMGEE_TEST_CHECK(containsTip("Drag to resize table width\nDouble-click after resizing to toggle **auto-fit layout**"));
+        IMGEE_TEST_CHECK(containsTip("Custom **ICAO %s** tip"));
+        IMGEE_TEST_CHECK(containsTip("Custom **Alt** tip"));
+        IMGEE_TEST_CHECK(!containsTip("Sort table by **Mode** (A to Z)")); // Suppressed via "off" in col-tooltips!
+
+        // Pass B: Click header 0 three times to verify full tristate sort cycle:
+        // Click 1 -> Ascending -> next tip is Descending ("Z to A")
+        // Click 2 -> Descending -> next tip is Clear sort ("restore default order")
+        // Click 3 -> Unsorted -> next tip is Ascending ("A to Z")
+        const char* expectedCycle[3] = {
+            "Sort **Fuel %** in descending order (Z to A)",
+            "Clear sort on **Fuel %** (restore default order)",
+            "Sort table by **Fuel %** (A to Z)"
+        };
+
+        for (int step = 0; step < 3; ++step) {
+            // Frame 1: Mouse down on header 0
+            // Frame 2: Mouse release on header 0 (triggers ButtonBehavior pressed!)
+            // Frame 3: Hover frame to inspect updated dynamic tooltip string
+            for (int sub = 0; sub < 3; ++sub) {
+                captured.texts.clear();
+                const bool down = (sub == 0);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+                io.AddMousePosEvent(header0Center.x, header0Center.y);
+                io.AddMouseButtonEvent(0, down);
+#else
+                io.MousePos = header0Center;
+                io.MouseDown[0] = down;
+#endif
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+                ImGui::SetNextWindowSize(ImVec2(600.0f, 500.0f));
+                ImGui::Begin("TableTooltipsTestWindow", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
+                MD::Text(pctTableMd, &tblCfg);
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            }
+            IMGEE_TEST_CHECK(containsTip(expectedCycle[step]));
+        }
     }
 
     // Verify HostBackend callbacks actually resolved named textures and uploaded our disk PNG

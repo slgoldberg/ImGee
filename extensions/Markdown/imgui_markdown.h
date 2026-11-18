@@ -387,6 +387,7 @@ namespace ImGui
         void*                   userData = nullptr;
     };
     typedef void                MarkdownTableStateCallback( const MarkdownTableState& state, void* userData );
+    typedef void                MarkdownTableTooltipCallback( ImGuiID id, bool hovered, const char* markdownText, void* userData );
 
     // -------------------------------------------------------------------------
     // Markdown Color Parser (Named UI Colors, Hex #RRGGBB, #RRGGBBAA, 0xRRGGBB)
@@ -528,9 +529,11 @@ namespace ImGui
         MarkdownTagCallback*    tagCallback = NULL;
         MarkdownCodeBlockCallback* codeBlockCallback = NULL;        // Optional host custom syntax/layout handler
         MarkdownTableStateCallback* tableStateCallback = NULL;      // Optional notification callback when table sort or size changes
+        MarkdownTableTooltipCallback* tableTooltipCallback = NULL;  // Optional delayed-tooltip sink for interactive table controls (silent if NULL without TimedTooltip)
         const char*             (*codeBlockDescriptionCallback)( const char* lang, size_t langLength, void* userData ) = NULL; // Optional host language tooltip description callback
         void                    (*setClipboardTextFn)( const char* text, void* userData ) = NULL; // Optional host OS clipboard provider override
         bool                    showCodeCopyButton = true;          // If true, shows one-click [Copy] button in code header
+        bool                    enableTableTooltips = true;         // If true, emits delayed tooltips for sortable table headers and resize grips
         int                     tabSize = 4;                        // Tab stop width for \t expansion (default: 4)
         const char*             linkIcon = "";                      // icon displayd in link tooltip
         const char*             emphasisChars = "*_`~$+";           // string of characters recognized as emphasis markers (*, _, `, ~, $, +)
@@ -1240,6 +1243,7 @@ namespace ImGui
         typedef void (*DisabledCopyTooltipFn)( ImGuiID id, bool hovered );
         typedef void (*ClearTooltipFn)();
         typedef bool (*MarkdownTooltipFn)( ImGuiID id, bool hovered, const char* text, float wrap_width, int delay_frames, bool is_clicked );
+        typedef void (*TableTooltipFn)( ImGuiID id, bool hovered, const char* markdownText, bool is_clicked );
 
         inline CodeBlockTooltipFn& GetCodeBlockTooltipFn() {
             static CodeBlockTooltipFn s_Fn = nullptr;
@@ -1261,6 +1265,11 @@ namespace ImGui
             return s_Fn;
         }
 
+        inline TableTooltipFn& GetTableTooltipFn() {
+            static TableTooltipFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
         inline void ShowCodeBlockTooltip( ImGuiID id, bool hovered, const char* text, bool toggle_on_click = false ) {
             if( GetCodeBlockTooltipFn() ) {
                 GetCodeBlockTooltipFn()( id, hovered, text, toggle_on_click );
@@ -1271,6 +1280,20 @@ namespace ImGui
             if( GetClearTooltipFn() ) {
                 GetClearTooltipFn()();
             }
+        }
+
+        inline void ShowTableTooltip( const MarkdownConfig& mdConfig, ImGuiID id, bool hovered, const char* markdownText, bool is_clicked = false ) {
+            if( !mdConfig.enableTableTooltips || !markdownText || markdownText[0] == '\0' ) {
+                return;
+            }
+            if( mdConfig.tableTooltipCallback ) {
+                mdConfig.tableTooltipCallback( id, hovered && !is_clicked, markdownText, mdConfig.userData );
+                return;
+            }
+            if( GetTableTooltipFn() ) {
+                GetTableTooltipFn()( id, hovered, markdownText, is_clicked );
+            }
+            // Intentional silent fallback when TimedTooltip is omitted and no custom callback is supplied (UX Rule #6).
         }
 
         inline bool ShowMarkdownTooltip( ImGuiID id, bool hovered, const char* text, float wrap_width = 400.0f, int delay_frames = -1, bool is_clicked = false ) {
@@ -2505,6 +2528,61 @@ namespace ImGui
             return true;
         }
 
+        inline bool IsSuppressedTooltipValue( const std::string& val )
+        {
+            return StrCaseEqual( val, "off" ) ||
+                   StrCaseEqual( val, "false" ) ||
+                   StrCaseEqual( val, "none" ) ||
+                   StrCaseEqual( val, "0" );
+        }
+
+        inline bool IsEnabledTooltipValue( const std::string& val )
+        {
+            return StrCaseEqual( val, "on" ) ||
+                   StrCaseEqual( val, "true" ) ||
+                   StrCaseEqual( val, "auto" ) ||
+                   StrCaseEqual( val, "default" ) ||
+                   StrCaseEqual( val, "1" );
+        }
+
+        inline bool TryParseIndexedTooltipKey( const std::string& key, int& out_col_idx )
+        {
+            // Supports 0-based column tooltip keys:
+            // tip0, tooltip0, tip-0, tooltip-0, col0-tooltip, col0_tooltip, header0-tooltip, header0_tooltip
+            std::string num_str;
+            if( key.rfind( "tooltip-", 0 ) == 0 || key.rfind( "tooltip_", 0 ) == 0 )
+                num_str = key.substr( 8 );
+            else if( key.rfind( "tooltip", 0 ) == 0 && key.size() > 7 )
+                num_str = key.substr( 7 );
+            else if( key.rfind( "tip-", 0 ) == 0 || key.rfind( "tip_", 0 ) == 0 )
+                num_str = key.substr( 4 );
+            else if( key.rfind( "tip", 0 ) == 0 && key.size() > 3 )
+                num_str = key.substr( 3 );
+            else if( key.rfind( "col", 0 ) == 0 || key.rfind( "header", 0 ) == 0 )
+            {
+                size_t prefix_len = ( key.rfind( "header", 0 ) == 0 ) ? 6 : 3;
+                size_t dash = key.find_first_of( "-_", prefix_len );
+                if( dash != std::string::npos && dash > prefix_len )
+                {
+                    std::string suffix = key.substr( dash + 1 );
+                    if( suffix == "tooltip" || suffix == "tip" )
+                    {
+                        num_str = key.substr( prefix_len, dash - prefix_len );
+                    }
+                }
+            }
+
+            if( num_str.empty() ) return false;
+            for( size_t i = 0; i < num_str.size(); ++i )
+            {
+                if( !isdigit( (unsigned char)num_str[i] ) ) return false;
+            }
+            int idx = atoi( num_str.c_str() );
+            if( idx < 0 || idx >= 64 ) return false;
+            out_col_idx = idx;
+            return true;
+        }
+
         struct MarkdownTableMetadata
         {
             // Author baseline preset (<!-- table-preset: ... -->)
@@ -2514,6 +2592,8 @@ namespace ImGui
             int                 presetSortDir = 0;
             std::string         presetSortColName;
             std::vector<float>  presetColWidths;
+            bool                enableTooltips = true;
+            std::vector<std::string> colHeaderTooltips;
 
             // User active / saved state (<!-- table-state: ... --> or <!-- table: ... -->)
             bool                hasState = false;
@@ -2690,6 +2770,58 @@ namespace ImGui
                 {
                     meta.hasState = true;
                 }
+                else if( key == "tooltips" || key == "tooltip" )
+                {
+                    if( val.empty() || IsEnabledTooltipValue( val ) )
+                        meta.enableTooltips = true;
+                    else if( IsSuppressedTooltipValue( val ) )
+                        meta.enableTooltips = false;
+                }
+                else if( key == "notooltips" || key == "no-tooltips" || key == "no_tooltips" )
+                {
+                    meta.enableTooltips = false;
+                }
+                else if( key == "col-tooltips" || key == "col_tooltips" || key == "header-tooltips" || key == "header_tooltips" )
+                {
+                    size_t col_i = 0;
+                    std::string cur_seg;
+                    for( size_t i = 0; i < val.size(); ++i )
+                    {
+                        if( val[i] == '\\' && i + 1 < val.size() && val[i + 1] == '|' )
+                        {
+                            cur_seg.push_back( '|' );
+                            ++i;
+                        }
+                        else if( val[i] == '|' )
+                        {
+                            if( meta.colHeaderTooltips.size() <= col_i )
+                                meta.colHeaderTooltips.resize( col_i + 1 );
+                            meta.colHeaderTooltips[col_i] = cur_seg;
+                            cur_seg.clear();
+                            ++col_i;
+                        }
+                        else
+                        {
+                            cur_seg.push_back( val[i] );
+                        }
+                    }
+                    if( !val.empty() || col_i > 0 )
+                    {
+                        if( meta.colHeaderTooltips.size() <= col_i )
+                            meta.colHeaderTooltips.resize( col_i + 1 );
+                        meta.colHeaderTooltips[col_i] = cur_seg;
+                    }
+                }
+                else
+                {
+                    int col_tip_idx = -1;
+                    if( TryParseIndexedTooltipKey( key, col_tip_idx ) && col_tip_idx >= 0 )
+                    {
+                        if( meta.colHeaderTooltips.size() <= (size_t)col_tip_idx )
+                            meta.colHeaderTooltips.resize( (size_t)col_tip_idx + 1 );
+                        meta.colHeaderTooltips[(size_t)col_tip_idx] = val;
+                    }
+                }
             }
         }
 
@@ -2780,8 +2912,13 @@ namespace ImGui
                 }
                 char first_c = ( cur_line_start + lead_sp < cur_line_end ) ? md[cur_line_start + lead_sp] : '\0';
 
-                // Heading or code fence interrupts table
+                // Heading, code fence, or HTML comment block interrupts table rows
                 if( first_c == '#' || first_c == '`' || first_c == '~' )
+                {
+                    break;
+                }
+                if( cur_line_start + lead_sp + 4 <= cur_line_end &&
+                    strncmp( md + cur_line_start + lead_sp, "<!--", 4 ) == 0 )
                 {
                     break;
                 }
@@ -3294,7 +3431,9 @@ namespace ImGui
                 ImGui::TableUpdateColumnsWeightFromWidth( table );
             }
 
-            // 2. Submit Header Row (with interactive sort click, hand cursor, and visual sort indicators)
+            const bool allow_table_tooltips = mdConfig_.enableTableTooltips && metadata.enableTooltips;
+
+            // 2. Submit Header Row (with interactive sort click, hand cursor, delayed tooltips, and visual sort indicators)
             float header_h = ImMax( ImGui::GetFrameHeight(), ImGui::GetFontSize() + ImGui::GetStyle().CellPadding.y * 2.0f );
             ImGui::TableNextRow( ImGuiTableRowFlags_Headers, header_h );
 
@@ -3302,6 +3441,7 @@ namespace ImGui
             {
                 if( !ImGui::TableSetColumnIndex( (int)col ) ) continue;
 
+                TableCell h_cell = ( col < headers.size() ) ? headers[col] : TableCell();
                 ImGuiTableColumn* column = ( table && (int)col < table->ColumnsCount ) ? &table->Columns[(int)col] : nullptr;
                 bool is_sortable = ( ( flags & ImGuiTableFlags_Sortable ) && column && !( column->Flags & ImGuiTableColumnFlags_NoSort ) );
 
@@ -3321,13 +3461,14 @@ namespace ImGui
 #endif
                     bool hovered = false, held = false;
                     bool pressed = ImGui::ButtonBehavior( cell_r, header_id, &hovered, &held, ImGuiButtonFlags_AllowOverlap );
+                    const bool border_active = ( table->HoveredColumnBorder != -1 || table->ResizedColumn != -1 );
 
-                    if( hovered )
+                    if( hovered && !border_active )
                     {
                         ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
                     }
 
-                    if( pressed && table->ReorderColumn != (int)col )
+                    if( pressed && table->ReorderColumn != (int)col && !border_active )
                     {
                         if( active_sort_col != (int)col )
                         {
@@ -3356,7 +3497,41 @@ namespace ImGui
                         sort_changed = true;
                     }
 
-                    if( held || hovered )
+                    if( allow_table_tooltips )
+                    {
+                        const std::string& custom_tip = ( col < metadata.colHeaderTooltips.size() )
+                            ? metadata.colHeaderTooltips[col]
+                            : std::string();
+                        if( !TableDetail::IsSuppressedTooltipValue( custom_tip ) )
+                        {
+                            std::string tip;
+                            if( !custom_tip.empty() )
+                            {
+                                tip = custom_tip;
+                            }
+                            else
+                            {
+                                std::string col_label = TableDetail::GetCellPlainText( h_cell );
+                                if( col_label.empty() ) col_label = "column";
+                                if( active_sort_col == (int)col && active_sort_dir == (int)ImGuiSortDirection_Ascending )
+                                {
+                                    tip = "Sort **" + col_label + "** in descending order (Z to A)";
+                                }
+                                else if( active_sort_col == (int)col && active_sort_dir == (int)ImGuiSortDirection_Descending )
+                                {
+                                    tip = "Clear sort on **" + col_label + "** (restore default order)";
+                                }
+                                else
+                                {
+                                    tip = "Sort table by **" + col_label + "** (A to Z)";
+                                }
+                            }
+                            bool header_tt_hovered = hovered && !held && !pressed && !border_active && table->ReorderColumn == -1;
+                            MarkdownDetail::ShowTableTooltip( mdConfig_, header_id, header_tt_hovered, tip.c_str(), pressed );
+                        }
+                    }
+
+                    if( ( held || hovered ) && !border_active )
                     {
                         ImU32 col_bg = ImGui::GetColorU32( held ? ImGuiCol_HeaderActive : ImGuiCol_HeaderHovered );
                         ImGui::TableSetBgColor( ImGuiTableBgTarget_CellBg, col_bg, (int)col );
@@ -3367,7 +3542,6 @@ namespace ImGui
                     column->SortDirection = ( (int)col == active_sort_col ) ? (ImU8)active_sort_dir : (ImU8)ImGuiSortDirection_None;
                 }
 
-                TableCell h_cell = ( col < headers.size() ) ? headers[col] : TableCell();
                 RenderTableCell( h_cell, alignments[col], true, mdConfig_ );
 
                 // Draw sort indicator arrow if this column is sorted
@@ -3454,6 +3628,32 @@ namespace ImGui
                 ImGui::GetStateStorage()->SetBool( col_custom_key, true );
                 ImGui::GetStateStorage()->SetBool( last_col_custom_key, true );
                 fire_state_callback( true );
+            }
+
+            // Internal column resize separator tooltips & double-click auto-fit sync
+            if( table && ( flags & ImGuiTableFlags_Resizable ) && num_cols > 1 )
+            {
+                for( int col_n = 0; col_n + 1 < (int)num_cols && col_n < table->ColumnsCount; ++col_n )
+                {
+                    ImGuiTableColumn* sep_col = &table->Columns[col_n];
+                    if( sep_col->Flags & ImGuiTableColumnFlags_NoResize ) continue;
+
+                    if( table->HoveredColumnBorder == col_n && ImGui::IsMouseDoubleClicked( 0 ) )
+                    {
+                        ImGui::GetStateStorage()->SetFloat( header_hash + 100 + (ImGuiID)col_n, 0.0f );
+                    }
+
+                    if( allow_table_tooltips )
+                    {
+                        ImGuiID sep_id = ImGui::TableGetColumnResizeID( table, col_n );
+                        bool sep_hovered = ( table->HoveredColumnBorder == col_n ) && ( table->ResizedColumn == -1 ) && !ImGui::IsMouseDown( 0 );
+                        bool sep_clicked = ( table->ResizedColumn == col_n ) || ( table->HoveredColumnBorder == col_n && ImGui::IsMouseClicked( 0 ) );
+                        std::string col_label = ( (size_t)col_n < headers.size() ) ? TableDetail::GetCellPlainText( headers[(size_t)col_n] ) : std::string();
+                        if( col_label.empty() ) col_label = "column";
+                        std::string sep_tip = "Drag to resize **" + col_label + "** column\nDouble-click to auto-fit";
+                        MarkdownDetail::ShowTableTooltip( mdConfig_, sep_id, sep_hovered, sep_tip.c_str(), sep_clicked );
+                    }
+                }
             }
 
             ImGui::EndTable();
@@ -3591,6 +3791,32 @@ namespace ImGui
                     ImGui::SetMouseCursor( ImGuiMouseCursor_ResizeEW );
                     ImU32 line_col = ImGui::GetColorU32( ( grip_held && !is_resetting ) ? ImGuiCol_SeparatorActive : ImGuiCol_SeparatorHovered );
                     ImGui::GetWindowDrawList()->AddLine( ImVec2( right_x, top_y ), ImVec2( right_x, bot_y ), line_col, 2.0f * scale );
+                }
+
+                if( allow_table_tooltips )
+                {
+                    const bool has_layout_preset = metadata.hasPreset && ( metadata.presetWidth > 0.0f || !metadata.presetColWidths.empty() );
+                    const float cur_w_now  = ImGui::GetStateStorage()->GetFloat( width_key, preset_norm_w );
+                    const float last_w_now = ImGui::GetStateStorage()->GetFloat( last_width_key, 0.0f );
+                    const char* grip_tip = nullptr;
+                    if( std::fabs( cur_w_now - preset_norm_w ) > 0.1f )
+                    {
+                        grip_tip = has_layout_preset
+                            ? "Drag to resize table width\nDouble-click to reset to **preset layout**"
+                            : "Drag to resize table width\nDouble-click to reset to **auto-fit layout**";
+                    }
+                    else if( last_w_now > 0.0f && std::fabs( last_w_now - preset_norm_w ) > 0.1f )
+                    {
+                        grip_tip = "Drag to resize table width\nDouble-click to restore **custom layout**";
+                    }
+                    else
+                    {
+                        grip_tip = has_layout_preset
+                            ? "Drag to resize table width\nDouble-click after resizing to toggle **preset layout**"
+                            : "Drag to resize table width\nDouble-click after resizing to toggle **auto-fit layout**";
+                    }
+                    bool grip_tt_hovered = grip_hovered && !grip_held && !is_resetting && !ImGui::IsMouseDown( 0 );
+                    MarkdownDetail::ShowTableTooltip( mdConfig_, grip_id, grip_tt_hovered, grip_tip, grip_pressed || grip_held );
                 }
             }
         }

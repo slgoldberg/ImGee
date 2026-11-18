@@ -11,11 +11,17 @@
 #include "extensions/TimedTooltip/imgui_tooltip_ext.h"
 #include "imgee_test_common.h"
 
+#if !defined(IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED)
+#error "Reverse include order (Typography BEFORE TimedTooltip) failed to activate TimedTooltip <-> Typography bridge"
+#endif
+
 namespace ImGeeTests {
 
 void RunReverseOrderTogglesAndPopupsFrame() {
     // Verify ClickableLinks <-> Markdown bidirectional auto-link bridge activated
     IMGEE_TEST_CHECK(ImGui::GetDefaultMarkdownLinkCallback() != nullptr);
+    // Verify Typography <-> TimedTooltip reverse-order base-font resolver bridge activated
+    IMGEE_TEST_CHECK(ImGui::TimedTooltip::Detail::GetBaseFontResolver() != nullptr);
 
     static bool s_LandingLights = true;
     static int  s_SurfaceMode   = 0;

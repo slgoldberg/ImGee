@@ -3396,7 +3396,22 @@ namespace TimedTooltip {
             state.last_scale = scale;
         }
 
-        if (state.perfect_size.x == 0.0f && (is_hovered || state.is_displayed || state.hover_cycles > 0)) {
+        const bool active_or_hovered = (is_hovered || state.is_displayed || state.hover_cycles > 0);
+        if (active_or_hovered) {
+            ImGuiID cur_text_hash = ImHashStr(buffer);
+            if (cur_text_hash != state.last_text_hash) {
+                state.last_text_hash = cur_text_hash;
+                state.perfect_size = ImVec2(0.0f, 0.0f);
+                state.last_size = ImVec2(0.0f, 0.0f);
+            }
+        }
+
+        if (state.perfect_size.x == 0.0f && active_or_hovered) {
+            ImFont* isolated_font = TimedTooltip::Detail::ResolveBaseTooltipFont(config);
+            if (isolated_font) {
+                ImGui::ImGeeCompat::PushFont(isolated_font);
+            }
+
             // Pass 1: Dry-run unwrapped to measure the natural single-line width
             MarkdownConfig measure_md = local_md;
             measure_md.wrapWidth = -1.0f; // Force unconstrained single-line layout
@@ -3413,7 +3428,9 @@ namespace TimedTooltip {
                 if (state.perfect_size.x > max_screen_w) state.perfect_size.x = max_screen_w;
                 float line_h = raw_size.y;
                 if (strstr(buffer, "<pill") || strstr(buffer, "<badge")) {
-                    line_h = ImMax(line_h, (ImGui::GetFontSize() > 0.0f ? ImGui::GetFontSize() : 14.0f) + 4.0f * scale);
+                    float pill_base_sz = TimedTooltip::Detail::GetFontNativePixelSize(isolated_font);
+                    if (pill_base_sz <= 0.0f) pill_base_sz = (ImGui::GetFontSize() > 0.0f ? ImGui::GetFontSize() : 14.0f);
+                    line_h = ImMax(line_h, pill_base_sz * scale + 4.0f * scale);
                 }
                 state.perfect_size.y = line_h + 2.0f * scale; // Symmetric 1px top + 1px bottom headroom
                 local_md.wrapWidth = no_wrap ? -1.0f : wrap_limit;
@@ -3433,6 +3450,10 @@ namespace TimedTooltip {
                 if (content_w > max_screen_w) content_w = max_screen_w;
                 state.perfect_size.x = content_w;
                 state.perfect_size.y = wrapped_size.y + 2.0f * scale; // Symmetric 1px top + 1px bottom headroom
+            }
+
+            if (isolated_font) {
+                ImGui::PopFont();
             }
         } else {
             local_md.wrapWidth = no_wrap ? -1.0f : wrap_limit;
@@ -3797,6 +3818,10 @@ namespace MarkdownDetail {
             bool toggle = ImGui::Detail::ShouldToggleTooltipOnClick(id, ImGui::IsItemActive());
             bool resolved_hovered = ImGui::Detail::ResolveItemTooltipHover(id, hovered);
             return TimedTooltip::TextMDProxy(id, resolved_hovered, &cfg, is_clicked, toggle, "%s", text);
+        };
+        GetTableTooltipFn() = []( ImGuiID id, bool hovered, const char* markdownText, bool is_clicked ) {
+            if (!markdownText || markdownText[0] == '\0') return;
+            TimedTooltip::TextMDProxy( id, hovered, nullptr, is_clicked, false, "%s", markdownText );
         };
     }
     struct CodeBlockTooltipBridgeRunner {
