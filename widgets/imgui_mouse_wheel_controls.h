@@ -56,6 +56,20 @@
 #endif
 
 #include "imgui.h"
+#ifndef IMGUI_CONTRIB_INTERNAL_INCLUDED
+  #if defined(__has_include)
+    #if __has_include("imgui_internal.h")
+      #include "imgui_internal.h"
+      #define IMGUI_CONTRIB_INTERNAL_INCLUDED 1
+    #endif
+  #endif
+#else
+  #if defined(__has_include)
+    #if __has_include("imgui_internal.h")
+      #include "imgui_internal.h"
+    #endif
+  #endif
+#endif
 #include <cmath>
 
 #if !defined(IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER)

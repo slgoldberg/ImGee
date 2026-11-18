@@ -239,7 +239,7 @@
 #define STBI_NO_FAILURE_STRINGS
 
 #if !defined(IMGEE_EXTERNAL_STB_IMAGE)
-    #define STB_IMAGE_STATIC
+    #define STBIDEF static inline
     #define STB_IMAGE_IMPLEMENTATION
 #elif defined(IMGEE_STB_IMAGE_TU)
     #define STB_IMAGE_IMPLEMENTATION
@@ -303,7 +303,7 @@
 #pragma GCC diagnostic ignored "-Wshadow"
 #elif defined(_MSC_VER)
 #pragma warning(push)
-#pragma warning(disable: 4100 4244 4456 4457 4701 4996)
+#pragma warning(disable: 4100 4244 4456 4457 4505 4701 4996)
 #endif
 
 namespace ImGeeStbi {
@@ -313,6 +313,12 @@ namespace ImGeeStbi {
 #include "stb_image.h"
 #else
 #include "../stb_image.h"
+#endif
+
+#if defined(_MSC_VER) && defined(STB_IMAGE_IMPLEMENTATION)
+    // Mark internal static stbi__err helper as referenced when STBI_NO_FAILURE_STRINGS is active
+    // so MSVC /W4 /WX never emits end-of-TU C4505 after #pragma warning(pop).
+    inline void SuppressMsvcStbiUnusedInternal() { (void)&stbi__err; }
 #endif
 
     inline unsigned char* LoadFromMemory(const void* data, size_t len, int* outW, int* outH) {

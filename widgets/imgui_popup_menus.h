@@ -55,6 +55,13 @@
     !defined(IMGUI_DISABLE_CONTRIB_POPUP_MENUS)
 
 #include "imgui.h"
+#if defined(__has_include)
+    #if __has_include("imgui_internal.h")
+        #include "imgui_internal.h"
+    #endif
+#else
+    #include "imgui_internal.h"
+#endif
 #include <string>
 #include <vector>
 #include <map>
