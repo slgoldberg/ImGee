@@ -874,7 +874,7 @@ namespace ImGui
 		};
         EmphasisState state = NONE;
         TextBlock text;
-        char sym;
+        char sym = 0;
 	};
 
     inline void DrawTextDecorationLine( ImColor col_, bool is_strikethrough_ )

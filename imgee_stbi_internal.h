@@ -301,6 +301,9 @@
 #pragma GCC diagnostic ignored "-Wsign-compare"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wshadow"
+#if __GNUC__ >= 7
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 #elif defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable: 4100 4244 4456 4457 4505 4701 4996)

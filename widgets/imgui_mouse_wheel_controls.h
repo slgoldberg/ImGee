@@ -1761,7 +1761,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
@@ -1870,7 +1870,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
@@ -1982,7 +1982,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
@@ -2095,7 +2095,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
@@ -2206,7 +2206,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
@@ -2461,7 +2461,7 @@ namespace ImGui {
         }
         bool reset_hovered = IsItemHovered();
 
-        char default_buf[160];
+        char default_buf[256];
         if (reset_tooltip && reset_tooltip[0] != '\0') {
             std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
         } else {
