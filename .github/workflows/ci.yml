@@ -1,0 +1,182 @@
+name: ImGee Standalone CI
+
+on:
+  push:
+    branches: [ master, dev ]
+  pull_request:
+    branches: [ master, dev ]
+  workflow_dispatch:
+
+jobs:
+  standalone-matrix:
+    name: ${{ matrix.label }} (ImGui ${{ matrix.imgui_ref }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 1. Linux GCC
+          - label: "Linux GCC"
+            os: ubuntu-latest
+            toolchain: gcc
+            imgui_ref: v1.84.2
+            obsolete_off: ON
+          - label: "Linux GCC"
+            os: ubuntu-latest
+            toolchain: gcc
+            imgui_ref: v1.92.8
+            obsolete_off: ON
+
+          # 2. macOS Clang
+          - label: "macOS Clang"
+            os: macos-latest
+            toolchain: clang
+            imgui_ref: v1.84.2
+            obsolete_off: ON
+          - label: "macOS Clang"
+            os: macos-latest
+            toolchain: clang
+            imgui_ref: v1.92.8
+            obsolete_off: ON
+
+          # 3. Windows MSVC (/W4 /WX + real <windows.h> without NOMINMAX)
+          - label: "Windows MSVC"
+            os: windows-latest
+            toolchain: msvc
+            imgui_ref: v1.84.2
+            obsolete_off: ON
+          - label: "Windows MSVC"
+            os: windows-latest
+            toolchain: msvc
+            imgui_ref: v1.92.8
+            obsolete_off: ON
+
+          # 4. Windows MinGW-w64 (strict win32 thread model -- zero libwinpthread-1.dll)
+          - label: "Windows MinGW-w64 (win32 threads)"
+            os: ubuntu-latest
+            toolchain: mingw-win32
+            imgui_ref: v1.84.2
+            obsolete_off: ON
+          - label: "Windows MinGW-w64 (win32 threads)"
+            os: ubuntu-latest
+            toolchain: mingw-win32
+            imgui_ref: v1.92.8
+            obsolete_off: ON
+
+    steps:
+      - name: Checkout ImGee
+        uses: actions/checkout@v4
+        with:
+          path: imgee
+
+      - name: Checkout pure upstream Dear ImGui (${{ matrix.imgui_ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: ocornut/imgui
+          ref: ${{ matrix.imgui_ref }}
+          path: imgui
+
+      - name: Install MinGW-w64 win32 thread-model toolchain
+        if: matrix.toolchain == 'mingw-win32'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends g++-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64
+
+      - name: Verify every header compiles standalone (-Wall -Wextra -Werror)
+        if: matrix.toolchain != 'msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.toolchain }}" = "gcc" ]; then
+            CXX_BIN="g++"
+          elif [ "${{ matrix.toolchain }}" = "clang" ]; then
+            CXX_BIN="clang++"
+          else
+            CXX_BIN="x86_64-w64-mingw32-g++-win32"
+          fi
+
+          IMGUI_ABS="$(cd imgui && pwd)"
+          cd imgee
+
+          HEADERS=(
+            imgee.h
+            imgee_host_backend.h
+            imgee-global.h
+            includes.h
+            extensions.h
+            widgets.h
+            extensions/includes.h
+            extensions/TimedTooltip/imgui_tooltip_ext.h
+            extensions/Markdown/imgui_markdown.h
+            extensions/Markdown/imgui_markdown_ext.h
+            extensions/Markdown/imgui_markdown_image_service.h
+            extensions/Typography/imgui_font_roles.h
+            extensions/Typography/imgui_styled_text.h
+            widgets/includes.h
+            widgets/imgui_icons.h
+            widgets/imgui_knobs.h
+            widgets/imgui_mouse_wheel_controls.h
+            widgets/imgui_badges.h
+            widgets/imgui_popup_menus.h
+            widgets/imgui_toggle_buttons.h
+            widgets/imgui_spinners.h
+            widgets/imgui_clickable_links.h
+            widgets/imgui_copy_button.h
+            widgets/imgui_file_dialog.h
+            themes/includes.h
+            themes/imgui_styles.h
+          )
+
+          for hdr in "${HEADERS[@]}"; do
+            echo "[Standalone Header Check] $CXX_BIN -> $hdr"
+            printf '#include "%s"\n' "$hdr" | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Werror \
+              -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I. -isystem "$IMGUI_ABS" -x c++ -
+          done
+
+      - name: Configure CMake test suite (Native GCC / Clang / MSVC)
+        if: matrix.toolchain != 'mingw-win32'
+        shell: bash
+        run: |
+          IMGUI_ABS="$(cd imgui && pwd)"
+          cmake -S imgee/tests -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DIMGUI_DIR="$IMGUI_ABS" \
+            -DIMGEE_TEST_OBSOLETE_OFF=${{ matrix.obsolete_off }}
+
+      - name: Configure CMake test suite (MinGW-w64 win32 thread model)
+        if: matrix.toolchain == 'mingw-win32'
+        shell: bash
+        run: |
+          IMGUI_ABS="$(cd imgui && pwd)"
+          cmake -S imgee/tests -B build \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc-win32 \
+            -DCMAKE_CXX_COMPILER=x86_64-w64-mingw32-g++-win32 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DIMGUI_DIR="$IMGUI_ABS" \
+            -DIMGEE_TEST_OBSOLETE_OFF=${{ matrix.obsolete_off }}
+
+      - name: Build all test binaries
+        shell: bash
+        run: cmake --build build --config Release --parallel
+
+      - name: Run headless smoke & stack-integrity tests (Native)
+        if: matrix.toolchain != 'mingw-win32'
+        shell: bash
+        run: ctest --test-dir build --build-config Release --output-on-failure -V
+
+      - name: Audit MinGW PE32+ DLL imports (zero libwinpthread / wininet / shell32)
+        if: matrix.toolchain == 'mingw-win32'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for exe in build/imgee_standalone_tests.exe build/imgee_external_stbi_test.exe build/imgee_force_relative_test.exe; do
+            echo "=== Inspecting PE DLL imports: $exe ==="
+            DLLS="$(x86_64-w64-mingw32-objdump -p "$exe" | grep 'DLL Name:' || true)"
+            echo "$DLLS"
+            if echo "$DLLS" | grep -Eqi "winpthread|wininet|shell32"; then
+              echo "[FAIL] Forbidden runtime DLL dependency detected in $exe!"
+              exit 1
+            fi
+          done
+          echo "[PASS] Zero libwinpthread / wininet / shell32 DLL dependencies verified."
