@@ -322,7 +322,7 @@ namespace ImGui {
 
 #if defined(IMGUI_CONTRIB_INTERNAL_INCLUDED) || defined(IMGUI_INTERNAL_H)
         ImGuiContext& g = *GImGui;
-#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18500
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18400
         ImGuiID prev_id = g.CurrentWindow ? g.CurrentWindow->DC.LastItemId : 0;
 #else
         ImGuiID prev_id = g.LastItemData.ID;

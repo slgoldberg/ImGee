@@ -2752,7 +2752,7 @@ namespace ImGui {
                 const bool   saved_is_same_line          = window->DC.IsSameLine;
                 const bool   saved_is_set_pos            = window->DC.IsSetPos;
 #endif
-#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM >= 18500)
+#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM >= 18400)
                 const ImGuiLastItemData saved_last_item  = GImGui->LastItemData;
 #else
                 const ImGuiID              saved_last_id   = window->DC.LastItemId;
@@ -2778,7 +2778,7 @@ namespace ImGui {
                 window->DC.IsSameLine             = saved_is_same_line;
                 window->DC.IsSetPos               = saved_is_set_pos;
 #endif
-#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM >= 18500)
+#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM >= 18400)
                 GImGui->LastItemData              = saved_last_item;
 #else
                 window->DC.LastItemId             = saved_last_id;

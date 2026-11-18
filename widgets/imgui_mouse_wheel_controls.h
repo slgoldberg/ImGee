@@ -59,7 +59,7 @@
 #include <cmath>
 
 #if !defined(IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER)
-  #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18500
+  #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18400
     #define IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER() do { if (GImGui->CurrentWindow) GImGui->CurrentWindow->DC.LastItemStatusFlags &= ~ImGuiItemStatusFlags_HoveredRect; } while (0)
   #else
     #define IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER() do { GImGui->LastItemData.StatusFlags &= ~ImGuiItemStatusFlags_HoveredRect; } while (0)
