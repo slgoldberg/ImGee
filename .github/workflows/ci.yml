@@ -133,6 +133,10 @@ jobs:
               -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I. -isystem "$IMGUI_ABS" -x c++ -
           done
 
+          echo "[Standalone Opt-Out Check] $CXX_BIN -> extensions/Markdown/imgui_markdown_ext.h (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS)"
+          printf '#include "extensions/Markdown/imgui_markdown_ext.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Werror \
+            -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -I. -isystem "$IMGUI_ABS" -x c++ -
+
       - name: Configure CMake test suite (Native GCC / Clang / MSVC)
         if: matrix.toolchain != 'mingw-win32'
         shell: bash

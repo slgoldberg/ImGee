@@ -83,6 +83,10 @@ The Markdown system is structured as a clean two-layer architecture:
 * **Centering Layout Primitives (`<center>` and `-> text <-`):**
   * Effortlessly center briefing headers, warnings, and status lines via HTML-style `<center>text</center>` (or `<centre>`) tags or ASCII block-level markers (`-> Centered Text <-` and `= Centered Text =`).
   * Dynamically pre-measures line advance width across headers, bold/italics, pills, and badges to ensure true horizontal optical centering.
+* **Native Blockquotes & GFM Callout Cards (`> ...` and `> [!NOTE]` .. `[!CAUTION]`):**
+  * Fence-aware preprocessing and built-in `<blockquote>` + `<callout>` / `<alert>` / `<notice>` tag rendering for standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GFM alert variants (`NOTE` / `INFO`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`), supporting both multi-line and same-line alert bodies.
+  * Uses zero-font procedural vector icons (`imgui_icons.h`, with an automatic minimal `ImDrawList` fallback when `IMGEE_DISABLE_WIDGETS` / `IMGEE_DISABLE_ICONS` is active) and a zero-`ImDrawListSplitter` underlay pass so callouts and blockquotes can freely contain fenced code blocks, interactive Markdown tables, and nested quotes.
+  * Explicit host `ImGui::RegisterMarkdownTag("callout", ...)` registrations cleanly override the built-in default when custom card chrome is desired.
 * **Dynamic Font Scaling:**
   * Uses `ImGui::GetFontScale()` to cleanly honor parent window text zoom and high-DPI display scales.
 * **Custom Tag Registration:**
@@ -294,6 +298,28 @@ Section 2 text.
 * Recognizes `---`, `***`, and `___` with optional spaces between markers or at the end of the line.
 * Renders a clean divider using `ImGui::Separator()`.
 * Automatically balances spacing so dividers preceding or following headings do not create excessive empty vertical voids or stacked separators.
+
+#### 5b. Native Blockquotes (`> ...`) and GFM Callout Cards (`> [!NOTE]` .. `[!CAUTION]`)
+Standard CommonMark blockquotes and GitHub-Flavored Markdown alerts render automatically without any setup or icon fonts:
+
+```markdown
+> Standard blockquote with **inline** formatting.
+> > Nested second-level quote.
+
+> [!NOTE]
+> Multi-line advisory body with `code` or tables.
+
+> [!WARNING] Same-line inline alert body right after the bracket.
+
+<callout type="caution" title="VNE Exceedance">
+Explicit tag form with custom header title (aliases: `<alert>`, `<notice>`, and `<blockquote>`).
+</callout>
+```
+
+* **Supported GFM Variants (case-insensitive):** `[!NOTE]` (alias `[!INFO]`), `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, and `[!CAUTION]`.
+* **Fence & Indented-Code Safe:** `> ...` lines inside ```` ``` ```` / `~~~` fenced blocks or 4-space indented code blocks remain literal code.
+* **Arbitrary Nesting:** Uses a splitter-free `ImDrawList` underlay pass, allowing callouts and blockquotes to contain fenced code blocks, interactive GFM tables, and nested `> >` blockquotes to any depth.
+* **Host Override Precedence:** Calling `ImGui::RegisterMarkdownTag("callout", myHandler)` overrides the built-in handler while still benefiting from `> [!TYPE]` preprocessing.
 
 #### 6. Interactive CommonMark Tables (Sorting, Resizing & Bi-Directional Persistence)
 Standard CommonMark pipe tables render as full-featured, interactive Dear ImGui tables:

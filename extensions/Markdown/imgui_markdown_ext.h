@@ -44,6 +44,9 @@
 #include <string>
 #include <functional>
 #include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
@@ -78,7 +81,11 @@
 #endif
 #endif
 
-#if !defined(IMGEE_DISABLE_ICONS) && \
+#if defined(CONTRIB_ICONS_AVAILABLE)
+    #ifndef CONTRIB_HAS_ICONS
+        #define CONTRIB_HAS_ICONS 1
+    #endif
+#elif !defined(IMGEE_DISABLE_ICONS) && \
     !defined(IMGEE_DISABLE_WIDGETS) && \
     !defined(CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_ICONS) && \
@@ -89,10 +96,13 @@
 #if defined(__has_include)
     #if __has_include("../../widgets/imgui_icons.h")
         #include "../../widgets/imgui_icons.h"
-        #define CONTRIB_HAS_ICONS 1
+    #elif __has_include("imgui_icons.h")
+        #include "imgui_icons.h"
     #endif
 #else
     #include "../../widgets/imgui_icons.h"
+#endif
+#if defined(CONTRIB_ICONS_AVAILABLE) && !defined(CONTRIB_HAS_ICONS)
     #define CONTRIB_HAS_ICONS 1
 #endif
 #endif
@@ -533,24 +543,29 @@ namespace ImGui {
 
         size_t i = 0;
         while (i < len) {
-            // Check for start/end of fenced code blocks (``` or ~~~):
-            if ((i == 0 || text[i-1] == '\n' || text[i-1] == '\r') && (text[i] == '`' || text[i] == '~')) {
-                char fc = text[i];
-                int fl = 0;
-                while (i + fl < len && text[i + fl] == fc) ++fl;
-                if (fl >= 3) {
-                    if (!in_fence) {
-                        in_fence = true;
-                        fence_char = fc;
-                        fence_len = fl;
-                    } else if (fc == fence_char && fl >= fence_len) {
-                        in_fence = false;
-                        fence_char = '\0';
-                        fence_len = 0;
+            // Check for start/end of fenced code blocks (``` or ~~~), including inside '>' blockquotes:
+            if (i == 0 || text[i-1] == '\n' || text[i-1] == '\r') {
+                size_t fscan = i;
+                while (fscan < len && (text[fscan] == ' ' || text[fscan] == '\t' || text[fscan] == '>')) ++fscan;
+                if (fscan < len && (text[fscan] == '`' || text[fscan] == '~')) {
+                    char fc = text[fscan];
+                    int fl = 0;
+                    while (fscan + fl < len && text[fscan + fl] == fc) ++fl;
+                    if (fl >= 3) {
+                        if (!in_fence) {
+                            in_fence = true;
+                            fence_char = fc;
+                            fence_len = fl;
+                        } else if (fc == fence_char && fl >= fence_len) {
+                            in_fence = false;
+                            fence_char = '\0';
+                            fence_len = 0;
+                        }
+                        while (i < fscan + (size_t)fl) {
+                            out.push_back(text[i++]);
+                        }
+                        continue;
                     }
-                    for (int k = 0; k < fl; ++k) out.push_back(text[i + k]);
-                    i += fl;
-                    continue;
                 }
             }
 
@@ -985,6 +1000,479 @@ namespace ImGui {
         }
         flush_seg(cur_font);
         return total_w;
+    }
+
+    namespace Detail {
+        enum class CalloutKind {
+            Note = 0,
+            Tip,
+            Important,
+            Warning,
+            Caution
+        };
+
+        // Nesting-safe background underlay helper: records draw command & index offsets before
+        // rendering foreground content, then draws the card background + accent bar and rotates
+        // those commands behind the foreground without ever opening an ImDrawListSplitter!
+        // This allows inner Markdown to freely open its own ImDrawListSplitter (e.g. fenced
+        // code blocks and BeginTable) or nest blockquotes/callouts to arbitrary depth.
+        struct ImDrawListUnderlayScope {
+            ImDrawList* dl;
+            int fg_cmd_start;
+            int fg_idx_start;
+            int bg_cmd_start;
+            int bg_idx_start;
+
+            explicit ImDrawListUnderlayScope(ImDrawList* draw_list)
+                : dl(draw_list), fg_cmd_start(0), fg_idx_start(0), bg_cmd_start(0), bg_idx_start(0) {
+                if (!dl) return;
+                if (dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr) {
+                    dl->AddDrawCmd();
+                }
+                fg_cmd_start = dl->CmdBuffer.Size - 1;
+                fg_idx_start = dl->IdxBuffer.Size;
+            }
+
+            void BeginBackground() {
+                if (!dl) return;
+                while (dl->CmdBuffer.Size > fg_cmd_start &&
+                       dl->CmdBuffer.back().ElemCount == 0 &&
+                       dl->CmdBuffer.back().UserCallback == nullptr) {
+                    dl->CmdBuffer.pop_back();
+                }
+                dl->AddDrawCmd();
+                bg_cmd_start = dl->CmdBuffer.Size - 1;
+                bg_idx_start = dl->IdxBuffer.Size;
+            }
+
+            void EndUnderlay() {
+                if (!dl) return;
+                while (dl->CmdBuffer.Size > bg_cmd_start &&
+                       dl->CmdBuffer.back().ElemCount == 0 &&
+                       dl->CmdBuffer.back().UserCallback == nullptr) {
+                    dl->CmdBuffer.pop_back();
+                }
+                const int total_cmds = dl->CmdBuffer.Size;
+                const int total_idxs = dl->IdxBuffer.Size;
+                if (bg_cmd_start > fg_cmd_start && total_cmds > bg_cmd_start &&
+                    bg_idx_start > fg_idx_start && total_idxs > bg_idx_start) {
+                    unsigned int running_idx_offset = dl->CmdBuffer.Data[fg_cmd_start].IdxOffset;
+                    std::rotate(dl->IdxBuffer.Data + fg_idx_start,
+                                dl->IdxBuffer.Data + bg_idx_start,
+                                dl->IdxBuffer.Data + total_idxs);
+                    std::rotate(dl->CmdBuffer.Data + fg_cmd_start,
+                                dl->CmdBuffer.Data + bg_cmd_start,
+                                dl->CmdBuffer.Data + total_cmds);
+                    for (int c = fg_cmd_start; c < total_cmds; ++c) {
+                        dl->CmdBuffer.Data[c].IdxOffset = running_idx_offset;
+                        running_idx_offset += dl->CmdBuffer.Data[c].ElemCount;
+                    }
+                    dl->_IdxWritePtr = dl->IdxBuffer.Data + dl->IdxBuffer.Size;
+                }
+                if (dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr) {
+                    dl->AddDrawCmd();
+                }
+            }
+        };
+
+        // Standalone procedural glyph fallback when widgets/imgui_icons.h is disabled or absent:
+        inline void DrawMinimalCalloutGlyph(ImDrawList* dl, const ImVec2& pos, float size, ImU32 col, CalloutKind kind) {
+            if (!dl || size <= 0.0f) return;
+            ImVec2 center(pos.x + size * 0.5f, pos.y + size * 0.5f);
+            float r = size * 0.38f;
+            float thickness = ImMax(1.2f, size * 0.095f);
+
+            if (kind == CalloutKind::Warning) {
+                float h = size * 0.40f;
+                ImVec2 a(center.x, center.y - h);
+                ImVec2 b(center.x - h * 1.05f, center.y + h * 0.85f);
+                ImVec2 c(center.x + h * 1.05f, center.y + h * 0.85f);
+                dl->AddTriangle(a, b, c, col, thickness);
+                dl->AddLine(ImVec2(center.x, center.y - h * 0.28f), ImVec2(center.x, center.y + h * 0.24f), col, thickness);
+                dl->AddCircleFilled(ImVec2(center.x, center.y + h * 0.54f), ImMax(1.0f, size * 0.065f), col, 8);
+                return;
+            }
+
+            dl->AddCircle(center, r, col, 16, thickness);
+            if (kind == CalloutKind::Note) {
+                dl->AddCircleFilled(ImVec2(center.x, center.y - r * 0.42f), thickness * 0.95f, col, 8);
+                dl->AddLine(ImVec2(center.x, center.y - r * 0.10f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.25f);
+            } else if (kind == CalloutKind::Tip) {
+                float s = size * 0.46f;
+                ImVec2 p0(center.x - s * 0.38f, center.y + s * 0.04f);
+                ImVec2 p1(center.x - s * 0.06f, center.y + s * 0.36f);
+                ImVec2 p2(center.x + s * 0.42f, center.y - s * 0.32f);
+                dl->AddLine(p0, p1, col, thickness);
+                dl->AddLine(p1, p2, col, thickness);
+            } else if (kind == CalloutKind::Caution) {
+                float x_r = r * 0.46f;
+                dl->AddLine(ImVec2(center.x - x_r, center.y - x_r), ImVec2(center.x + x_r, center.y + x_r), col, thickness);
+                dl->AddLine(ImVec2(center.x + x_r, center.y - x_r), ImVec2(center.x - x_r, center.y + x_r), col, thickness);
+            } else {
+                // Important: circle with exclamation mark
+                dl->AddLine(ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.25f);
+                dl->AddCircleFilled(ImVec2(center.x, center.y + r * 0.46f), ImMax(1.0f, size * 0.065f), col, 8);
+            }
+        }
+
+        inline bool TryMatchCalloutTypeToken(const std::string& raw_tok, CalloutKind& out_kind, std::string& out_canonical_name) {
+            std::string t = raw_tok;
+            for (char& c : t) c = (char)tolower((unsigned char)c);
+            if (t == "note" || t == "info") {
+                out_kind = CalloutKind::Note;
+                out_canonical_name = "note";
+                return true;
+            }
+            if (t == "tip" || t == "hint") {
+                out_kind = CalloutKind::Tip;
+                out_canonical_name = "tip";
+                return true;
+            }
+            if (t == "important") {
+                out_kind = CalloutKind::Important;
+                out_canonical_name = "important";
+                return true;
+            }
+            if (t == "warning" || t == "warn") {
+                out_kind = CalloutKind::Warning;
+                out_canonical_name = "warning";
+                return true;
+            }
+            if (t == "caution" || t == "danger" || t == "error") {
+                out_kind = CalloutKind::Caution;
+                out_canonical_name = "caution";
+                return true;
+            }
+            return false;
+        }
+
+        inline bool TryParseGfmAlertMarker(const std::string& stripped_line, std::string& out_canonical_type, std::string& out_inline_body) {
+            size_t pos = 0;
+            int lead_cols = 0;
+            while (pos < stripped_line.size() && (stripped_line[pos] == ' ' || stripped_line[pos] == '\t')) {
+                lead_cols += (stripped_line[pos] == '\t') ? 4 : 1;
+                if (lead_cols > 3) return false;
+                ++pos;
+            }
+            if (pos + 4 > stripped_line.size() || stripped_line[pos] != '[' || stripped_line[pos + 1] != '!') {
+                return false;
+            }
+            size_t close_b = stripped_line.find(']', pos + 2);
+            if (close_b == std::string::npos || close_b == pos + 2) {
+                return false;
+            }
+            std::string raw_type = stripped_line.substr(pos + 2, close_b - (pos + 2));
+            while (!raw_type.empty() && (raw_type.front() == ' ' || raw_type.front() == '\t')) raw_type.erase(0, 1);
+            while (!raw_type.empty() && (raw_type.back() == ' ' || raw_type.back() == '\t')) raw_type.pop_back();
+            for (char& c : raw_type) c = (char)tolower((unsigned char)c);
+
+            // Strictly match the five GFM callout types (+ [!INFO] alias) so arbitrary '[!...]' text stays quoted prose
+            if (raw_type != "note" && raw_type != "info" && raw_type != "tip" &&
+                raw_type != "important" && raw_type != "warning" && raw_type != "caution") {
+                return false;
+            }
+            out_canonical_type = (raw_type == "info") ? "note" : raw_type;
+
+            size_t rem = close_b + 1;
+            while (rem < stripped_line.size() && (stripped_line[rem] == ' ' || stripped_line[rem] == '\t')) {
+                ++rem;
+            }
+            out_inline_body = (rem < stripped_line.size()) ? stripped_line.substr(rem) : std::string();
+            while (!out_inline_body.empty() && (out_inline_body.back() == ' ' || out_inline_body.back() == '\t')) {
+                out_inline_body.pop_back();
+            }
+            return true;
+        }
+
+        inline void ParseCalloutTagParams(const std::string& param, CalloutKind& out_kind, bool& out_has_custom_title, std::string& out_custom_title) {
+            out_kind = CalloutKind::Note;
+            out_has_custom_title = false;
+            out_custom_title.clear();
+
+            size_t i = 0;
+            size_t n = param.size();
+            while (i < n) {
+                while (i < n && (param[i] == ' ' || param[i] == '\t' || param[i] == ',' || param[i] == ';')) ++i;
+                if (i >= n) break;
+
+                size_t k_start = i;
+                while (i < n && param[i] != ' ' && param[i] != '\t' && param[i] != '=' && param[i] != ',' && param[i] != ';') ++i;
+                std::string key = param.substr(k_start, i - k_start);
+                std::string key_lower = key;
+                for (char& c : key_lower) c = (char)tolower((unsigned char)c);
+
+                if (i < n && param[i] == '=') {
+                    ++i; // skip '='
+                    while (i < n && (param[i] == ' ' || param[i] == '\t')) ++i;
+                    std::string val;
+                    if (i < n && (param[i] == '"' || param[i] == '\'')) {
+                        char q = param[i++];
+                        size_t v_start = i;
+                        while (i < n && param[i] != q) ++i;
+                        val = param.substr(v_start, i - v_start);
+                        if (i < n && param[i] == q) ++i;
+                    } else {
+                        size_t v_start = i;
+                        while (i < n && param[i] != ' ' && param[i] != '\t' && param[i] != ',' && param[i] != ';') ++i;
+                        val = param.substr(v_start, i - v_start);
+                    }
+
+                    if (key_lower == "type" || key_lower == "kind" || key_lower == "variant") {
+                        std::string dummy;
+                        TryMatchCalloutTypeToken(val, out_kind, dummy);
+                    } else if (key_lower == "title" || key_lower == "header" || key_lower == "label") {
+                        out_has_custom_title = true;
+                        out_custom_title = val;
+                    }
+                } else {
+                    // Bare token: e.g. <callout warning> or <callout="tip"> (where outer '=' was stripped by Markdown::Render)
+                    std::string stripped_key = key;
+                    if (stripped_key.size() >= 2 &&
+                        ((stripped_key.front() == '"' && stripped_key.back() == '"') ||
+                         (stripped_key.front() == '\'' && stripped_key.back() == '\''))) {
+                        stripped_key = stripped_key.substr(1, stripped_key.size() - 2);
+                    }
+                    std::string dummy;
+                    TryMatchCalloutTypeToken(stripped_key, out_kind, dummy);
+                }
+            }
+        }
+    } // namespace Detail
+
+    // Fence-aware and indented-code-aware preprocessor converting standard Markdown blockquotes
+    // ('> ...', bare '>', tight '>text', and nested '> > ...') and GitHub-Flavored Markdown
+    // callout blocks ('> [!NOTE]', '[!INFO]', '[!TIP]', '[!IMPORTANT]', '[!WARNING]', '[!CAUTION]',
+    // with either multi-line or same-line inline bodies) into <blockquote> / <callout> blocks.
+    // Peels exactly one '>' level per MarkdownExt pass so nested quotes & callouts compose cleanly.
+    inline bool PreprocessMarkdownBlockquotesAndAlerts(const char* text, size_t len, std::string& out) {
+        if (!text || len == 0 || memchr(text, '>', len) == nullptr) {
+            return false;
+        }
+
+        out.reserve(len + 128);
+        bool any_replaced = false;
+        bool in_fence = false;
+        char fence_char = '\0';
+        int fence_len = 0;
+
+        bool in_raw_container = false;
+        std::string raw_container_tag;
+        int raw_container_depth = 0;
+
+        bool prev_blank_or_doc_start = true;
+        bool in_indented_code_block = false;
+
+        bool in_quote = false;
+        bool quote_is_callout = false;
+        std::string callout_type = "note";
+        std::vector<std::string> quote_lines;
+
+        auto flushQuoteOrCallout = [&]() {
+            if (!in_quote) return;
+            if (quote_is_callout) {
+                out.append("<callout type=");
+                out.append(callout_type);
+                out.append(">\n");
+                for (const std::string& ql : quote_lines) {
+                    out.append(ql);
+                    out.push_back('\n');
+                }
+                out.append("</callout>\n");
+            } else {
+                out.append("<blockquote>\n");
+                for (const std::string& ql : quote_lines) {
+                    out.append(ql);
+                    out.push_back('\n');
+                }
+                out.append("</blockquote>\n");
+            }
+            in_quote = false;
+            quote_is_callout = false;
+            callout_type = "note";
+            quote_lines.clear();
+        };
+
+        auto matchRawContainerName = [](const char* p, size_t rem_len, std::string& out_name) -> bool {
+            static const char* const kNames[] = { "blockquote", "callout", "alert", "notice" };
+            for (int idx = 0; idx < 4; ++idx) {
+                const char* nm = kNames[idx];
+                size_t nl = std::strlen(nm);
+                if (rem_len > nl && TableDetail::StrCaseEqualN(p, nm, nl)) {
+                    char after = p[nl];
+                    if (after == '>' || after == ' ' || after == '\t' || after == '=' || after == ':' || after == '/') {
+                        out_name = nm;
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        size_t i = 0;
+        while (i < len) {
+            size_t line_start = i;
+            while (i < len && text[i] != '\n' && text[i] != '\r') ++i;
+            size_t line_end = i;
+            if (i < len && text[i] == '\r') ++i;
+            if (i < len && text[i] == '\n') ++i;
+            size_t next_line = i;
+
+            const char* lptr = text + line_start;
+            size_t line_len = line_end - line_start;
+
+            size_t lead_idx = 0;
+            int lead_cols = 0;
+            while (lead_idx < line_len && (lptr[lead_idx] == ' ' || lptr[lead_idx] == '\t')) {
+                lead_cols += (lptr[lead_idx] == '\t') ? 4 : 1;
+                ++lead_idx;
+            }
+            bool is_blank_line = (lead_idx >= line_len);
+
+            // 1. Track explicit raw <blockquote/callout/alert/notice> blocks so their inner '>'
+            //    lines are handled on the tag's own recursive MarkdownExt pass rather than prematurely split:
+            if (!in_fence && in_raw_container) {
+                std::string close_pat = "</" + raw_container_tag + ">";
+                for (size_t k = 0; k < line_len; ++k) {
+                    if (lptr[k] == '<') {
+                        if (k + close_pat.size() <= line_len &&
+                            TableDetail::StrCaseEqualN(lptr + k, close_pat.c_str(), close_pat.size())) {
+                            --raw_container_depth;
+                            if (raw_container_depth <= 0) {
+                                in_raw_container = false;
+                                raw_container_depth = 0;
+                                break;
+                            }
+                        } else {
+                            std::string nested_nm;
+                            if (matchRawContainerName(lptr + k + 1, line_len - (k + 1), nested_nm) && nested_nm == raw_container_tag) {
+                                const char* gt = static_cast<const char*>(memchr(lptr + k + 1, '>', line_len - (k + 1)));
+                                if (gt && gt[-1] != '/') ++raw_container_depth;
+                            }
+                        }
+                    }
+                }
+                out.append(lptr, next_line - line_start);
+                prev_blank_or_doc_start = false;
+                continue;
+            }
+
+            // 2. Track fenced code blocks (``` or ~~~ with 0..3 leading spaces):
+            if (!in_indented_code_block && lead_cols <= 3 && lead_idx < line_len &&
+                (lptr[lead_idx] == '`' || lptr[lead_idx] == '~')) {
+                char fc = lptr[lead_idx];
+                int fl = 0;
+                while (lead_idx + (size_t)fl < line_len && lptr[lead_idx + (size_t)fl] == fc) ++fl;
+                if (fl >= 3) {
+                    if (!in_fence) {
+                        flushQuoteOrCallout();
+                        in_fence = true;
+                        fence_char = fc;
+                        fence_len = fl;
+                    } else if (fc == fence_char && fl >= fence_len) {
+                        in_fence = false;
+                        fence_char = '\0';
+                        fence_len = 0;
+                    }
+                    out.append(lptr, next_line - line_start);
+                    prev_blank_or_doc_start = false;
+                    continue;
+                }
+            }
+
+            if (in_fence) {
+                out.append(lptr, next_line - line_start);
+                continue;
+            }
+
+            // 3. Track CommonMark 4-space indented code blocks outside blockquotes:
+            if (!in_quote) {
+                if (in_indented_code_block) {
+                    if (is_blank_line || lead_cols >= 4) {
+                        out.append(lptr, next_line - line_start);
+                        continue;
+                    }
+                    in_indented_code_block = false;
+                } else if (prev_blank_or_doc_start && !is_blank_line && lead_cols >= 4) {
+                    in_indented_code_block = true;
+                    out.append(lptr, next_line - line_start);
+                    prev_blank_or_doc_start = false;
+                    continue;
+                }
+            }
+
+            // 4. Detect start of raw explicit <blockquote/callout/alert/notice> container on this line:
+            if (lead_cols <= 3 && lead_idx < line_len && lptr[lead_idx] == '<') {
+                std::string matched_tag;
+                if (matchRawContainerName(lptr + lead_idx + 1, line_len - (lead_idx + 1), matched_tag)) {
+                    flushQuoteOrCallout();
+                    const char* gt = static_cast<const char*>(memchr(lptr + lead_idx + 1, '>', line_len - (lead_idx + 1)));
+                    if (gt && gt[-1] != '/') {
+                        int depth = 1;
+                        std::string close_pat = "</" + matched_tag + ">";
+                        size_t after_open = (size_t)(gt - lptr) + 1;
+                        for (size_t k = after_open; k < line_len; ++k) {
+                            if (lptr[k] == '<') {
+                                if (k + close_pat.size() <= line_len &&
+                                    TableDetail::StrCaseEqualN(lptr + k, close_pat.c_str(), close_pat.size())) {
+                                    --depth;
+                                    if (depth == 0) break;
+                                }
+                            }
+                        }
+                        if (depth > 0) {
+                            in_raw_container = true;
+                            raw_container_tag = matched_tag;
+                            raw_container_depth = depth;
+                        }
+                    }
+                    out.append(lptr, next_line - line_start);
+                    prev_blank_or_doc_start = false;
+                    continue;
+                }
+            }
+
+            // 5. Blockquote / GFM Alert line ('>' with 0..3 leading spaces):
+            if (lead_cols <= 3 && lead_idx < line_len && lptr[lead_idx] == '>') {
+                size_t content_p = lead_idx + 1;
+                if (content_p < line_len && (lptr[content_p] == ' ' || lptr[content_p] == '\t')) {
+                    ++content_p;
+                }
+                std::string stripped(lptr + content_p, line_len - content_p);
+
+                std::string detected_alert_type;
+                std::string inline_alert_body;
+                if (Detail::TryParseGfmAlertMarker(stripped, detected_alert_type, inline_alert_body)) {
+                    flushQuoteOrCallout();
+                    in_quote = true;
+                    quote_is_callout = true;
+                    callout_type = detected_alert_type;
+                    if (!inline_alert_body.empty()) {
+                        quote_lines.push_back(inline_alert_body);
+                    }
+                } else {
+                    if (!in_quote) {
+                        in_quote = true;
+                        quote_is_callout = false;
+                    }
+                    quote_lines.push_back(stripped);
+                }
+                any_replaced = true;
+                prev_blank_or_doc_start = false;
+                continue;
+            }
+
+            // Non-quote line ends any open quote/callout block:
+            if (in_quote) {
+                flushQuoteOrCallout();
+            }
+            out.append(lptr, next_line - line_start);
+            prev_blank_or_doc_start = is_blank_line;
+        }
+
+        if (in_quote) {
+            flushQuoteOrCallout();
+        }
+        return any_replaced;
     }
 
     // Pre-processes Markdown text to convert block-level centering markers (-> text <- or =text=)
@@ -1711,6 +2199,218 @@ namespace ImGui {
             s_CustomTags["center"] = centerHandler;
             s_CustomTags["centre"] = centerHandler;
 
+            // Built-in Tag 8b: <blockquote>, <callout>, <alert>, <notice>
+            // Nesting-safe GFM Callout Cards & Standard Blockquotes (zero ImDrawListSplitter!)
+            auto renderBlockquoteOrCallout = [](const std::string& inner_text, const std::string& param, bool is_callout) {
+                ImGuiWindow* win = ImGui::GetCurrentWindow();
+                if (!win) return;
+
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                if (win->DC.IsSameLine) {
+                    ImGui::NewLine();
+                }
+#endif
+                const MarkdownConfig* active_cfg = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
+                MarkdownConfig inner_cfg = active_cfg ? *active_cfg : MarkdownConfig{};
+
+                float scale = ImGui::GetVisualScale();
+                if (scale <= 0.0f) scale = 1.0f;
+
+                const ImVec4 win_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+                const bool light_theme = (win_bg.x * 0.299f + win_bg.y * 0.587f + win_bg.z * 0.114f) > 0.55f;
+
+                Detail::CalloutKind kind = Detail::CalloutKind::Note;
+                bool has_custom_title = false;
+                std::string custom_title;
+                if (is_callout) {
+                    Detail::ParseCalloutTagParams(param, kind, has_custom_title, custom_title);
+                }
+
+                ImU32 accent_col = 0;
+                ImU32 bg_col     = 0;
+                ImU32 border_col = 0;
+                const char* icon_name = "info";
+                std::string header_label = "NOTE";
+
+                if (is_callout) {
+                    switch (kind) {
+                        case Detail::CalloutKind::Tip:
+                            accent_col   = light_theme ? IM_COL32(22, 138, 72, 255)  : IM_COL32(56, 204, 118, 255);
+                            bg_col       = light_theme ? IM_COL32(22, 163, 74, 24)   : IM_COL32(24, 98, 56, 48);
+                            border_col   = light_theme ? IM_COL32(22, 138, 72, 68)   : IM_COL32(56, 204, 118, 64);
+                            icon_name    = "lightbulb";
+                            header_label = "TIP";
+                            break;
+                        case Detail::CalloutKind::Important:
+                            accent_col   = light_theme ? IM_COL32(126, 58, 212, 255) : IM_COL32(178, 108, 255, 255);
+                            bg_col       = light_theme ? IM_COL32(139, 92, 246, 24)  : IM_COL32(88, 38, 145, 48);
+                            border_col   = light_theme ? IM_COL32(126, 58, 212, 68)  : IM_COL32(178, 108, 255, 64);
+                            icon_name    = "important";
+                            header_label = "IMPORTANT";
+                            break;
+                        case Detail::CalloutKind::Warning:
+                            accent_col   = light_theme ? IM_COL32(180, 105, 8, 255)  : IM_COL32(245, 166, 35, 255);
+                            bg_col       = light_theme ? IM_COL32(234, 150, 12, 28)  : IM_COL32(125, 72, 16, 52);
+                            border_col   = light_theme ? IM_COL32(180, 105, 8, 72)   : IM_COL32(245, 166, 35, 68);
+                            icon_name    = "warning";
+                            header_label = "WARNING";
+                            break;
+                        case Detail::CalloutKind::Caution:
+                            accent_col   = light_theme ? IM_COL32(198, 38, 38, 255)  : IM_COL32(244, 78, 78, 255);
+                            bg_col       = light_theme ? IM_COL32(220, 38, 38, 24)   : IM_COL32(130, 30, 30, 52);
+                            border_col   = light_theme ? IM_COL32(198, 38, 38, 72)   : IM_COL32(244, 78, 78, 68);
+                            icon_name    = "caution";
+                            header_label = "CAUTION";
+                            break;
+                        case Detail::CalloutKind::Note:
+                        default:
+                            accent_col   = light_theme ? IM_COL32(37, 99, 215, 255)  : IM_COL32(96, 148, 255, 255);
+                            bg_col       = light_theme ? IM_COL32(59, 130, 246, 24)  : IM_COL32(42, 72, 150, 48);
+                            border_col   = light_theme ? IM_COL32(37, 99, 215, 68)   : IM_COL32(96, 148, 255, 64);
+                            icon_name    = "info";
+                            header_label = "NOTE";
+                            break;
+                    }
+                    if (has_custom_title) {
+                        header_label = custom_title;
+                    }
+                } else {
+                    // Standard '> ...' blockquote: quieter neutral slate bar & whisper background tint
+                    accent_col = light_theme ? IM_COL32(120, 132, 152, 195) : IM_COL32(135, 146, 168, 185);
+                    bg_col     = light_theme ? IM_COL32(100, 116, 139, 18)  : IM_COL32(145, 158, 182, 22);
+                    border_col = 0;
+                }
+
+                const float bar_w    = is_callout ? ImMax(3.0f, std::round(4.0f * scale)) : ImMax(2.5f, std::round(3.5f * scale));
+                const float pad_x    = is_callout ? std::round(12.0f * scale) : std::round(11.0f * scale);
+                const float pad_y    = is_callout ? std::round(9.0f * scale)  : std::round(6.0f * scale);
+                const float inset_x  = std::round(1.0f * scale);
+                const float rounding = is_callout ? std::round(4.0f * scale)  : std::round(3.0f * scale);
+
+                const float raw_avail_w = (active_cfg && active_cfg->wrapWidth > 0.0f)
+                                              ? active_cfg->wrapWidth
+                                              : ImGui::GetContentRegionAvail().x;
+                const bool shrink_to_content = (active_cfg && active_cfg->wrapWidth < 0.0f && ImGui::GetContentRegionAvail().x > 16384.0f);
+                const float outer_w = ImMax(60.0f * scale, raw_avail_w - inset_x * 2.0f);
+                const float inner_avail_w = ImMax(40.0f * scale, outer_w - (bar_w + pad_x * 2.0f));
+                inner_cfg.wrapWidth = shrink_to_content ? -1.0f : inner_avail_w;
+
+                // Strip only leading/trailing blank lines (preserving column indentation on content lines!)
+                size_t b_start = 0;
+                while (b_start < inner_text.size() && (inner_text[b_start] == '\r' || inner_text[b_start] == '\n')) {
+                    ++b_start;
+                }
+                size_t b_end = inner_text.size();
+                while (b_end > b_start && (inner_text[b_end - 1] == '\r' || inner_text[b_end - 1] == '\n' || inner_text[b_end - 1] == ' ' || inner_text[b_end - 1] == '\t')) {
+                    --b_end;
+                }
+                std::string clean_body = (b_end > b_start) ? inner_text.substr(b_start, b_end - b_start) : std::string();
+
+                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
+
+                ImGui::BeginGroup();
+                ImDrawList* dl = ImGui::GetWindowDrawList();
+                Detail::ImDrawListUnderlayScope underlay(dl);
+
+                ImVec2 box_start = ImGui::GetCursorScreenPos();
+                box_start.x += inset_x;
+
+                ImGui::SetCursorScreenPos(ImVec2(box_start.x + bar_w + pad_x, box_start.y + pad_y));
+                ImGui::BeginGroup();
+
+                const bool show_header = is_callout && (!has_custom_title || !header_label.empty());
+                if (show_header) {
+                    ImFont* hdr_bold = inner_cfg.boldFont;
+#if defined(CONTRIB_HAS_TYPOGRAPHY) || defined(IMGUI_FONT_ROLES_H)
+                    if (!hdr_bold) hdr_bold = ImGui::GetFont(ImFontRole::Bold);
+#endif
+                    if (hdr_bold) ImGui::ImGeeCompat::PushFont(hdr_bold);
+
+                    float hdr_font_sz = ImGui::GetFontSize();
+                    if (hdr_font_sz <= 0.0f) hdr_font_sz = 14.0f * scale;
+                    float icon_sz = std::round(hdr_font_sz * 0.95f);
+                    ImVec2 hdr_pos = ImGui::GetCursorScreenPos();
+                    float icon_y = hdr_pos.y + std::round((hdr_font_sz - icon_sz) * 0.5f);
+
+#if defined(CONTRIB_HAS_ICONS) || defined(CONTRIB_ICONS_AVAILABLE)
+                    if (!ImGui::DrawVectorIcon(dl, ImVec2(hdr_pos.x, icon_y), icon_sz, accent_col, icon_name)) {
+                        Detail::DrawMinimalCalloutGlyph(dl, ImVec2(hdr_pos.x, icon_y), icon_sz, accent_col, kind);
+                    }
+#else
+                    (void)icon_name;
+                    Detail::DrawMinimalCalloutGlyph(dl, ImVec2(hdr_pos.x, icon_y), icon_sz, accent_col, kind);
+#endif
+                    ImGui::Dummy(ImVec2(icon_sz, hdr_font_sz));
+                    ImGui::SameLine(0.0f, std::round(6.0f * scale));
+
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::ColorConvertU32ToFloat4(accent_col));
+                    RenderInlineTaggedText(header_label, &inner_cfg);
+                    ImGui::PopStyleColor();
+
+                    if (hdr_bold) ImGui::PopFont();
+
+                    if (!clean_body.empty()) {
+                        ImGui::Dummy(ImVec2(0.0f, std::round(3.0f * scale)));
+                    }
+                }
+
+                if (!clean_body.empty()) {
+                    bool pushed_quote_tint = false;
+                    if (!is_callout) {
+                        ImVec4 base_txt = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                        ImVec4 muted_txt(base_txt.x, base_txt.y, base_txt.z, base_txt.w * 0.90f);
+                        ImGui::PushStyleColor(ImGuiCol_Text, muted_txt);
+                        pushed_quote_tint = true;
+                    }
+                    MarkdownExt(clean_body.c_str(), clean_body.size(), &inner_cfg);
+                    if (pushed_quote_tint) {
+                        ImGui::PopStyleColor();
+                    }
+                } else if (!show_header) {
+                    // Empty blockquote ('>'): preserve one minimal line height
+                    ImGui::Dummy(ImVec2(1.0f, ImMax(8.0f, ImGui::GetTextLineHeight() * 0.6f)));
+                }
+
+                ImGui::EndGroup();
+                ImVec2 inner_max = ImGui::GetItemRectMax();
+
+                const float content_w = (inner_max.x - box_start.x) + pad_x;
+                const float final_w = shrink_to_content ? ImMax(content_w, 60.0f * scale) : outer_w;
+                const ImVec2 box_min = box_start;
+                const ImVec2 box_max(box_start.x + final_w, inner_max.y + pad_y);
+
+                // Extend outer group cleanly to box_max using a real Dummy item (zero IsSetPos warning!)
+                ImGui::SetCursorScreenPos(ImVec2(box_start.x - inset_x, inner_max.y));
+                ImGui::Dummy(ImVec2(final_w + inset_x, pad_y));
+
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18200)
+                const ImDrawFlags round_left_flags = ImDrawFlags_RoundCornersLeft;
+#else
+                const ImDrawFlags round_left_flags = static_cast<ImDrawFlags>(1 | 4);
+#endif
+                underlay.BeginBackground();
+                dl->AddRectFilled(box_min, box_max, bg_col, rounding);
+                dl->AddRectFilled(box_min, ImVec2(box_min.x + bar_w, box_max.y), accent_col, rounding, round_left_flags);
+                if (border_col != 0) {
+                    ImGui::MarkdownDetail::AddRectCompat(dl, box_min, box_max, border_col, rounding, 0, ImMax(1.0f, std::round(1.0f * scale)));
+                }
+                underlay.EndUnderlay();
+
+                ImGui::EndGroup();
+                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
+            };
+
+            auto blockquoteHandler = [renderBlockquoteOrCallout](const std::string& inner_text, const std::string& param) {
+                renderBlockquoteOrCallout(inner_text, param, false);
+            };
+            auto calloutHandler = [renderBlockquoteOrCallout](const std::string& inner_text, const std::string& param) {
+                renderBlockquoteOrCallout(inner_text, param, true);
+            };
+            s_CustomTags["blockquote"] = blockquoteHandler;
+            s_CustomTags["callout"]    = calloutHandler;
+            s_CustomTags["alert"]      = calloutHandler;
+            s_CustomTags["notice"]     = calloutHandler;
+
             // Built-in Tag 9: <img ... /> or <img ...>
             auto imgHandler = [](const std::string& inner_text, const std::string& param) {
                 (void)inner_text;
@@ -2167,8 +2867,11 @@ namespace ImGui {
     }
 
     // Registration APIs (supporting both 2-arg parameterized and 1-arg simple callbacks):
+    // Explicit host registrations always overwrite built-in default tags (such as "callout" or "blockquote").
     inline void RegisterMarkdownTag(const std::string& tag_name, std::function<void(const std::string& inner_text, const std::string& param)> callback) {
-        GetCustomMarkdownTags()[tag_name] = callback;
+        std::string norm_name = tag_name;
+        for (char& c : norm_name) c = (char)tolower((unsigned char)c);
+        GetCustomMarkdownTags()[norm_name] = callback;
     }
 
     inline void RegisterMarkdownTag(const std::string& tag_name, std::function<void(const std::string& inner_text)> callback) {
@@ -2230,10 +2933,15 @@ namespace ImGui {
             config = &s_FallbackConfig;
         }
 
+        std::string processed_quotes;
+        bool has_quotes = PreprocessMarkdownBlockquotesAndAlerts(markdown_text, markdown_len, processed_quotes);
+        const char* text_q = has_quotes ? processed_quotes.c_str() : markdown_text;
+        size_t len_q = has_quotes ? processed_quotes.length() : markdown_len;
+
         std::string processed_center;
-        bool has_blocks = PreprocessMarkdownCenteredBlocks(markdown_text, markdown_len, processed_center);
-        const char* text_mid = has_blocks ? processed_center.c_str() : markdown_text;
-        size_t len_mid = has_blocks ? processed_center.length() : markdown_len;
+        bool has_blocks = PreprocessMarkdownCenteredBlocks(text_q, len_q, processed_center);
+        const char* text_mid = has_blocks ? processed_center.c_str() : text_q;
+        size_t len_mid = has_blocks ? processed_center.length() : len_q;
 
         std::string processed_icons;
         bool has_icons = PreprocessMarkdownIconsAndShortcodes(text_mid, len_mid, processed_icons);

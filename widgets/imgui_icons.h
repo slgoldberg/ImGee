@@ -150,6 +150,9 @@ namespace ImGui {
         if (s == "remove") return "minus";
         if (s == "settings" || s == "cog") return "gear";
         if (s == "info-circle" || s == "information") return "info";
+        if (s == "bulb" || s == "idea" || s == "tip") return "lightbulb";
+        if (s == "report") return "important";
+        if (s == "octagon" || s == "stop") return "caution";
         if (s == "alert" || s == "exclamation-triangle" || s == "exclamation" || s == "exclamation-circle" || s == "warn") return "warning";
         if (s == "favorite") return "star";
         if (s == "magnifier" || s == "find") return "search";
@@ -166,7 +169,8 @@ namespace ImGui {
         return (n == "undo" || n == "redo" || n == "external-link" ||
                 n == "caret-up" || n == "caret-down" || n == "caret-left" || n == "caret-right" ||
                 n == "check" || n == "cross" || n == "plus" || n == "minus" ||
-                n == "gear" || n == "info" || n == "warning" || n == "star" ||
+                n == "gear" || n == "info" || n == "lightbulb" || n == "important" ||
+                n == "warning" || n == "caution" || n == "star" ||
                 n == "search" || n == "plane" || n == "circle" || n == "square");
     }
 
@@ -350,6 +354,54 @@ namespace ImGui {
             draw_list->AddCircle(center, r, col, 16, thickness);
             draw_list->AddCircleFilled(ImVec2(center.x, center.y - r * 0.42f), thickness * 0.95f, col, 8);
             draw_list->AddLine(ImVec2(center.x, center.y - r * 0.12f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.3f);
+            return true;
+        }
+
+        if (id == "lightbulb") {
+            float thickness = Detail::IconMax(1.2f, size * 0.09f);
+            ImVec2 bulb_c(center.x, center.y - size * 0.08f);
+            float r = size * 0.27f;
+            draw_list->PathArcTo(bulb_c, r, 0.72f * kPI, 2.28f * kPI, 14);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            draw_list->PathStroke(col, thickness, 0);
+#else
+            draw_list->PathStroke(col, 0, thickness);
+#endif
+            float neck_w = r * 0.58f;
+            float neck_top = bulb_c.y + r * 0.68f;
+            float neck_bot = center.y + size * 0.30f;
+            draw_list->AddLine(ImVec2(center.x - neck_w, neck_top), ImVec2(center.x - neck_w * 0.78f, neck_bot), col, thickness);
+            draw_list->AddLine(ImVec2(center.x + neck_w, neck_top), ImVec2(center.x + neck_w * 0.78f, neck_bot), col, thickness);
+            draw_list->AddLine(ImVec2(center.x - neck_w * 0.80f, neck_bot), ImVec2(center.x + neck_w * 0.80f, neck_bot), col, thickness);
+            draw_list->AddLine(ImVec2(center.x - neck_w * 0.50f, neck_bot + thickness * 1.35f),
+                               ImVec2(center.x + neck_w * 0.50f, neck_bot + thickness * 1.35f), col, thickness);
+            return true;
+        }
+
+        if (id == "important") {
+            float r = size * 0.38f;
+            float thickness = Detail::IconMax(1.2f, size * 0.09f);
+            draw_list->AddCircle(center, r, col, 16, thickness);
+            draw_list->AddLine(ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.35f);
+            draw_list->AddCircleFilled(ImVec2(center.x, center.y + r * 0.46f), Detail::IconMax(1.0f, size * 0.065f), col, 8);
+            return true;
+        }
+
+        if (id == "caution") {
+            float r = size * 0.39f;
+            float thickness = Detail::IconMax(1.2f, size * 0.09f);
+            ImVec2 pts[8];
+            for (int i = 0; i < 8; ++i) {
+                float a = (i * kPI * 0.25f) + (kPI * 0.125f);
+                pts[i] = ImVec2(center.x + r * std::cos(a), center.y + r * std::sin(a));
+            }
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            draw_list->AddPolyline(pts, 8, col, thickness, ImDrawFlags_Closed);
+#else
+            draw_list->AddPolyline(pts, 8, col, ImDrawFlags_Closed, thickness);
+#endif
+            draw_list->AddLine(ImVec2(center.x, center.y - r * 0.46f), ImVec2(center.x, center.y + r * 0.10f), col, thickness * 1.35f);
+            draw_list->AddCircleFilled(ImVec2(center.x, center.y + r * 0.44f), Detail::IconMax(1.0f, size * 0.065f), col, 8);
             return true;
         }
 

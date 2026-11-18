@@ -528,6 +528,130 @@ int main(int argc, char** argv) {
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Wave 1B Test 3: Native Blockquotes & GFM Callout Cards (Fence-Awareness,
+    // Host Override Precedence, CalcMarkdownSize, and Nesting Torture Test)
+    // -------------------------------------------------------------------------
+    {
+        // 1. Direct preprocessor fence & indented-code safety check
+        const std::string rawFenceDoc =
+            "> [!NOTE]\n"
+            "> Multi-line note body\n\n"
+            "> [!INFO] Same-line info alias\n\n"
+            "```cpp\n"
+            "> [!WARNING] Inside fenced block must remain literal!\n"
+            "> Plain quote inside fence\n"
+            "```\n\n"
+            "    > [!TIP] Four-space indented code line must remain literal!\n\n"
+            "> Standard quote line 1\n"
+            ">\n"
+            ">tight continuation line 2\n";
+
+        std::string preOut;
+        bool preChanged = ImGui::PreprocessMarkdownBlockquotesAndAlerts(rawFenceDoc.c_str(), rawFenceDoc.size(), preOut);
+        IMGEE_TEST_CHECK(preChanged);
+        IMGEE_TEST_CHECK(preOut.find("<callout type=note>") != std::string::npos);
+        IMGEE_TEST_CHECK(preOut.find("Same-line info alias") != std::string::npos);
+        IMGEE_TEST_CHECK(preOut.find("<blockquote>\nStandard quote line 1\n\ntight continuation line 2\n</blockquote>") != std::string::npos);
+        IMGEE_TEST_CHECK(preOut.find("```cpp\n> [!WARNING] Inside fenced block must remain literal!\n> Plain quote inside fence\n```") != std::string::npos);
+        IMGEE_TEST_CHECK(preOut.find("    > [!TIP] Four-space indented code line must remain literal!") != std::string::npos);
+
+        // 2. Host RegisterMarkdownTag("callout", ...) override precedence check
+        auto savedCalloutHandler = ImGui::GetCustomMarkdownTags()["callout"];
+        int customCalloutHits = 0;
+        ImGui::RegisterMarkdownTag("callout", [&customCalloutHits](const std::string& inner, const std::string&) {
+            customCalloutHits++;
+            ImGui::TextUnformatted(inner.c_str());
+        });
+
+        ImGui::NewFrame();
+        ImGui::Begin("CalloutOverrideTestWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        MD::Text(rawFenceDoc);
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        // Exactly the 2 real alerts ([!NOTE] and [!INFO]) must invoke the custom handler;
+        // the fenced [!WARNING] and 4-space indented [!TIP] must NOT!
+        IMGEE_TEST_CHECK(customCalloutHits == 2);
+
+        // Restore built-in default callout renderer
+        ImGui::RegisterMarkdownTag("callout", savedCalloutHandler);
+
+        // 3. Nesting Torture Test: Callouts & blockquotes containing fenced code (including literal
+        //    "</callout>" inside the fence!), interactive GFM tables, and 3-level nested '> > >' quotes!
+        const std::string tortureMd =
+            "> [!NOTE] Quick preflight advisory.\n\n"
+            "> [!TIP]\n"
+            "> Multi-line operational tip with **bold** and `code`.\n\n"
+            "> [!WARNING] Crosswind exceeds 25 kt.\n\n"
+            "> [!CAUTION]\n"
+            "> Do not arm autothrottle on contaminated runway.\n\n"
+            "<callout type=\"warning\" title=\"Engine Anti-Ice Required\">\n"
+            "Explicit XML callout with custom title.\n"
+            "</callout>\n\n"
+            "<blockquote>\n"
+            "Outer explicit blockquote.\n"
+            "<blockquote>Inner nested explicit blockquote.</blockquote>\n"
+            "Trailing outer blockquote text.\n"
+            "</blockquote>\n\n"
+            "> [!IMPORTANT] Integrated Avionics Torture Card\n"
+            "> Verify nested fenced code, interactive GFM table, and deep quotes inside one callout:\n"
+            ">\n"
+            "> ```cpp\n"
+            "> // Literal closing tag </callout> inside code fence must NOT break outer card!\n"
+            "> if (bus_volts > 24.0f) { arm_avionics(); }\n"
+            "> ```\n"
+            ">\n"
+            "> | Bus | Voltage | Load % |\n"
+            "> | :--- | ---: | ---: |\n"
+            "> | MAIN-1 | 28.1V | 62% |\n"
+            "> | ESS-A | 27.9V | 41% |\n"
+            ">\n"
+            "> > Second-level quote inside callout\n"
+            "> > > Third-level nested quote\n"
+            "> > [!TIP] Nested GFM callout inside quote inside callout!\n";
+
+        // Verify CalcMarkdownSize & TimedTooltip::TextMD shrink-wrapping on callouts
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+        ImGui::SetNextWindowSize(ImVec2(760.0f, 700.0f));
+        ImGui::Begin("TortureCalloutWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+        StackSnapshot snap = StackSnapshot::Capture();
+        ImVec2 measuredTorture = MD::CalcMarkdownSize(tortureMd, 520.0f);
+        IMGEE_TEST_CHECK(measuredTorture.x > 100.0f && measuredTorture.x <= 540.0f);
+        IMGEE_TEST_CHECK(measuredTorture.y > 150.0f);
+
+        MD::TextWrapped(tortureMd);
+
+        TimedTooltip::TooltipConfig ttCfg = TimedTooltip::GetConfig();
+        ttCfg.hover_delay_cycles = 1;
+        ImGuiID ttCalloutId = 0x77009901u;
+        (void)TimedTooltip::TextMDProxy(ttCalloutId, true, &ttCfg, "%s", "> [!TIP] Short callout");
+        TimedTooltip::ClearActiveTooltip();
+
+        // Verify short callout in TimedTooltip shrink-wrapped cleanly rather than expanding to 99999px!
+        const auto& ttCalloutState = TimedTooltip::GetTooltipStateMap().at(ttCalloutId);
+        IMGEE_TEST_CHECK(ttCalloutState.perfect_size.x > 40.0f && ttCalloutState.perfect_size.x < 340.0f);
+
+        snap.VerifyBalanced("Wave 1B Blockquote & Callout Torture Render");
+
+        // Verify ImDrawList CmdBuffer sequential IdxOffset integrity after nested underlay rotations!
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        IMGEE_TEST_CHECK(dl != nullptr && dl->CmdBuffer.Size > 0);
+        unsigned int expectedIdxOffset = 0;
+        for (int ci = 0; ci < dl->CmdBuffer.Size; ++ci) {
+            IMGEE_TEST_CHECK(dl->CmdBuffer[ci].IdxOffset == expectedIdxOffset);
+            expectedIdxOffset += dl->CmdBuffer[ci].ElemCount;
+        }
+        IMGEE_TEST_CHECK(expectedIdxOffset == static_cast<unsigned int>(dl->IdxBuffer.Size));
+
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+    }
+
     // Verify HostBackend callbacks actually resolved named textures and uploaded our disk PNG
     IMGEE_TEST_CHECK(gpuState.namedLookups >= 2);
     IMGEE_TEST_CHECK(gpuState.createdCount == 1);

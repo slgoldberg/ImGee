@@ -271,6 +271,7 @@ ImGui::Markdown::Text(doc);
 * **Delayed Table Control Tooltips:** Sortable headers, column dividers, and the right-edge width grip automatically display context-aware `TimedTooltip` guidance (announcing the next step in the tristate sort cycle or A/B layout toggle), with `MarkdownConfig::enableTableTooltips`, `MarkdownConfig::tableTooltipCallback`, and per-table `<!-- table-preset: tooltips=off ... -->` or per-column `col-tooltips="A|B|off"` / `tip0="..."` overrides. When `TimedTooltip` is disabled and no custom callback is set, table controls stay silent rather than falling back to instant-pop tooltips.
 * **Interactive Drag Sizing:** Adjust column dividers directly with instant mouse feedback.
 * **Persistent Presets:** Save and restore column widths via inline comment tags (`<!-- table-state: ... -->`).
+* **Native Blockquotes & GFM Callout Cards:** Standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GitHub-Flavored Markdown callouts (`> [!NOTE]` / `[!INFO]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` in both multi-line and inline forms, plus `<callout type=... title="...">` and `<blockquote>` tags) render out of the box with zero-font procedural vector icons and full nesting support for code blocks and tables.
 * **Code Block Copy Buttons:** Shaded code blocks automatically include one-click clipboard copying with 1.5s visual feedback.
 
 ![GFM Markdown Tables: Resizable, sortable avionics tables with inline status badges](images/fig_gfm_tables.png)

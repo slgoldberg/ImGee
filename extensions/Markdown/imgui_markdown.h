@@ -1055,7 +1055,7 @@ namespace ImGui
         }
     }
 
-    inline void DefaultRenderCodeLine( const std::string& line_str, bool is_lua, bool is_cpp, float wrap_screen_x = 0.0f, float scale = 1.0f )
+    inline void DefaultRenderCodeLine( const std::string& line_str, bool is_lua, bool is_cpp, float wrap_screen_x = -FLT_MAX, float scale = 1.0f )
     {
         if( line_str.empty() )
         {
@@ -1063,10 +1063,13 @@ namespace ImGui
             return;
         }
 
+        float line_start_x = ImGui::GetCursorScreenPos().x;
+        const bool has_wrap = ( wrap_screen_x > line_start_x );
+
         if( !is_lua && !is_cpp )
         {
             ImGui::PushStyleColor( ImGuiCol_Text, IM_COL32( 220, 225, 235, 255 ) );
-            if( wrap_screen_x > 0.0f )
+            if( has_wrap )
             {
                 ImGuiWindow* win = ImGui::GetCurrentWindow();
                 float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
@@ -1084,13 +1087,12 @@ namespace ImGui
 
         // Check leading whitespace
         size_t first_non_space = line_str.find_first_not_of( " \t" );
-        float line_start_x = ImGui::GetCursorScreenPos().x;
         float indent_w = 0.0f;
         if( first_non_space != std::string::npos && first_non_space > 0 )
         {
             indent_w = ImGui::CalcTextSize( line_str.c_str(), line_str.c_str() + first_non_space ).x;
         }
-        float max_continuation = ( wrap_screen_x > line_start_x ) ? ( ( wrap_screen_x - line_start_x ) * 0.5f ) : ( 32.0f * scale );
+        float max_continuation = has_wrap ? ( ( wrap_screen_x - line_start_x ) * 0.5f ) : ( 32.0f * scale );
         float continuation_indent = ImMin( indent_w + 16.0f * scale, max_continuation );
 
         if( first_non_space != std::string::npos )
@@ -1099,7 +1101,7 @@ namespace ImGui
                 ( is_cpp && first_non_space + 1 < line_str.length() && line_str[first_non_space] == '/' && line_str[first_non_space + 1] == '/' ) )
             {
                 ImGui::PushStyleColor( ImGuiCol_Text, IM_COL32( 106, 153, 85, 255 ) ); // Comment green
-                if( wrap_screen_x > 0.0f )
+                if( has_wrap )
                 {
                     ImGuiWindow* win = ImGui::GetCurrentWindow();
                     float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
@@ -1117,7 +1119,7 @@ namespace ImGui
             if( is_cpp && line_str[first_non_space] == '#' )
             {
                 ImGui::PushStyleColor( ImGuiCol_Text, IM_COL32( 198, 120, 221, 255 ) ); // Preprocessor purple
-                if( wrap_screen_x > 0.0f )
+                if( has_wrap )
                 {
                     ImGuiWindow* win = ImGui::GetCurrentWindow();
                     float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
@@ -1143,7 +1145,7 @@ namespace ImGui
             float tok_w = ImGui::CalcTextSize( text_start, text_end ).x;
             float cur_x = ImGui::GetCursorScreenPos().x;
 
-            if( wrap_screen_x > 0.0f && ( cur_x + tok_w > wrap_screen_x ) && ( cur_x > min_x_for_wrap + 1.0f ) )
+            if( has_wrap && ( cur_x + tok_w > wrap_screen_x ) && ( cur_x > min_x_for_wrap + 1.0f ) )
             {
                 ImGui::NewLine();
                 ImGui::SetCursorScreenPos( ImVec2( line_start_x + continuation_indent, ImGui::GetCursorScreenPos().y ) );
@@ -1151,7 +1153,7 @@ namespace ImGui
             }
 
             ImGui::PushStyleColor( ImGuiCol_Text, col );
-            if( wrap_screen_x > 0.0f )
+            if( has_wrap )
             {
                 ImGuiWindow* win = ImGui::GetCurrentWindow();
                 float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
@@ -4321,25 +4323,128 @@ namespace ImGui
                     }
                     else
                     {
-                        char closeTag[64];
-                        int closeTagLen = snprintf( closeTag, sizeof(closeTag), "</%.*s>", nameLen, markdown_ + tagHeaderStart );
-                        if( closeTagLen > 0 && closeTagLen < (int)sizeof(closeTag) )
+                        // Case-insensitive, fence-aware, inline-backtick-aware, and nesting-depth-aware
+                        // closing tag search (supports nested <blockquote> / <callout> and code examples):
+                        int closeTagLen = nameLen + 3; // "</" + name + ">"
+                        if( nameLen > 0 && nameLen < 60 && openClose + 1 + closeTagLen <= (int)markdownLength_ )
                         {
-                            const char* closeFound = nullptr;
-                            int searchStart = openClose + 1;
-                            int maxSearch = (int)markdownLength_ - closeTagLen;
-                            for( int k = searchStart; k <= maxSearch; ++k )
+                            int depth = 1;
+                            bool scanInFence = false;
+                            char scanFenceChar = '\0';
+                            int scanFenceLen = 0;
+                            int scanBackticks = 0;
+
+                            int k = openClose + 1;
+                            int maxPos = (int)markdownLength_;
+                            while( k < maxPos )
                             {
-                                if( markdown_[k] == '<' && strncmp( markdown_ + k, closeTag, closeTagLen ) == 0 )
+                                // Check for fenced code block boundaries at start of line
+                                if( scanBackticks == 0 && ( markdown_[k - 1] == '\n' || markdown_[k - 1] == '\r' ) )
                                 {
-                                    closeFound = markdown_ + k;
-                                    break;
+                                    int ls = k;
+                                    while( ls < maxPos && ( markdown_[ls] == ' ' || markdown_[ls] == '\t' || markdown_[ls] == '>' ) ) ++ls;
+                                    if( ls < maxPos && ( markdown_[ls] == '`' || markdown_[ls] == '~' ) )
+                                    {
+                                        char fc = markdown_[ls];
+                                        int fl = 0;
+                                        while( ls + fl < maxPos && markdown_[ls + fl] == fc ) ++fl;
+                                        if( fl >= 3 )
+                                        {
+                                            if( !scanInFence )
+                                            {
+                                                scanInFence = true;
+                                                scanFenceChar = fc;
+                                                scanFenceLen = fl;
+                                            }
+                                            else if( fc == scanFenceChar && fl >= scanFenceLen )
+                                            {
+                                                scanInFence = false;
+                                                scanFenceChar = '\0';
+                                                scanFenceLen = 0;
+                                            }
+                                            int eol = ls + fl;
+                                            while( eol < maxPos && markdown_[eol] != '\n' && markdown_[eol] != '\r' ) ++eol;
+                                            k = eol;
+                                            continue;
+                                        }
+                                    }
                                 }
-                            }
-                            if( closeFound != nullptr )
-                            {
-                                closeStart = (int)(closeFound - markdown_);
-                                closeEnd = closeStart + closeTagLen;
+
+                                if( scanInFence )
+                                {
+                                    ++k;
+                                    continue;
+                                }
+
+                                // Track inline code backticks on the current line
+                                if( markdown_[k] == '\n' || markdown_[k] == '\r' )
+                                {
+                                    scanBackticks = 0;
+                                    ++k;
+                                    continue;
+                                }
+                                if( markdown_[k] == '`' )
+                                {
+                                    int bc = 0;
+                                    while( k + bc < maxPos && markdown_[k + bc] == '`' ) ++bc;
+                                    if( scanBackticks == 0 ) scanBackticks = bc;
+                                    else if( bc == scanBackticks ) scanBackticks = 0;
+                                    k += bc;
+                                    continue;
+                                }
+                                if( scanBackticks > 0 )
+                                {
+                                    ++k;
+                                    continue;
+                                }
+
+                                if( markdown_[k] == '<' )
+                                {
+                                    // 1. Check matching closing tag </name>
+                                    if( k + closeTagLen <= maxPos &&
+                                        markdown_[k + 1] == '/' &&
+                                        markdown_[k + 2 + nameLen] == '>' &&
+                                        TableDetail::StrCaseEqualN( markdown_ + k + 2, markdown_ + tagHeaderStart, (size_t)nameLen ) )
+                                    {
+                                        --depth;
+                                        if( depth == 0 )
+                                        {
+                                            closeStart = k;
+                                            closeEnd = k + closeTagLen;
+                                            break;
+                                        }
+                                        k += closeTagLen;
+                                        continue;
+                                    }
+
+                                    // 2. Check nested non-self-closing opening tag <name ...>
+                                    if( k + 1 + nameLen < maxPos &&
+                                        TableDetail::StrCaseEqualN( markdown_ + k + 1, markdown_ + tagHeaderStart, (size_t)nameLen ) )
+                                    {
+                                        char afterName = markdown_[k + 1 + nameLen];
+                                        if( afterName == '>' || afterName == ' ' || afterName == '\t' || afterName == '=' || afterName == ':' || afterName == '/' )
+                                        {
+                                            int nestedClose = -1;
+                                            for( int nk = k + 1 + nameLen; nk < maxPos; ++nk )
+                                            {
+                                                if( markdown_[nk] == '>' ) { nestedClose = nk; break; }
+                                                if( markdown_[nk] == '\n' || markdown_[nk] == '<' ) break;
+                                            }
+                                            if( nestedClose != -1 )
+                                            {
+                                                int ns = nestedClose - 1;
+                                                while( ns > k && ( markdown_[ns] == ' ' || markdown_[ns] == '\t' ) ) --ns;
+                                                if( markdown_[ns] != '/' )
+                                                {
+                                                    ++depth;
+                                                }
+                                                k = nestedClose + 1;
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
+                                ++k;
                             }
                         }
                     }
@@ -4431,7 +4536,8 @@ namespace ImGui
                         }
                         if( tagData.tagParamLength >= 2 &&
                             ( ( *tagData.tagParam == '\"' && tagData.tagParam[tagData.tagParamLength - 1] == '\"' ) ||
-                              ( *tagData.tagParam == '\'' && tagData.tagParam[tagData.tagParamLength - 1] == '\'' ) ) )
+                              ( *tagData.tagParam == '\'' && tagData.tagParam[tagData.tagParamLength - 1] == '\'' ) ) &&
+                            memchr( tagData.tagParam + 1, *tagData.tagParam, tagData.tagParamLength - 2 ) == NULL )
                         {
                             ++tagData.tagParam;
                             tagData.tagParamLength -= 2;

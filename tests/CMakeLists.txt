@@ -111,3 +111,11 @@ add_executable(imgee_no_typography_test
 target_link_libraries(imgee_no_typography_test PRIVATE imgui_core)
 imgee_apply_strict_warnings(imgee_no_typography_test)
 add_test(NAME imgee_no_typography COMMAND imgee_no_typography_test)
+
+# 7. Standalone Markdown Callouts & Blockquotes without Widgets / Icons (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS)
+add_executable(imgee_no_widgets_icons_test
+    tu_no_widgets_icons.cpp
+)
+target_link_libraries(imgee_no_widgets_icons_test PRIVATE imgui_core)
+imgee_apply_strict_warnings(imgee_no_widgets_icons_test)
+add_test(NAME imgee_no_widgets_icons COMMAND imgee_no_widgets_icons_test)
