@@ -310,12 +310,12 @@
 #endif
 
 namespace ImGeeStbi {
-#if defined(__has_include) && __has_include("../stb_image.h")
-#include "../stb_image.h"
-#elif defined(__has_include) && __has_include("stb_image.h")
+#if defined(__has_include) && __has_include("stb_image.h")
 #include "stb_image.h"
-#else
+#elif defined(__has_include) && __has_include("../stb_image.h")
 #include "../stb_image.h"
+#else
+#include "stb_image.h"
 #endif
 
 #if defined(_MSC_VER) && defined(STB_IMAGE_IMPLEMENTATION)

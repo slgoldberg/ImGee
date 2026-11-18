@@ -16,7 +16,7 @@ While battle-tested in flight simulation, **ImGee is 100% generic Dear ImGui and
 
 ### Multi-Language Delivery & Ecosystem Topology
 
-Bundled alongside **ImgWindow** (inside `contrib/ImGee/`) and architected as a standalone open-source library, ImGee provides a unified interaction vocabulary across multiple programming languages and runtime contexts:
+Published as a standalone open-source library ([`slgoldberg/ImGee`](https://github.com/slgoldberg/ImGee)) and mounted out of the box inside **ImgWindow** (`contrib/ImGee/`), ImGee provides a unified interaction vocabulary across multiple programming languages and runtime contexts:
 * **C++ Native (`ImGee`):** Direct, zero-overhead immediate-mode C++11/C++17 integration for any Dear ImGui project.
 * **Lua Scripting (`LuiGee`):** Turnkey Lua bindings for FlyWithLua (supporting X-Plane 11.20 through latest 12+ and beyond), bringing toggles, knobs, dials, and timed tooltips to script authors.
 * **Future Language Bindings:** Architected so community or future bindings for other languages (such as Python, Rust, or C#) can share the exact same interaction standards.
