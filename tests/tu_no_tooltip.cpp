@@ -10,6 +10,7 @@
 #include "imgui_internal.h"
 #include "imgee_test_common.h"
 
+#include <cstdint>
 #include <string>
 
 #if defined(IMGUI_TOOLTIP_EXT_H)

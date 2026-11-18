@@ -9,6 +9,8 @@
 #include "extensions/TimedTooltip/imgui_tooltip_ext.h"
 #include "imgee_test_common.h"
 
+#include <cstdint>
+
 #if defined(IMGUI_FONT_ROLES_H)
 #error "IMGEE_DISABLE_TYPOGRAPHY failed to exclude imgui_font_roles.h"
 #endif
