@@ -1,0 +1,23 @@
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Build & test artifacts
+build/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.dSYM/
+compile_commands.json
+
+# Editor / IDE local settings
+.vscode/
+.idea/
+*.swp
+*~
