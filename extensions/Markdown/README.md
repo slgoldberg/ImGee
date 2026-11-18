@@ -6,7 +6,7 @@ It allows you to embed rich text formatting, headers, links, lists, and custom i
 
 > **Author / Maintainer:** Steven L. Goldberg ([@slgoldberg](https://github.com/slgoldberg))  
 > **Original Upstream:** Juliette Foucaut ([@juliettef](https://github.com/juliettef)) & Doug Binks ([@dougbinks](https://github.com/dougbinks)) -- Repository: [enkisoftware/imgui_markdown](https://github.com/enkisoftware/imgui_markdown)  
-> **License:** BSD 3-Clause (Extension Wrapper; see [ImgWindow LICENSE](../../../README.md#licensing-note)) & zlib (Upstream Parser)
+> **License:** BSD 3-Clause (Extension Wrapper; see [LICENSE](../../LICENSE)) & zlib (Upstream Parser)
 
 ---
 
@@ -96,8 +96,8 @@ The Markdown system is structured as a clean two-layer architecture:
 
 ### 1. Include the Header
 ```cpp
-#include "ImgWindow/contrib/imgee.h"
-// (Or standalone: #include "ImGee/imgee.h", or a-la-carte: "ImGee/extensions/Markdown/imgui_markdown_ext.h")
+#include "imgee.h"
+// (Or a-la-carte: #include "extensions/Markdown/imgui_markdown_ext.h", or via ImgWindow: #include "ImgWindow/contrib/imgee.h")
 ```
 
 > [!IMPORTANT]

@@ -1,8 +1,8 @@
 // ============================================================================
-// ImGui Contrib Typography: Inline Styled Text Engine (imgui_styled_text.h)
+// ImGee Typography: Inline Styled Text Engine (extensions/Typography/imgui_styled_text.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg)
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Provides lightweight, inline rich text rendering without requiring full
 // Markdown document overhead. Supports bold, italic, monospace, headings,
@@ -12,8 +12,27 @@
 
 #pragma once
 
+#if !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TYPOGRAPHY) && \
+    !defined(CONTRIB_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TYPOGRAPHY) && \
+    !defined(IMGUI_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TYPOGRAPHY)
 #ifndef IMGUI_STYLED_TEXT_H
 #define IMGUI_STYLED_TEXT_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 #include "imgui.h"
 #include "imgui_font_roles.h"
@@ -37,7 +56,9 @@
     #include "../../imgee_host_backend.h"
 #endif
 
-#if !defined(CONTRIB_DISABLE_BADGES) && \
+#if !defined(IMGEE_DISABLE_BADGES) && \
+    !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(CONTRIB_DISABLE_BADGES) && \
     !defined(CONTRIB_DISABLE_BADGE) && \
     !defined(CONTRIB_DISABLE_WIDGETS) && \
     !defined(IMGUI_CONTRIB_DISABLE_BADGES) && \
@@ -55,7 +76,9 @@
 #endif
 #endif
 
-#if !defined(CONTRIB_DISABLE_ICONS) && \
+#if !defined(IMGEE_DISABLE_ICONS) && \
+    !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_CONTRIB_ICONS) && \
@@ -780,22 +803,26 @@ namespace ImGui {
         }
     }
 
+    namespace Detail {
+        typedef void (*StyledTextMarkdownRendererFn)(const char* text, size_t len);
+        inline StyledTextMarkdownRendererFn& GetStyledTextMarkdownRenderer() {
+            static StyledTextMarkdownRendererFn s_Fn = nullptr;
+            return s_Fn;
+        }
+    } // namespace Detail
+
     /** Unformatted inline styled text wrapped to current window/column width */
     inline void StyledTextWrappedUnformatted(const char* text, const char* text_end = nullptr) {
         if (!text) return;
         size_t len = text_end ? (size_t)(text_end - text) : strlen(text);
         if (len == 0) return;
-#if !defined(CONTRIB_DISABLE_MARKDOWN) && \
-    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
-    !defined(IMGUI_DISABLE_MARKDOWN) && \
-    !defined(IMGEE_DISABLE_MARKDOWN) && \
-    defined(IMGUI_MARKDOWN_EXT_H)
-        ImGui::MarkdownExt(text, len, nullptr);
-#else
+        if (Detail::GetStyledTextMarkdownRenderer()) {
+            Detail::GetStyledTextMarkdownRenderer()(text, len);
+            return;
+        }
         ImGui::PushTextWrapPos(0.0f);
         StyledTextUnformatted(text, text_end);
         ImGui::PopTextWrapPos();
-#endif
     }
 
     /** Formatted inline styled text wrapped to current window/column width */
@@ -814,4 +841,22 @@ namespace ImGui {
 
 } // namespace ImGui
 
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
+#define IMGUI_STYLED_TEXT_READY 1
+
+#if defined(IMGUI_MARKDOWN_EXT_READY) && !defined(IMGUI_STYLED_TEXT_MD_BRIDGE_DEFINED)
+#if defined(__has_include)
+#if __has_include("../Markdown/imgui_markdown_ext.h")
+#include "../Markdown/imgui_markdown_ext.h"
+#elif __has_include("imgui_markdown_ext.h")
+#include "imgui_markdown_ext.h"
+#endif
+#endif
+#endif
+
 #endif // IMGUI_STYLED_TEXT_H
+#endif // !IMGEE_DISABLE_TYPOGRAPHY

@@ -47,11 +47,14 @@
 #undef max
 #endif
 
-#if !defined(CONTRIB_DISABLE_POPUP_MENUS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_POPUP_MENUS) && \
+    !defined(CONTRIB_DISABLE_POPUP_MENUS) && \
     !defined(IMGUI_CONTRIB_DISABLE_POPUP_MENUS) && \
     !defined(IMGUI_DISABLE_POPUP_MENUS) && \
     !defined(IMGUI_DISABLE_CONTRIB_POPUP_MENUS)
 
+#include "imgui.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -60,12 +63,60 @@
 #include <algorithm>
 #include <cfloat>
 
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
-#if defined(__has_include)
-    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+#if !defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && \
+    !defined(IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    defined(__has_include)
+    #if __has_include("imgui_mouse_wheel_controls.h")
+        #include "imgui_mouse_wheel_controls.h"
+    #elif __has_include("widgets/imgui_mouse_wheel_controls.h")
+        #include "widgets/imgui_mouse_wheel_controls.h"
     #endif
 #endif
+
+#if !defined(IMGUI_TOOLTIP_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    defined(__has_include)
+    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
+        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+    #elif __has_include("imgui_tooltip_ext.h")
+        #include "imgui_tooltip_ext.h"
+    #endif
+#endif
+
+#if !defined(IMGUI_MARKDOWN_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_MARKDOWN) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_MARKDOWN) && \
+    defined(__has_include)
+    #if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
+        #include "../extensions/Markdown/imgui_markdown_ext.h"
+    #elif __has_include("imgui_markdown_ext.h")
+        #include "imgui_markdown_ext.h"
+    #endif
 #endif
 
 #ifndef IMGUI_API
@@ -142,7 +193,7 @@ namespace ImGui {
         }
 
         inline float GetPopupMouseWheel(bool consume = true) {
-#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL)
+#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(IMGEE_DISABLE_GET_MOUSE_WHEEL) && !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL)
             return WheelSliderDetail::GetMouseWheelEither(consume);
 #else
             ImGuiIO& io = ImGui::GetIO();
@@ -169,7 +220,7 @@ namespace ImGui {
             if (!current_idx || max_idx <= min_idx || clicks == 0.0f)
                 return false;
 
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && defined(IMGUI_TOOLTIP_EXT_H)
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
             TimedTooltip::ClearActiveTooltip();
 #endif
 
@@ -196,8 +247,8 @@ namespace ImGui {
         inline void AttachTooltipProxy(ImGuiID id, const char* text, bool is_hovered)
         {
             if (!text || text[0] == '\0') return;
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && defined(IMGUI_TOOLTIP_EXT_H)
-    #if !defined(CONTRIB_DISABLE_MARKDOWN) && !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && defined(IMGUI_MARKDOWN_EXT_H)
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+    #if defined(IMGUI_MARKDOWN_EXT_H) && !defined(IMGEE_DISABLE_MARKDOWN) && !defined(CONTRIB_DISABLE_MARKDOWN) && !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN)
             TimedTooltip::TextMDProxy(id, is_hovered, "%s", text);
     #else
             TimedTooltip::TextProxy(id, is_hovered, "%s", text);
@@ -572,7 +623,7 @@ namespace ImGui {
                 if (std::abs(io.MousePos.x - s_WheelLatchMousePos.x) > 6.0f ||
                     std::abs(io.MousePos.y - s_WheelLatchMousePos.y) > 6.0f) {
                     s_WheelLatchPulldownID = 0;
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && defined(IMGUI_TOOLTIP_EXT_H)
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
                     TimedTooltip::ClearActiveTooltip();
 #endif
                 }
@@ -592,7 +643,7 @@ namespace ImGui {
                 if (clicks != 0.0f) {
                     s_WheelLatchPulldownID = id;
                     s_WheelLatchMousePos = io.MousePos;
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && defined(IMGUI_TOOLTIP_EXT_H)
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
                     TimedTooltip::ClearActiveTooltip();
 #endif
                     if (Detail::CycleIndex(current_item, 0, items_count - 1, clicks, wrap, natural_list_order)) {

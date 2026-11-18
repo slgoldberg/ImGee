@@ -12,7 +12,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_TOGGLE_BUTTONS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_TOGGLE_BUTTONS) && \
+    !defined(IMGEE_DISABLE_TOGGLE_BUTTON) && \
+    !defined(CONTRIB_DISABLE_TOGGLE_BUTTONS) && \
     !defined(CONTRIB_DISABLE_TOGGLE_BUTTON) && \
     !defined(IMGUI_CONTRIB_DISABLE_TOGGLE_BUTTONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_TOGGLE_BUTTON) && \
@@ -36,8 +39,49 @@
 #include "imgui.h"
 #include <algorithm>
 #include <cstring>
-
 #include <cmath>
+
+#if !defined(IMGUI_TOOLTIP_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    defined(__has_include)
+    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
+        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+    #elif __has_include("imgui_tooltip_ext.h")
+        #include "imgui_tooltip_ext.h"
+    #endif
+#endif
+
+#if !defined(IMGUI_MARKDOWN_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_MARKDOWN) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_MARKDOWN) && \
+    defined(__has_include)
+    #if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
+        #include "../extensions/Markdown/imgui_markdown_ext.h"
+    #elif __has_include("imgui_markdown_ext.h")
+        #include "imgui_markdown_ext.h"
+    #endif
+#endif
 
 #if !defined(IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER)
   #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18500
@@ -75,9 +119,6 @@
       #include "imgui_internal.h"
       #define IMGUI_CONTRIB_INTERNAL_INCLUDED 1
     #endif
-    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-      #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
-    #endif
   #endif
 #endif
 #if !defined(IMGUI_CONTRIB_INTERNAL_INCLUDED) && (defined(IMGUI_WINDOW_HARD_MIN_SIZE) || defined(IMGUI_INTERNAL_H))
@@ -92,7 +133,8 @@ namespace Contrib {
     }
 
     inline bool IsCurrentWindowScrollableY() {
-#if defined(CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
+#if defined(IMGEE_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
+    defined(CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
     defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
     defined(IMGUI_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT)
         return false;
@@ -145,7 +187,8 @@ namespace ImGui {
 
         inline float ConsumeMouseWheel()
         {
-#if defined(CONTRIB_DISABLE_TOGGLE_MOUSE_WHEEL) || \
+#if defined(IMGEE_DISABLE_TOGGLE_MOUSE_WHEEL) || \
+    defined(CONTRIB_DISABLE_TOGGLE_MOUSE_WHEEL) || \
     defined(IMGUI_CONTRIB_DISABLE_TOGGLE_MOUSE_WHEEL) || \
     defined(IMGUI_DISABLE_CONTRIB_TOGGLE_MOUSE_WHEEL) || \
     defined(IMGUI_DISABLE_TOGGLE_MOUSE_WHEEL) || \

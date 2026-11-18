@@ -1,8 +1,8 @@
 // ============================================================================
-// ImGee Themes: Directory Roll-Up Header (contrib/ImGee/themes/includes.h)
+// ImGee Themes: Directory Roll-Up Header (themes/includes.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg) and the Rogers
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Roll-up header for all ImGee theme and style presets.
 // ============================================================================

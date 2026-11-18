@@ -1,9 +1,9 @@
 // ============================================================================
-// ImgWindow Extension: Markdown
+// ImGee Extension: Markdown (extensions/Markdown/imgui_markdown_ext.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg)
 // Original Upstream: Juliette Foucaut (@juliettef) & Doug Binks (@dougbinks)
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Contributors:
 //   - Steven L. Goldberg: Lookahead line-wrapping, typographic delimiter
@@ -11,7 +11,14 @@
 //     and parameterized styling tags.
 // ============================================================================
 
-#if !defined(CONTRIB_DISABLE_MARKDOWN) && \
+#if !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
     !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
     !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
     !defined(IMGUI_DISABLE_MARKDOWN) && \
@@ -51,7 +58,9 @@
 #endif
 #include "imgui_markdown.h"
 #include "imgui_markdown_image_service.h"
-#if !defined(CONTRIB_DISABLE_BADGES) && \
+#if !defined(IMGEE_DISABLE_BADGES) && \
+    !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(CONTRIB_DISABLE_BADGES) && \
     !defined(CONTRIB_DISABLE_BADGE) && \
     !defined(CONTRIB_DISABLE_WIDGETS) && \
     !defined(IMGUI_CONTRIB_DISABLE_BADGES) && \
@@ -69,7 +78,9 @@
 #endif
 #endif
 
-#if !defined(CONTRIB_DISABLE_ICONS) && \
+#if !defined(IMGEE_DISABLE_ICONS) && \
+    !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_CONTRIB_ICONS) && \
@@ -86,7 +97,10 @@
 #endif
 #endif
 
-#if !defined(CONTRIB_DISABLE_TYPOGRAPHY) && \
+#if !defined(IMGEE_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_TYPOGRAPHY) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_TYPOGRAPHY) && \
     !defined(IMGUI_DISABLE_CONTRIB_TYPOGRAPHY) && \
     !defined(IMGUI_DISABLE_TYPOGRAPHY) && \
@@ -3269,13 +3283,39 @@ namespace ImGui {
 #pragma pop_macro("min")
 #endif
 
+#define IMGUI_MARKDOWN_EXT_READY 1
+
 #endif // IMGUI_MARKDOWN_EXT_H
+
+// Order-independent StyledTextWrapped <-> MarkdownExt bridge:
+#if defined(IMGUI_MARKDOWN_EXT_READY) && defined(IMGUI_STYLED_TEXT_READY) && !defined(IMGUI_STYLED_TEXT_MD_BRIDGE_DEFINED)
+#define IMGUI_STYLED_TEXT_MD_BRIDGE_DEFINED
+namespace ImGui {
+namespace Detail {
+    struct StyledTextMarkdownBridgeRunner {
+        StyledTextMarkdownBridgeRunner() {
+            GetStyledTextMarkdownRenderer() = [](const char* text, size_t len) {
+                ImGui::MarkdownExt(text, len, nullptr);
+            };
+        }
+    };
+    static StyledTextMarkdownBridgeRunner s_StyledTextMarkdownBridgeRunner;
+} // namespace Detail
+} // namespace ImGui
+#endif
 
 // Order-independent TimedTooltip <-> Markdown bridge:
 // Activated automatically regardless of whether imgui_tooltip_ext.h or
 // imgui_markdown_ext.h was #included first!
-#if defined(IMGUI_MARKDOWN_EXT_H) && defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED)
+#if defined(IMGUI_MARKDOWN_EXT_READY) && defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED)
 #define IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 namespace ImGui {
 namespace TimedTooltip {
@@ -3768,7 +3808,13 @@ namespace MarkdownDetail {
 } // namespace MarkdownDetail
 
 } // namespace ImGui
-#endif // IMGUI_MARKDOWN_EXT_H && IMGUI_TOOLTIP_EXT_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
+#endif // IMGUI_MARKDOWN_EXT_READY && IMGUI_TOOLTIP_EXT_H
 
 #endif // !IMGUI_DISABLE_MARKDOWN
 

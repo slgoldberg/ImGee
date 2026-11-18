@@ -12,7 +12,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_BADGES) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_BADGES) && \
+    !defined(IMGEE_DISABLE_BADGE) && \
+    !defined(CONTRIB_DISABLE_BADGES) && \
     !defined(CONTRIB_DISABLE_BADGE) && \
     !defined(IMGUI_CONTRIB_DISABLE_BADGES) && \
     !defined(IMGUI_CONTRIB_DISABLE_BADGE) && \
@@ -23,6 +26,13 @@
 #ifndef IMGUI_BADGES_H
 #define IMGUI_BADGES_H
 #define IMGUI_EXTRA_BADGES_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 #include "imgui.h"
 #if defined(__has_include)
@@ -36,7 +46,7 @@
 #include <algorithm>
 #include <cmath>
 
-#if !defined(CONTRIB_DISABLE_ICONS) && !defined(IMGUI_CONTRIB_DISABLE_ICONS)
+#if !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS) && !defined(IMGUI_CONTRIB_DISABLE_ICONS)
 #if defined(IMGUI_ICONS_H)
     #define CONTRIB_BADGES_HAS_ICONS 1
 #elif defined(__has_include)
@@ -398,6 +408,11 @@ namespace ImGui {
     inline IMGUI_API void KeyCap(const char* key_label) { Kbd(key_label); }
 
 } // namespace ImGui
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
 
 #endif // IMGUI_BADGES_H
 #endif // Collision guards

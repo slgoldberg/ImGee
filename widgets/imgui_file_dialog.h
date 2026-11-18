@@ -19,7 +19,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_FILE_DIALOG) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_FILE_DIALOG) && \
+    !defined(IMGEE_DISABLE_FILE_PICKER) && \
+    !defined(CONTRIB_DISABLE_FILE_DIALOG) && \
     !defined(CONTRIB_DISABLE_FILE_PICKER) && \
     !defined(IMGUI_CONTRIB_DISABLE_FILE_DIALOG) && \
     !defined(IMGUI_CONTRIB_DISABLE_FILE_PICKER) && \

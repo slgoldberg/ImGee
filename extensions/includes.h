@@ -1,17 +1,18 @@
 // ============================================================================
-// ImGui Contrib Extensions: Directory Roll-Up Header (contrib/ImGee/extensions/includes.h)
+// ImGee Extensions: Directory Roll-Up Header (extensions/includes.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg)
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
-// Includes all Dear ImGui extensions in contrib/ImGee/extensions/ (order-independent:
+// Includes all Dear ImGui extensions in extensions/ (order-independent:
 // ImGui::TimedTooltip::TextMD activates automatically regardless of whether
 // Markdown or TimedTooltip is included first).
 //
 // Opt-Out Configuration:
-//   #define CONTRIB_DISABLE_EXTENSIONS      // Exclude all extensions
-//   #define CONTRIB_DISABLE_MARKDOWN        // Exclude Markdown extension
-//   #define CONTRIB_DISABLE_TIMED_TOOLTIP   // Exclude TimedTooltip extension
+//   #define IMGEE_DISABLE_EXTENSIONS      // Exclude all extensions
+//   #define IMGEE_DISABLE_MARKDOWN        // Exclude Markdown extension
+//   #define IMGEE_DISABLE_TIMED_TOOLTIP   // Exclude TimedTooltip extension
+//   #define IMGEE_DISABLE_TYPOGRAPHY      // Exclude Typography & StyledText
 // ============================================================================
 
 #pragma once

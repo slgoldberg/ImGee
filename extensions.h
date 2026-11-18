@@ -1,8 +1,8 @@
 // ============================================================================
-// ImGee Extensions: Folder Subsystem Roll-Up Header (contrib/ImGee/extensions.h)
+// ImGee Extensions: Folder Subsystem Roll-Up Header (extensions.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg) and the Rogers
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Forwards to the extensions roll-up in extensions/includes.h
 // ============================================================================

@@ -5,8 +5,8 @@
 
 Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the mouse scroll-wheel, leaves interactive buttons on a dead `Arrow` cursor, and renders missing-glyph `?` boxes for Unicode symbols, **ImGee** gives you polite stationary `TimedTooltip`s, mouse-wheel sliders/combos/pulldowns with 1-click Reset-with-Undo (`↺`/`↻`), 270° rotary dimmer knobs, animated rocker switches, CommonMark + sortable GFM tables, async 3-tier images, semantic typography (`ImFontRole` & `StyledText`), curated themes (`Charcoal`, `Rusty`), and a zero-font procedural vector icon engine.
 
-> **Ecosystem Note (`ImGee` vs. `ImgWindow/contrib/`):**  
-> **ImGee** is 100% generic Dear ImGui with zero hard dependency on X-Plane, and is architected to stand as its own independent GitHub repository/submodule. In `ImgWindow v2.4.0`, ImGee is bundled inside `ImgWindow`'s general third-party community directory (`contrib/ImGee/`, with convenience forwarder `contrib/imgee.h`) so `ImgWindow` users get the full toolkit out of the box.
+> **Standalone Dear ImGui Toolkit + Turnkey `ImgWindow` Integration:**  
+> **ImGee** ([`slgoldberg/ImGee`](https://github.com/slgoldberg/ImGee)) is a standalone, 100% generic Dear ImGui C++ toolkit (`v1.78` through `v1.92+`) with zero dependency on X-Plane or any windowing backend. For X-Plane plugin authors using [`ImgWindow`](https://github.com/slgoldberg/ImgWindow), ImGee is also mounted directly at `ImgWindow/contrib/ImGee/` (with convenience forwarder `contrib/imgee.h`) and auto-wires texture uploading, in-memory image decoding, and reload cleanup when `ImgWindow.h` is present.
 
 ---
 
@@ -92,41 +92,52 @@ We are actively considering bindings for other environments and programming lang
 
 ## 🚀 Quick Start & Integration Models
 
-### 1. Recommended Front Door: Including ImGee Directly
-When consuming **ImGee** via an `ImgWindow` Git submodule (e.g., in `third-party/ImgWindow/` or `src/ImgWindow/`), include the **ImGee package header**:
+### 1. Standalone Clone or Git Submodule (Recommended)
+Add **ImGee** to your project (e.g. via `git submodule add https://github.com/slgoldberg/ImGee.git third-party/ImGee`), add its directory to your include path, and include `imgee.h`:
 
 ```cpp
-// Recommended when the parent folder of ImgWindow/ is on your -I include path:
-#include "ImgWindow/contrib/imgee.h"
+// When ImGee/ itself is on your -I include path:
+#include "imgee.h"
 
-// Or if ImgWindow/ itself is on your -I include path (e.g. imgui4xp):
-#include "contrib/imgee.h"
+// Or when the parent directory of ImGee/ is on your -I include path:
+#include "ImGee/imgee.h"
 ```
 
-*(Note: `#include "ImgWindow/contrib/ImGee/imgee.h"` works identically. Always match exact filename casing so Linux builds succeed cleanly.)*
+Everything works header-only out of the box with zero `.cpp` files to compile and zero CMake link flags required.
 
-### 2. Standalone ImGee Repository / Submodule Usage
-When ImGee is submoduled directly from its own dedicated Git repository:
-
-```cpp
-#include "ImGee/imgee.h"   // (or #include "imgee.h" if ImGee/ is on -I)
-```
-
-### 3. A-La-Carte Subsystem Inclusion
-ImGee is architecturally decoupled. If your project only requires immediate-mode widgets or only requires extensions:
+### 2. A-La-Carte & Order-Independent Inclusion
+ImGee subsystems and widget headers are modular and order-independent -- cross-extension bridges (such as `ImGui::TimedTooltip::TextMD` and rich Markdown widget tooltips) activate automatically regardless of include order:
 
 ```cpp
 // Option A: Include only extensions (TimedTooltip, Markdown, Typography):
-#include "ImgWindow/contrib/ImGee/extensions.h"
+#include "ImGee/extensions.h"
 
-// Option B: Include only cockpit widgets (Knobs, Toggles, Wheel Sliders, Badges, Icons):
-#include "ImgWindow/contrib/ImGee/widgets.h"
+// Option B: Include only cockpit & desktop widgets (Knobs, Toggles, Wheel Sliders, Badges, Icons):
+#include "ImGee/widgets.h"
+
+// Option C: Cherry-pick individual headers in any order:
+#include "ImGee/widgets/imgui_knobs.h"
 ```
 
-### 4. About `ImgWindow/contrib.h` (Community Umbrella Header)
-In `ImgWindow` distributions, `#include "ImgWindow/contrib.h"` (or `#include "contrib.h"`) serves as `ImgWindow`'s multi-package community umbrella header -- pulling in `ImGee` today plus any future community-submitted packages in `ImgWindow/contrib/`. Including `contrib/imgee.h` targets **strictly ImGee**.
+### 3. Optional GPU Texture Backend for Standalone Apps (`ImGee::HostBackend`)
+All vector widgets, icons, themes, typography, tooltips, and Markdown text/tables work with zero setup. If your standalone Dear ImGui app (GLFW, SDL, Win32, Metal, Vulkan, DX11/DX12) also renders **local disk or async HTTP/HTTPS Markdown images**, register your 2-callback texture hook once at startup and call `ImGee::Shutdown()` before destroying your graphics device:
 
-Everything is configured and ready by default out of the box -- no subsystem initialization, factory registration, or frame hooks required.
+```cpp
+ImGee::HostBackend backend;
+backend.CreateTextureRGBA8 = [](const unsigned char* rgba, int w, int h, void*) -> ImTextureID {
+    return MyRenderer_UploadRGBA8Texture(rgba, w, h);
+};
+backend.DeleteTexture = [](ImTextureID tex, void*) {
+    MyRenderer_DestroyTexture(tex);
+};
+ImGee::SetHostBackend(backend);
+
+// On application exit (before tearing down your GPU device):
+ImGee::Shutdown();
+```
+
+### 4. Turnkey X-Plane Integration via `ImgWindow`
+When consumed via an `ImgWindow` submodule in an X-Plane plugin, include `"ImgWindow/contrib/imgee.h"` (or `"contrib/imgee.h"` when `ImgWindow/` is on `-I`). When `ImgWindow.h` is detected on the include path, ImGee automatically bridges named textures, `ImGeeStbi` memory-image decoding, and plugin-reload VRAM cleanup with zero setup code.
 
 ---
 
@@ -135,12 +146,14 @@ Everything is configured and ready by default out of the box -- no subsystem ini
 ```
 ImGee/
 ├── imgee.h                        # Canonical ImGee Master Header & Version Contract
+├── imgee_host_backend.h           # Standalone GPU texture, path & shutdown hook contract
 ├── includes.h                     # Folder-level Roll-Up Header (-> imgee.h)
 ├── extensions.h                   # Subsystem Roll-Up Header (-> extensions/includes.h)
 ├── widgets.h                      # Subsystem Roll-Up Header (-> widgets/includes.h)
 ├── imgee-global.h                 # Opt-in Global Scope Aliases (Markdown::, TimedTooltip::)
 ├── imgee_stbi_internal.h          # Isolated namespace/symbol-prefixed PNG/JPG/GIF/BMP/TGA decoder
 ├── imgee_stb_image.cpp            # Optional single-TU build unit (for -DIMGEE_EXTERNAL_STB_IMAGE)
+├── stb_image.h                    # Vendored stb_image implementation wrapped inside ImGeeStbi
 ├── LICENSE                        # Open-Source License (BSD 3-Clause)
 ├── docs/
 │   ├── ImGee_User_Guide.md        # Comprehensive User Manual (Source)
@@ -200,6 +213,8 @@ Every feature in ImGee is enabled by default. To disable specific components, de
 | **`IMGEE_DISABLE_SPINNERS`** | Excludes activity spinners and countdown timer dials. |
 | **`IMGEE_DISABLE_STB_IMAGE`** | Disables ImGee's isolated built-in `stb_image` decoder. |
 | **`IMGEE_EXTERNAL_STB_IMAGE`** | Skips inline decoder compilation so you can compile `imgee_stb_image.cpp` once. |
+| **`IMGEE_NO_IMGWINDOW_BRIDGE`** | Disables automatic `ImgWindow.h` discovery and bridging even if `ImgWindow.h` is on `-I`. |
+| **`IMGEE_FILEPATHS_FORCE_RELATIVE`** | Forces local Markdown image URLs to resolve strictly as relative paths (`1` by default with `ImgWindow`, `0` standalone). |
 | **`IMGEE_ENABLE_GLOBAL_NAMESPACES`** | Publishes `Markdown::`, `MD::`, and `TimedTooltip::` to global scope. |
 
 *(Note: Pre-v1.0 legacy `CONTRIB_*` defines are also mapped automatically in `imgee.h` for backward compatibility.)*

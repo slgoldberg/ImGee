@@ -15,8 +15,16 @@
 
 #pragma once
 
+#if !defined(IMGEE_DISABLE_THEMES) && !defined(CONTRIB_DISABLE_THEMES)
 #ifndef IMGUI_STYLES_H
 #define IMGUI_STYLES_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 #include "imgui.h"
 
@@ -224,4 +232,10 @@ inline void ApplyDefaultTheme(ImGuiStyle* dst = nullptr)
 
 } // namespace ImGui
 
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
 #endif // IMGUI_STYLES_H
+#endif // !IMGEE_DISABLE_THEMES

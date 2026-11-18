@@ -1,21 +1,25 @@
 // ============================================================================
-// ImGee: Master Suite Roll-Up Header (contrib/ImGee/imgee.h)
+// ImGee: Master Suite Umbrella Header (imgee.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg) and the Rogers
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
-// Master roll-up header for all ImGee Dear ImGui extensions and immediate-mode
-// flight-deck widgets bundled in contrib/ImGee/.
+// Single-header entry point and unified configuration hub for the ImGee
+// Dear ImGui extensions, cockpit/desktop widgets, and style themes.
 //
-// Why use this header (or top-level "contrib.h")?
-// 1. Guaranteed Dependency Order: Automatically includes TimedTooltip BEFORE
-//    Markdown and Widgets so cross-extension bridges (such as
-//    ImGui::TimedTooltip::TextMD and TimedTooltips on SliderWithReset / ComboWithReset)
-//    activate seamlessly with zero manual header juggling.
-// 2. Easy Customization & Opt-Out: Uncomment any of the IMGEE_DISABLE_* toggles
-//    below (or define them before including this file) to selectively exclude
-//    individual widgets, helpers, or entire subsystems that might collide with
-//    your existing codebase.
+// Architectural Design:
+// 1. 100% Header-Only & Order-Independent: Individual ImGee headers in
+//    extensions/, widgets/, and themes/ are modular and order-independent --
+//    cross-extension bridges (such as ImGui::TimedTooltip::TextMD and rich
+//    widget tooltips) activate automatically regardless of include order, and
+//    fail fast at compile time if an unincluded feature is called directly.
+// 2. One-Line Umbrella Convenience: Including "imgee.h" pulls in the complete
+//    ImGee suite (extensions, widgets, themes, isolated stb_image decoder, and
+//    optional HostBackend / ImgWindow auto-bridge) with zero .cpp files to
+//    add to your build configuration.
+// 3. Unified Opt-Out Hub: Uncomment any IMGEE_DISABLE_* toggle below (or
+//    #define before including imgee.h or any individual header) to exclude
+//    specific subsystems, widgets, or aliases cleanly.
 // ============================================================================
 
 #pragma once
@@ -126,7 +130,7 @@
 // #define IMGEE_DISABLE_EXTENSIONS             // Exclude all ImGee extensions
 // #define IMGEE_DISABLE_WIDGETS                // Exclude all ImGee extra widgets
 
-// --- Individual Extensions (contrib/ImGee/extensions/) ---
+// --- Individual Extensions (extensions/) ---
 // #define IMGEE_DISABLE_TIMED_TOOLTIP          // Exclude TimedTooltip extension
 // #define IMGEE_DISABLE_MARKDOWN               // Exclude Markdown extension
 // #define IMGEE_DISABLE_TYPOGRAPHY             // Exclude Typography & StyledText extensions
@@ -135,16 +139,20 @@
 // #define IMGEE_DISABLE_BUTTON_MD              // Exclude all root ImGui::ButtonMD / ButtonMarkdown aliases
 // #define IMGEE_ENABLE_GLOBAL_NAMESPACES       // Publish TimedTooltip:: and Markdown:: to global scope
 
-// --- Widget Collections (contrib/ImGee/widgets/) ---
+// --- Widget Collections (widgets/) ---
 // #define IMGEE_DISABLE_TOGGLE_BUTTONS         // Exclude ToggleButton & ToggleButtons
 // #define IMGEE_DISABLE_TOGGLE_MOUSE_WHEEL     // Exclude mouse-wheel support on ToggleButton(s)
 // #define IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS   // Exclude all wheel sliders, drags, cyclers & combos
 // #define IMGEE_DISABLE_CLICKABLE_LINKS        // Exclude ButtonLink, TextLink & AttachItemCursor
 // #define IMGEE_DISABLE_BADGES                 // Exclude Badge, Pill & Kbd widgets
 // #define IMGEE_DISABLE_SPINNERS               // Exclude Spinner, RadialTimer & CountdownTimer
+// #define IMGEE_DISABLE_COPY_BUTTON            // Exclude CopyButton & CopyLastItemButton
+// #define IMGEE_DISABLE_KNOBS                  // Exclude Knob, DimmerKnob & KnobWithReset
+// #define IMGEE_DISABLE_FILE_DIALOG            // Exclude FilePickerCombo, OpenFileDialog & SaveFileDialog
 // #define IMGEE_DISABLE_POPUP_MENUS            // Exclude SelectPulldown, OpenPopupAtItem & BeginAnchoredPopup
 // #define IMGEE_DISABLE_ICONS                  // Exclude procedural vector icon engine & ImGui::Icon
 // #define IMGEE_DISABLE_ICON_BUTTON            // Exclude IconButton & ButtonIcon
+// #define IMGEE_DISABLE_THEMES                 // Exclude curated style palettes in themes/
 
 // --- Fine-Grained Mouse-Wheel Control Opt-Outs & Style Defaults ---
 // #define IMGEE_DISABLE_GET_MOUSE_WHEEL        // Exclude GetMouseWheel* primitives

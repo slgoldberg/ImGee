@@ -33,7 +33,16 @@
 #ifndef IMGUI_ICONS_H
 #define IMGUI_ICONS_H
 
-#if !defined(CONTRIB_DISABLE_ICONS) && \
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
+
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_ICONS) && \
+    !defined(CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_ICONS) && \
     !defined(IMGUI_DISABLE_CONTRIB_ICONS)
@@ -466,7 +475,7 @@ namespace ImGui {
     // 4. Immediate-Mode Procedural Vector Push-Buttons
     // -------------------------------------------------------------------------
 
-#if !defined(CONTRIB_DISABLE_ICON_BUTTON) && !defined(IMGUI_DISABLE_ICON_BUTTON)
+#if !defined(IMGEE_DISABLE_ICON_BUTTON) && !defined(CONTRIB_DISABLE_ICON_BUTTON) && !defined(IMGUI_DISABLE_ICON_BUTTON)
 
     /// Renders a push button containing a centered procedural vector icon.
     /// - If size.x <= 0.0f, defaults to a square button matching ImGui::GetFrameHeight().
@@ -615,5 +624,10 @@ namespace ImGui {
 } // namespace ImGui
 
 #endif // !CONTRIB_DISABLE_ICONS
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
 
 #endif // IMGUI_ICONS_H

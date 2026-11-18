@@ -15,9 +15,9 @@ All widgets in this directory are injected directly into `namespace ImGui { ... 
 
 | Pattern | Usage | Benefit |
 | :--- | :--- | :--- |
-| **Master ImGee Suite (Recommended)** | `#include "ImgWindow/contrib/imgee.h"` *(or `"ImGee/imgee.h"` standalone)* | Includes **all** ImGee extensions (`TimedTooltip`, `Markdown`, `Typography`), themes, and widgets in guaranteed dependency order. |
-| **ImGee Widgets Roll-Up** | `#include "ImgWindow/contrib/ImGee/widgets.h"` *(or `"ImGee/widgets.h"` standalone)* | Instant access to the entire widget collection in one line without extensions. |
-| **A-la-Carte Widget** | `#include "ImgWindow/contrib/ImGee/widgets/imgui_knobs.h"` *(or `"ImGee/widgets/imgui_knobs.h"`)* | Include only the specific control family you need. |
+| **Master ImGee Suite (Recommended)** | `#include "imgee.h"` *(or `"ImgWindow/contrib/imgee.h"` via ImgWindow)* | Includes **all** ImGee extensions (`TimedTooltip`, `Markdown`, `Typography`), themes, and widgets in one line. |
+| **ImGee Widgets Roll-Up** | `#include "widgets.h"` *(or `"ImGee/widgets.h"`)* | Instant access to the entire widget collection in one line. |
+| **A-la-Carte Widget** | `#include "widgets/imgui_knobs.h"` *(or `"ImGee/widgets/imgui_knobs.h"`)* | Include only the specific control family you need, in any include order. |
 
 #### Opt-Out Configuration Flags
 If your project defines a symbol with the same name, define any of the following `IMGEE_*` macros *before* including `imgee.h` (pre-v1.0 legacy opt-out macros remain honored automatically):
@@ -661,4 +661,4 @@ The icon engine is deeply integrated into `ImGui::MarkdownExt` and `ImGui::TextS
 
 * **Author & Architect**: Steven L. Goldberg ([@slgoldberg](https://github.com/slgoldberg))
 * **SliderPercent Upstream Inspiration**: Birger Hoppe ([LiveTraffic](https://github.com/bhoppe/LiveTraffic))
-* **License**: BSD 3-Clause (see [ImgWindow LICENSE](../../README.md#licensing-note))
+* **License**: BSD 3-Clause (see [LICENSE](../LICENSE))

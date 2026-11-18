@@ -1,8 +1,8 @@
 // ============================================================================
-// ImgWindow Extension: TimedTooltip
+// ImGee Extension: TimedTooltip (extensions/TimedTooltip/imgui_tooltip_ext.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg)
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Contributors:
 //   - Steven L. Goldberg: Stationary positioning, edge-docking, wiggle-latch,
@@ -11,7 +11,14 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+#if !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
     !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
     !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
     !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
@@ -1024,7 +1031,12 @@ namespace TimedTooltip {
 
 } // namespace ImGui
 
-#if defined(IMGUI_MARKDOWN_EXT_H) && !defined(IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED)
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
+#if defined(IMGUI_MARKDOWN_EXT_READY) && !defined(IMGUI_TIMED_TOOLTIP_MD_BRIDGE_DEFINED)
 #if defined(__has_include)
 #if __has_include("../Markdown/imgui_markdown_ext.h")
 #include "../Markdown/imgui_markdown_ext.h"
@@ -1032,11 +1044,6 @@ namespace TimedTooltip {
 #include "imgui_markdown_ext.h"
 #endif
 #endif
-#endif
-
-#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
-#pragma pop_macro("max")
-#pragma pop_macro("min")
 #endif
 
 #endif // IMGUI_TOOLTIP_EXT_H

@@ -12,7 +12,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_SPINNERS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_SPINNERS) && \
+    !defined(IMGEE_DISABLE_SPINNER) && \
+    !defined(CONTRIB_DISABLE_SPINNERS) && \
     !defined(CONTRIB_DISABLE_SPINNER) && \
     !defined(IMGUI_CONTRIB_DISABLE_SPINNERS) && \
     !defined(IMGUI_CONTRIB_DISABLE_SPINNER) && \
@@ -24,8 +27,21 @@
 #define IMGUI_SPINNERS_H
 #define IMGUI_EXTRA_SPINNERS_H
 
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
+
 #include "imgui.h"
-#include "imgui_internal.h"
+#if defined(__has_include)
+    #if __has_include("imgui_internal.h")
+        #include "imgui_internal.h"
+    #endif
+#else
+    #include "imgui_internal.h"
+#endif
 #include <cmath>
 #include <algorithm>
 
@@ -233,6 +249,11 @@ namespace ImGui {
     }
 
 } // namespace ImGui
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
 
 #endif // IMGUI_SPINNERS_H
 #endif // Collision guards

@@ -1,19 +1,19 @@
 // ============================================================================
-// ImGee: Isolated Internal stb_image Wrapper (contrib/ImGee/imgee_stbi_internal.h)
+// ImGee: Isolated Internal stb_image Wrapper (imgee_stbi_internal.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg) and the Rogers
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Provides a 100% isolated, header-only PNG/JPEG/BMP/GIF/TGA image decoder for
-// ImGee and ImgWindow::RegisterMemoryImage with ZERO global namespace or
-// preprocessor collisions against host plugins that also include <stb_image.h>
-// (in any include order, and regardless of version or linkage).
+// ImGee (and ImgWindow::RegisterMemoryImage when bridged) with ZERO global
+// namespace or preprocessor collisions against host applications that also
+// include <stb_image.h> (in any include order, regardless of version or linkage).
 //
 // Configuration Knobs (Optional):
 //   - #define IMGEE_DISABLE_STB_IMAGE   : Disables ImGee's built-in stb_image
 //   - #define IMGEE_EXTERNAL_STB_IMAGE  : Emits declarations only; add
-//                                         contrib/ImGee/imgee_stb_image.cpp to
-//                                         your CMake target to compile once.
+//                                         imgee_stb_image.cpp to your CMake
+//                                         target to compile once.
 // ============================================================================
 
 #pragma once

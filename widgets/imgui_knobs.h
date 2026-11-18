@@ -29,7 +29,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_KNOBS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_KNOBS) && \
+    !defined(IMGEE_DISABLE_KNOB) && \
+    !defined(CONTRIB_DISABLE_KNOBS) && \
     !defined(CONTRIB_DISABLE_KNOB) && \
     !defined(IMGUI_CONTRIB_DISABLE_KNOBS) && \
     !defined(IMGUI_CONTRIB_DISABLE_KNOB) && \
@@ -53,11 +56,64 @@
     #if __has_include("imgui_internal.h")
         #include "imgui_internal.h"
     #endif
-    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
-    #endif
 #else
     #include "imgui_internal.h"
+#endif
+
+#if !defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && \
+    !defined(IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MOUSE_WHEEL_CONTROLS) && \
+    !defined(IMGUI_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    defined(__has_include)
+    #if __has_include("imgui_mouse_wheel_controls.h")
+        #include "imgui_mouse_wheel_controls.h"
+    #elif __has_include("widgets/imgui_mouse_wheel_controls.h")
+        #include "widgets/imgui_mouse_wheel_controls.h"
+    #endif
+#endif
+
+#if !defined(IMGUI_TOOLTIP_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    defined(__has_include)
+    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
+        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+    #elif __has_include("imgui_tooltip_ext.h")
+        #include "imgui_tooltip_ext.h"
+    #endif
+#endif
+
+#if !defined(IMGUI_MARKDOWN_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_MARKDOWN) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_MARKDOWN) && \
+    defined(__has_include)
+    #if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
+        #include "../extensions/Markdown/imgui_markdown_ext.h"
+    #elif __has_include("imgui_markdown_ext.h")
+        #include "imgui_markdown_ext.h"
+    #endif
 #endif
 
 #if !defined(IMGUI_CONTRIB_CLEAR_LAST_ITEM_HOVER)
@@ -92,7 +148,7 @@ namespace Detail {
 
     // Helper for mouse-wheel query with scroll-defeat fallback
     inline float GetKnobMouseWheel(bool consume = true) {
-#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL)
+#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(IMGEE_DISABLE_GET_MOUSE_WHEEL) && !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL)
         // Leverage the high-grade scroll-defeat engine in imgui_mouse_wheel_controls.h
         return WheelSliderDetail::GetMouseWheelEither(consume);
 #else
@@ -603,7 +659,7 @@ namespace Detail {
         }
 
         bool reset_hovered = false;
-#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(CONTRIB_DISABLE_RESET_BUTTON)
+#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(IMGEE_DISABLE_RESET_BUTTON) && !defined(CONTRIB_DISABLE_RESET_BUTTON)
         SameLine(0.0f, GetStyle().ItemInnerSpacing.x);
         float btn_size = GetFrameHeight();
         if (knob_diameter > btn_size) {

@@ -457,60 +457,62 @@ namespace ImGui
         }
 
         std::string hex = str.substr( start );
-        if( hex.length() == 3 )
-        {
-            unsigned int val = 0;
-            if( sscanf( hex.c_str(), "%x", &val ) == 1 )
+        auto parseHexU64 = []( const std::string& h, uint64_t& outVal ) -> bool {
+            if( h.empty() ) return false;
+            uint64_t acc = 0;
+            for( char ch : h )
             {
-                unsigned int r = ( val >> 8 ) & 0xF;
-                unsigned int g = ( val >> 4 ) & 0xF;
-                unsigned int b = val & 0xF;
-                out_col.x = ( ( r << 4 ) | r ) / 255.0f;
-                out_col.y = ( ( g << 4 ) | g ) / 255.0f;
-                out_col.z = ( ( b << 4 ) | b ) / 255.0f;
-                out_col.w = 1.0f;
-                return true;
+                unsigned char uc = static_cast<unsigned char>( ch );
+                uint64_t digit = 0;
+                if( uc >= '0' && uc <= '9' ) digit = static_cast<uint64_t>( uc - '0' );
+                else if( uc >= 'a' && uc <= 'f' ) digit = static_cast<uint64_t>( 10 + ( uc - 'a' ) );
+                else if( uc >= 'A' && uc <= 'F' ) digit = static_cast<uint64_t>( 10 + ( uc - 'A' ) );
+                else return false;
+                acc = ( acc << 4 ) | digit;
             }
+            outVal = acc;
+            return true;
+        };
+
+        uint64_t val = 0;
+        if( hex.length() == 3 && parseHexU64( hex, val ) )
+        {
+            unsigned int r = static_cast<unsigned int>( ( val >> 8 ) & 0xF );
+            unsigned int g = static_cast<unsigned int>( ( val >> 4 ) & 0xF );
+            unsigned int b = static_cast<unsigned int>( val & 0xF );
+            out_col.x = ( ( r << 4 ) | r ) / 255.0f;
+            out_col.y = ( ( g << 4 ) | g ) / 255.0f;
+            out_col.z = ( ( b << 4 ) | b ) / 255.0f;
+            out_col.w = 1.0f;
+            return true;
         }
-        else if( hex.length() == 4 )
+        else if( hex.length() == 4 && parseHexU64( hex, val ) )
         {
-            unsigned int val = 0;
-            if( sscanf( hex.c_str(), "%x", &val ) == 1 )
-            {
-                unsigned int r = ( val >> 12 ) & 0xF;
-                unsigned int g = ( val >> 8 ) & 0xF;
-                unsigned int b = ( val >> 4 ) & 0xF;
-                unsigned int a = val & 0xF;
-                out_col.x = ( ( r << 4 ) | r ) / 255.0f;
-                out_col.y = ( ( g << 4 ) | g ) / 255.0f;
-                out_col.z = ( ( b << 4 ) | b ) / 255.0f;
-                out_col.w = ( ( a << 4 ) | a ) / 255.0f;
-                return true;
-            }
+            unsigned int r = static_cast<unsigned int>( ( val >> 12 ) & 0xF );
+            unsigned int g = static_cast<unsigned int>( ( val >> 8 ) & 0xF );
+            unsigned int b = static_cast<unsigned int>( ( val >> 4 ) & 0xF );
+            unsigned int a = static_cast<unsigned int>( val & 0xF );
+            out_col.x = ( ( r << 4 ) | r ) / 255.0f;
+            out_col.y = ( ( g << 4 ) | g ) / 255.0f;
+            out_col.z = ( ( b << 4 ) | b ) / 255.0f;
+            out_col.w = ( ( a << 4 ) | a ) / 255.0f;
+            return true;
         }
-        else if( hex.length() == 6 )
+        else if( hex.length() == 6 && parseHexU64( hex, val ) )
         {
-            unsigned int val = 0;
-            if( sscanf( hex.c_str(), "%x", &val ) == 1 )
-            {
-                out_col.x = ( ( val >> 16 ) & 0xFF ) / 255.0f;
-                out_col.y = ( ( val >> 8 ) & 0xFF ) / 255.0f;
-                out_col.z = ( val & 0xFF ) / 255.0f;
-                out_col.w = 1.0f;
-                return true;
-            }
+            out_col.x = static_cast<float>( ( val >> 16 ) & 0xFF ) / 255.0f;
+            out_col.y = static_cast<float>( ( val >> 8 ) & 0xFF ) / 255.0f;
+            out_col.z = static_cast<float>( val & 0xFF ) / 255.0f;
+            out_col.w = 1.0f;
+            return true;
         }
-        else if( hex.length() == 8 )
+        else if( hex.length() == 8 && parseHexU64( hex, val ) )
         {
-            unsigned long long val = 0;
-            if( sscanf( hex.c_str(), "%llx", &val ) == 1 )
-            {
-                out_col.x = ( ( val >> 24 ) & 0xFF ) / 255.0f;
-                out_col.y = ( ( val >> 16 ) & 0xFF ) / 255.0f;
-                out_col.z = ( ( val >> 8 ) & 0xFF ) / 255.0f;
-                out_col.w = ( val & 0xFF ) / 255.0f;
-                return true;
-            }
+            out_col.x = static_cast<float>( ( val >> 24 ) & 0xFF ) / 255.0f;
+            out_col.y = static_cast<float>( ( val >> 16 ) & 0xFF ) / 255.0f;
+            out_col.z = static_cast<float>( ( val >> 8 ) & 0xFF ) / 255.0f;
+            out_col.w = static_cast<float>( val & 0xFF ) / 255.0f;
+            return true;
         }
         return false;
     }
@@ -5182,6 +5184,18 @@ namespace ImGui
 #if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
 #pragma pop_macro("max")
 #pragma pop_macro("min")
+#endif
+
+#define IMGUI_MARKDOWN_READY 1
+
+#if defined(IMGUI_CLICKABLE_LINKS_READY) && !defined(IMGUI_MARKDOWN_AUTO_LINK_BRIDGED)
+#if defined(__has_include)
+#if __has_include("../../widgets/imgui_clickable_links.h")
+#include "../../widgets/imgui_clickable_links.h"
+#elif __has_include("imgui_clickable_links.h")
+#include "imgui_clickable_links.h"
+#endif
+#endif
 #endif
 
 #endif // IMGUI_MARKDOWN_H

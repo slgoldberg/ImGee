@@ -1,8 +1,8 @@
 // ============================================================================
-// ImGee Widgets: Folder Subsystem Roll-Up Header (contrib/ImGee/widgets.h)
+// ImGee Widgets: Folder Subsystem Roll-Up Header (widgets.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg) and the Rogers
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Forwards to the widgets roll-up in widgets/includes.h
 // ============================================================================

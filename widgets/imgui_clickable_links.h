@@ -12,7 +12,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_CLICKABLE_LINKS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_CLICKABLE_LINKS) && \
+    !defined(IMGEE_DISABLE_CLICKABLE_LINK) && \
+    !defined(CONTRIB_DISABLE_CLICKABLE_LINKS) && \
     !defined(CONTRIB_DISABLE_CLICKABLE_LINK) && \
     !defined(IMGUI_CONTRIB_DISABLE_CLICKABLE_LINKS) && \
     !defined(IMGUI_CONTRIB_DISABLE_CLICKABLE_LINK) && \
@@ -645,7 +648,21 @@ namespace ImGui {
         return ExternalTextLink(label, url.c_str());
     }
 
-#if defined(IMGUI_MARKDOWN_H)
+} // namespace ImGui
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
+#define IMGUI_CLICKABLE_LINKS_READY 1
+
+#endif // IMGUI_EXTRA_CLICKABLE_LINK_H
+
+// Order-independent ClickableLinks <-> Markdown link-callback bridge:
+#if defined(IMGUI_CLICKABLE_LINKS_READY) && defined(IMGUI_MARKDOWN_READY) && !defined(IMGUI_MARKDOWN_AUTO_LINK_BRIDGED)
+#define IMGUI_MARKDOWN_AUTO_LINK_BRIDGED
+namespace ImGui {
 namespace Detail {
     inline void AutoMarkdownLinkHandler(MarkdownLinkCallbackData data) {
         if (!data.isImage && data.link && data.linkLength > 0) {
@@ -663,14 +680,7 @@ namespace Detail {
     };
     static MarkdownAutoLinkInit s_MarkdownAutoLinkInit;
 }
-#endif
-
 } // namespace ImGui
-
-#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
-#pragma pop_macro("max")
-#pragma pop_macro("min")
 #endif
 
-#endif // IMGUI_EXTRA_CLICKABLE_LINK_H
 #endif // IMGUI_DISABLE_EXTRA_CLICKABLE_LINK

@@ -32,8 +32,8 @@ Traditional Dear ImGui applications pass raw `ImFont*` pointers across classes o
 Font roles decouple your layout code from font assets:
 
 ```cpp
-#include "ImgWindow/contrib/imgee.h"
-// (Or standalone: #include "ImGee/imgee.h")
+#include "imgee.h"
+// (Or a-la-carte: #include "extensions/Typography/imgui_styled_text.h", or via ImgWindow: #include "ImgWindow/contrib/imgee.h")
 
 // Available Roles in namespace ImGui:
 enum class ImFontRole : int {

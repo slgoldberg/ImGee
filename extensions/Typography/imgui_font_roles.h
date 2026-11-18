@@ -1,8 +1,8 @@
 // ============================================================================
-// ImGui Contrib Typography: Font Role Registry (imgui_font_roles.h)
+// ImGee Typography: Font Role Registry (extensions/Typography/imgui_font_roles.h)
 // ----------------------------------------------------------------------------
 // Author: Steven L. Goldberg (@slgoldberg)
-// License: BSD 3-Clause (see LICENSE / ImgWindow license terms)
+// License: BSD 3-Clause (see LICENSE)
 //
 // Provides a unified, semantic typography registry (ImFontRole) mapping logical
 // design roles (Regular, Bold, Italic, Monospace, Headings) to rasterized
@@ -11,8 +11,27 @@
 
 #pragma once
 
+#if !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TYPOGRAPHY) && \
+    !defined(CONTRIB_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TYPOGRAPHY) && \
+    !defined(IMGUI_DISABLE_TYPOGRAPHY) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TYPOGRAPHY)
 #ifndef IMGUI_FONT_ROLES_H
 #define IMGUI_FONT_ROLES_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 #include "imgui.h"
 #include <cstddef>
@@ -251,4 +270,10 @@ namespace ImGui {
 // Export to global scope for convenient unqualified usage (e.g. ImFontRole::Bold):
 using ImFontRole = ImGui::ImFontRole;
 
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
+
 #endif // IMGUI_FONT_ROLES_H
+#endif // !IMGEE_DISABLE_TYPOGRAPHY

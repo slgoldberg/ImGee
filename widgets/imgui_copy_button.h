@@ -19,7 +19,10 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_COPY_BUTTON) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_COPY_BUTTON) && \
+    !defined(IMGEE_DISABLE_COPY_BUTTONS) && \
+    !defined(CONTRIB_DISABLE_COPY_BUTTON) && \
     !defined(CONTRIB_DISABLE_COPY_BUTTONS) && \
     !defined(IMGUI_CONTRIB_DISABLE_COPY_BUTTON) && \
     !defined(IMGUI_CONTRIB_DISABLE_COPY_BUTTONS) && \
@@ -29,6 +32,13 @@
     !defined(IMGUI_DISABLE_COPY_BUTTONS)
 #ifndef IMGUI_COPY_BUTTON_H
 #define IMGUI_COPY_BUTTON_H
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma push_macro("min")
+#pragma push_macro("max")
+#undef min
+#undef max
+#endif
 
 #include "imgui.h"
 #include <string>
@@ -44,16 +54,46 @@
   #endif
 #endif
 
-#if !defined(IMGUI_TOOLTIP_EXT_H) && defined(__has_include)
-#if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-#include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
-#endif
+#if !defined(IMGUI_TOOLTIP_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    defined(__has_include)
+    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
+        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+    #elif __has_include("imgui_tooltip_ext.h")
+        #include "imgui_tooltip_ext.h"
+    #endif
 #endif
 
-#if !defined(IMGUI_MARKDOWN_EXT_H) && defined(__has_include)
-#if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
-#include "../extensions/Markdown/imgui_markdown_ext.h"
-#endif
+#if !defined(IMGUI_MARKDOWN_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_MARKDOWN) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_MARKDOWN) && \
+    defined(__has_include)
+    #if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
+        #include "../extensions/Markdown/imgui_markdown_ext.h"
+    #elif __has_include("imgui_markdown_ext.h")
+        #include "imgui_markdown_ext.h"
+    #endif
 #endif
 
 namespace ImGui {
@@ -342,6 +382,11 @@ namespace ImGui {
     }
 
 } // namespace ImGui
+
+#if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
+#pragma pop_macro("max")
+#pragma pop_macro("min")
+#endif
 
 #endif // IMGUI_COPY_BUTTON_H
 #endif // !CONTRIB_DISABLE_COPY_BUTTON

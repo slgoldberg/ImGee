@@ -35,7 +35,9 @@
 
 #pragma once
 
-#if !defined(CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+#if !defined(IMGEE_DISABLE_WIDGETS) && \
+    !defined(IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS) && \
+    !defined(CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
     !defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && \
     !defined(IMGUI_DISABLE_CONTRIB_MOUSE_WHEEL_CONTROLS) && \
     !defined(IMGUI_DISABLE_MOUSE_WHEEL_CONTROLS) && \
@@ -114,7 +116,7 @@ namespace ImGui {
 #endif
 #endif
 
-#if !defined(IMGUI_CONTRIB_DISABLE_RESET_UNDO) && !defined(CONTRIB_DISABLE_RESET_UNDO)
+#if !defined(IMGEE_DISABLE_RESET_UNDO) && !defined(IMGUI_CONTRIB_DISABLE_RESET_UNDO) && !defined(CONTRIB_DISABLE_RESET_UNDO)
 #define IMGUI_CONTRIB_DEFAULT_RESET_UNDO_ENABLED true
 #else
 #define IMGUI_CONTRIB_DEFAULT_RESET_UNDO_ENABLED false
@@ -277,10 +279,46 @@ namespace Detail {
 } // namespace ImGui
 #endif // IMGUI_LINK_CLICK_RESULT_DEFINED
 
-#if !defined(IMGUI_TOOLTIP_EXT_H) && defined(__has_include)
-#if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-#include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+#if !defined(IMGUI_TOOLTIP_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && \
+    !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    !defined(IMGUI_DISABLE_TIMED_TOOLTIP) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_TIMED_TOOLTIP) && \
+    defined(__has_include)
+    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
+        #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
+    #elif __has_include("imgui_tooltip_ext.h")
+        #include "imgui_tooltip_ext.h"
+    #endif
 #endif
+
+#if !defined(IMGUI_MARKDOWN_EXT_H) && \
+    !defined(IMGEE_DISABLE_EXTENSIONS) && \
+    !defined(CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_CONTRIB_DISABLE_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGUI_DISABLE_EXTENSIONS) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_EXTENSIONS) && \
+    !defined(IMGEE_DISABLE_MARKDOWN) && \
+    !defined(CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_CONTRIB_MARKDOWN) && \
+    !defined(IMGUI_DISABLE_MARKDOWN) && \
+    !defined(IMGWINDOW_DISABLE_CONTRIB_MARKDOWN) && \
+    defined(__has_include)
+    #if __has_include("../extensions/Markdown/imgui_markdown_ext.h")
+        #include "../extensions/Markdown/imgui_markdown_ext.h"
+    #elif __has_include("imgui_markdown_ext.h")
+        #include "imgui_markdown_ext.h"
+    #endif
 #endif
 
 // ============================================================================
@@ -291,7 +329,7 @@ namespace Detail {
 // controls if the cursor passes over a wheel-enabled widget. To prevent this,
 // discrete widgets automatically refuse wheel inputs and suppress custom cursors
 // when the viewport is scrollable, giving Dear ImGui's window scrolling priority.
-// Opt-out compile-time: #define CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT
+// Opt-out compile-time: #define IMGEE_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT
 // Opt-out runtime:      ImGui::SetMouseWheelAutoDefeat(false);
 // ============================================================================
 #ifndef IMGUI_CONTRIB_WINDOW_SCROLLABLE_Y_DEFINED
@@ -302,9 +340,6 @@ namespace Detail {
     #if __has_include("imgui_internal.h")
       #include "imgui_internal.h"
       #define IMGUI_CONTRIB_INTERNAL_INCLUDED 1
-    #endif
-    #if __has_include("../extensions/TimedTooltip/imgui_tooltip_ext.h")
-      #include "../extensions/TimedTooltip/imgui_tooltip_ext.h"
     #endif
   #endif
 #endif
@@ -321,7 +356,8 @@ namespace Contrib {
     }
 
     inline bool IsCurrentWindowScrollableY() {
-#if defined(CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
+#if defined(IMGEE_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
+    defined(CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
     defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT) || \
     defined(IMGUI_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT)
         return false;
@@ -899,7 +935,8 @@ namespace ImGui {
     // Returns mouse-wheel clicks for the current frame. When 'consume' is true,
     // zeroes out GetIO().MouseWheel / MouseWheelH so parent scrollable windows
     // do not scroll while the user is adjusting a hovered widget.
-#if !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL) && \
+#if !defined(IMGEE_DISABLE_GET_MOUSE_WHEEL) && \
+    !defined(CONTRIB_DISABLE_GET_MOUSE_WHEEL) && \
     !defined(IMGUI_CONTRIB_DISABLE_GET_MOUSE_WHEEL) && \
     !defined(IMGUI_DISABLE_CONTRIB_GET_MOUSE_WHEEL) && \
     !defined(IMGUI_DISABLE_GET_MOUSE_WHEEL) && \
@@ -934,7 +971,8 @@ namespace ImGui {
     // -------------------------------------------------------------------------
     // 1. AdjustItemOnMouseWheel Chaser (Continuous Scalar Ranges: Slider*, Drag*)
     // -------------------------------------------------------------------------
-#if !defined(CONTRIB_DISABLE_ADJUST_MOUSE_WHEEL) && \
+#if !defined(IMGEE_DISABLE_ADJUST_MOUSE_WHEEL) && \
+    !defined(CONTRIB_DISABLE_ADJUST_MOUSE_WHEEL) && \
     !defined(CONTRIB_DISABLE_ADJUST_ITEM_ON_MOUSE_WHEEL) && \
     !defined(IMGUI_CONTRIB_DISABLE_ADJUST_MOUSE_WHEEL) && \
     !defined(IMGUI_DISABLE_CONTRIB_ADJUST_MOUSE_WHEEL) && \
@@ -971,7 +1009,8 @@ namespace ImGui {
     }
 #endif // !CONTRIB_DISABLE_ADJUST_MOUSE_WHEEL
 
-#if !defined(CONTRIB_DISABLE_CYCLE_MOUSE_WHEEL) && \
+#if !defined(IMGEE_DISABLE_CYCLE_MOUSE_WHEEL) && \
+    !defined(CONTRIB_DISABLE_CYCLE_MOUSE_WHEEL) && \
     !defined(CONTRIB_DISABLE_CYCLE_ITEM_ON_MOUSE_WHEEL) && \
     !defined(IMGUI_CONTRIB_DISABLE_CYCLE_MOUSE_WHEEL) && \
     !defined(IMGUI_DISABLE_CONTRIB_CYCLE_MOUSE_WHEEL) && \
@@ -1588,7 +1627,8 @@ namespace ImGui {
     // -------------------------------------------------------------------------
     // 5. PercentSlider (0.0 .. 1.0 displayed as 0% .. 100%, with Mouse-Wheel)
     // -------------------------------------------------------------------------
-#if !defined(CONTRIB_DISABLE_PERCENT_SLIDER) && \
+#if !defined(IMGEE_DISABLE_PERCENT_SLIDER) && \
+    !defined(CONTRIB_DISABLE_PERCENT_SLIDER) && \
     !defined(IMGUI_CONTRIB_DISABLE_PERCENT_SLIDER) && \
     !defined(IMGUI_DISABLE_CONTRIB_PERCENT_SLIDER) && \
     !defined(IMGUI_DISABLE_PERCENT_SLIDER) && \
@@ -1613,7 +1653,8 @@ namespace ImGui {
         return changed;
     }
 
-#if !defined(CONTRIB_DISABLE_SLIDER_PERCENT) && \
+#if !defined(IMGEE_DISABLE_SLIDER_PERCENT) && \
+    !defined(CONTRIB_DISABLE_SLIDER_PERCENT) && \
     !defined(IMGUI_CONTRIB_DISABLE_SLIDER_PERCENT) && \
     !defined(IMGUI_DISABLE_CONTRIB_SLIDER_PERCENT) && \
     !defined(IMGUI_DISABLE_SLIDER_PERCENT) && \
@@ -2248,7 +2289,8 @@ namespace ImGui {
         return DragWithReset(label, v, v_default, v_speed, v_min, v_max, format, flags, wheel_step, reset_tooltip, v_last);
     }
 
-#if !defined(CONTRIB_DISABLE_MOUSE_WHEEL_COMBO) && \
+#if !defined(IMGEE_DISABLE_MOUSE_WHEEL_COMBO) && \
+    !defined(CONTRIB_DISABLE_MOUSE_WHEEL_COMBO) && \
     !defined(IMGUI_CONTRIB_DISABLE_MOUSE_WHEEL_COMBO) && \
     !defined(IMGUI_DISABLE_CONTRIB_MOUSE_WHEEL_COMBO) && \
     !defined(IMGUI_DISABLE_MOUSE_WHEEL_COMBO) && \
