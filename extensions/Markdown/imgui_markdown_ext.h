@@ -109,7 +109,9 @@ namespace ImGui {
     // ImGui Markdown Extensions (Tags & Styling Widgets)
     // -------------------------------------------------------------------------
     
-    // 1. Config Registry
+    // 1. Config Registry (shared with imgui_markdown.h)
+#ifndef IMGUI_MARKDOWN_CONFIG_REGISTRY_DEFINED
+#define IMGUI_MARKDOWN_CONFIG_REGISTRY_DEFINED
     inline const MarkdownConfig*& GetDefaultMarkdownConfig() {
         static const MarkdownConfig* s_DefaultConfig = nullptr;
         return s_DefaultConfig;
@@ -123,6 +125,7 @@ namespace ImGui {
         static const MarkdownConfig* s_ActiveConfig = nullptr;
         return s_ActiveConfig;
     }
+#endif
 
     // 2. Color Helper for Built-in Styling Tags
     // (ParseMarkdownColor is defined in imgui_markdown.h in namespace ImGui)

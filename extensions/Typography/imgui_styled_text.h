@@ -25,6 +25,17 @@
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
+#include <cmath>
+
+#if defined(__has_include)
+    #if __has_include("../../imgee_host_backend.h")
+        #include "../../imgee_host_backend.h"
+    #elif __has_include("imgee_host_backend.h")
+        #include "imgee_host_backend.h"
+    #endif
+#else
+    #include "../../imgee_host_backend.h"
+#endif
 
 #if !defined(CONTRIB_DISABLE_BADGES) && \
     !defined(CONTRIB_DISABLE_BADGE) && \
@@ -65,8 +76,54 @@ namespace ImGui {
 
 #ifndef IMGUI_IMAGE_NAMED_DECLARED
 #define IMGUI_IMAGE_NAMED_DECLARED
-    // Forward declare ImageNamed (implemented in ImgWindow.cpp)
+#if !defined(IMGEE_NO_IMGWINDOW_BRIDGE) && (defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h")))
+    // Forward declare ImageNamed (implemented in ImgWindow.cpp when bridged to ImgWindow)
     IMGUI_API void ImageNamed(const char* name, const ImVec2& size = ImVec2(0.0f, 0.0f), const ImVec2& uv0 = ImVec2(0.0f, 0.0f), const ImVec2& uv1 = ImVec2(1.0f, 1.0f), const ImVec4& tint_col = ImVec4(1.0f, 1.0f, 1.0f, 1.0f), const ImVec4& border_col = ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+#else
+    // Standalone header-only ImageNamed backed by ImGee::HostBackend and ImGui::SetNamedTextureResolver
+    inline void ImageNamed(const char* name, const ImVec2& size = ImVec2(0.0f, 0.0f), const ImVec2& uv0 = ImVec2(0.0f, 0.0f), const ImVec2& uv1 = ImVec2(1.0f, 1.0f), const ImVec4& tint_col = ImVec4(1.0f, 1.0f, 1.0f, 1.0f), const ImVec4& border_col = ImVec4(0.0f, 0.0f, 0.0f, 0.0f)) {
+        if (!name || !*name) return;
+        ImVec2 nativeSize(0.0f, 0.0f);
+        ImTextureID tex = (ImTextureID)0;
+#if defined(IMGEE_HOST_BACKEND_H)
+        const ImGee::HostBackend& backend = ImGee::GetHostBackend();
+        if (backend.ResolveNamedTexture) {
+            tex = backend.ResolveNamedTexture(name, &nativeSize, backend.UserData);
+        }
+        if (!tex && Detail::GetNamedTextureResolver()) {
+            tex = Detail::GetNamedTextureResolver()(name, &nativeSize);
+        }
+#endif
+        if (!tex) return;
+
+        ImVec2 renderSize = size;
+        if (renderSize.x <= 0.0f && renderSize.y <= 0.0f) {
+            renderSize = nativeSize;
+        } else if (renderSize.x <= 0.0f && nativeSize.y > 0.0f) {
+            renderSize.x = std::round(renderSize.y * (nativeSize.x / nativeSize.y));
+        } else if (renderSize.y <= 0.0f && nativeSize.x > 0.0f) {
+            renderSize.y = std::round(renderSize.x * (nativeSize.y / nativeSize.x));
+        }
+        if (renderSize.x <= 0.0f || renderSize.y <= 0.0f) return;
+
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19190)
+        if (border_col.w > 0.0f) {
+            const float border_size = ImGui::GetStyle().ImageBorderSize;
+            ImGui::PushStyleVar(ImGuiStyleVar_ImageBorderSize, border_size > 1.0f ? border_size : 1.0f);
+            ImGui::PushStyleColor(ImGuiCol_Border, border_col);
+            ImGui::ImageWithBg(tex, renderSize, uv0, uv1, ImVec4(0, 0, 0, 0), tint_col);
+            ImGui::PopStyleColor();
+            ImGui::PopStyleVar();
+        } else {
+            ImGui::PushStyleVar(ImGuiStyleVar_ImageBorderSize, 0.0f);
+            ImGui::ImageWithBg(tex, renderSize, uv0, uv1, ImVec4(0, 0, 0, 0), tint_col);
+            ImGui::PopStyleVar();
+        }
+#else
+        ImGui::Image(tex, renderSize, uv0, uv1, tint_col, border_col);
+#endif
+    }
+#endif
 #endif
 
     namespace Detail {

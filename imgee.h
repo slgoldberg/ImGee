@@ -155,9 +155,12 @@
 // #define IMGEE_DISABLE_MOUSE_WHEEL_COMBO      // Exclude MouseWheelCombo & ComboWithReset
 // #define IMGEE_DISABLE_MOUSE_WHEEL_SCROLL_DEFEAT // Disable automatic mouse-wheel defeat on scrollable viewports
 
-// --- Image Decoding & Build Optimization ---
+// --- Image Decoding, Path Policy & Host Platform Integration ---
 // #define IMGEE_DISABLE_STB_IMAGE              // Disable ImGee's isolated built-in stb_image decoder
-// #define IMGEE_EXTERNAL_STB_IMAGE             // Compile ImGee's decoder once via contrib/ImGee/imgee_stb_image.cpp
+// #define IMGEE_EXTERNAL_STB_IMAGE             // Compile ImGee's decoder once via imgee_stb_image.cpp
+// #define IMGEE_NO_IMGWINDOW_BRIDGE            // Disable automatic ImgWindow.h discovery & wiring
+// #define IMGEE_FILEPATHS_FORCE_RELATIVE 1     // Force local Markdown image paths to resolve strictly as relative paths
+//                                              // (Defaults to 1 when bridged to ImgWindow, and 0 in pure standalone builds)
 
 // ============================================================================
 // Bidirectional Opt-Out Propagation: IMGEE_DISABLE_* -> CONTRIB_DISABLE_*
@@ -266,8 +269,18 @@
 #endif
 
 // ============================================================================
-// 0. ISOLATED INTERNAL IMAGE DECODER (Turnkey PNG/JPEG/BMP/GIF/TGA support)
+// 0. HOST BACKEND & ISOLATED INTERNAL IMAGE DECODER
 // ============================================================================
+
+#include "imgee_host_backend.h"
+
+#ifndef IMGEE_FILEPATHS_FORCE_RELATIVE
+    #if !defined(IMGEE_NO_IMGWINDOW_BRIDGE) && (defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h")))
+        #define IMGEE_FILEPATHS_FORCE_RELATIVE 1
+    #else
+        #define IMGEE_FILEPATHS_FORCE_RELATIVE 0
+    #endif
+#endif
 
 #if !defined(IMGEE_DISABLE_STB_IMAGE)
 #include "imgee_stbi_internal.h"
@@ -303,7 +316,7 @@
 // 5. HOST PLATFORM BRIDGES (ImgWindow Named Texture Resolver, Decoder & Shutdown)
 // ============================================================================
 
-#if defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h"))
+#if !defined(IMGEE_NO_IMGWINDOW_BRIDGE) && (defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h")))
 #if !defined(IMGWINDOW_H)
 #include "ImgWindow.h"
 #endif
@@ -327,10 +340,8 @@ namespace ImGeeDetail {
             );
 #endif
 
-#if defined(IMGUI_MARKDOWN_IMAGE_SERVICE_H)
-            // 3. Register shutdown handler to purge Markdown VRAM cache on plugin stop/reload
-            ImgWindow::AddShutdownHandler(&ImGui::MarkdownImageService::ClearTextureCache);
-#endif
+            // 3. Register ImGee::Shutdown with ImgWindow to purge Markdown VRAM caches on plugin stop/reload
+            ImgWindow::AddShutdownHandler(&ImGee::Shutdown);
         }
     };
     static AutoImgWindowResolverBridge s_AutoImgWindowResolverBridge;

@@ -55,8 +55,18 @@
 
 #include "imgui_markdown.h"
 
-// If ImgWindow is available, use its texture upload driver & XPLM path helpers
-#if defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h"))
+#if defined(__has_include)
+    #if __has_include("../../imgee_host_backend.h")
+        #include "../../imgee_host_backend.h"
+    #elif __has_include("imgee_host_backend.h")
+        #include "imgee_host_backend.h"
+    #endif
+#else
+    #include "../../imgee_host_backend.h"
+#endif
+
+// If ImgWindow is available (and not explicitly disabled), use its texture upload driver & XPLM path helpers
+#if !defined(IMGEE_NO_IMGWINDOW_BRIDGE) && (defined(IMGWINDOW_H) || (defined(__has_include) && __has_include("ImgWindow.h")))
     #if !defined(IMGWINDOW_H)
         #include "ImgWindow.h"
     #endif
@@ -74,9 +84,28 @@
     #endif
 #endif
 
+// Default local path containment policy:
+//   1 = Treat leading '/' or '\' on Markdown image URLs as relative paths (default when bridged to ImgWindow / X-Plane)
+//   0 = Preserve native OS absolute paths such as /path/to/img.png (default in pure standalone builds)
+#ifndef IMGEE_FILEPATHS_FORCE_RELATIVE
+    #if defined(IMGEE_HAS_IMGWINDOW)
+        #define IMGEE_FILEPATHS_FORCE_RELATIVE 1
+    #else
+        #define IMGEE_FILEPATHS_FORCE_RELATIVE 0
+    #endif
+#endif
+
 // Include ImGee's isolated internal stb_image decoder (unless disabled by host)
 #if !defined(IMGEE_DISABLE_STB_IMAGE)
-    #include "../../imgee_stbi_internal.h"
+    #if defined(__has_include)
+        #if __has_include("../../imgee_stbi_internal.h")
+            #include "../../imgee_stbi_internal.h"
+        #elif __has_include("imgee_stbi_internal.h")
+            #include "imgee_stbi_internal.h"
+        #endif
+    #else
+        #include "../../imgee_stbi_internal.h"
+    #endif
 #endif
 
 namespace ImGui {
@@ -224,12 +253,34 @@ inline void ClearTextureCache() {
 
     for (auto& pair : GetDiskTextureCache()) {
         if (pair.second.textureID) {
+#if defined(IMGEE_HOST_BACKEND_H)
+            const ImGee::HostBackend& backend = ImGee::GetHostBackend();
+            if (backend.DeleteTexture) {
+                backend.DeleteTexture(pair.second.textureID, backend.UserData);
+                continue;
+            }
+#endif
 #if defined(IMGEE_HAS_IMGWINDOW)
             ImgWindow::DeleteTexture(pair.second.textureID);
 #endif
         }
     }
     GetDiskTextureCache().clear();
+}
+
+inline ImTextureID UploadTextureRGBA8Internal(const unsigned char* pixels, int width, int height) {
+    if (!pixels || width <= 0 || height <= 0) return (ImTextureID)0;
+#if defined(IMGEE_HOST_BACKEND_H)
+    const ImGee::HostBackend& backend = ImGee::GetHostBackend();
+    if (backend.CreateTextureRGBA8) {
+        return backend.CreateTextureRGBA8(pixels, width, height, backend.UserData);
+    }
+#endif
+#if defined(IMGEE_HAS_IMGWINDOW)
+    return ImgWindow::CreateTexture(pixels, width, height);
+#else
+    return (ImTextureID)0;
+#endif
 }
 
 inline void ProcessPendingTextures() {
@@ -258,10 +309,7 @@ inline void ProcessPendingTextures() {
         entry.inFlight = false;
 
         if (item.success && item.pixels && item.width > 0 && item.height > 0) {
-            ImTextureID texID = (ImTextureID)0;
-#if defined(IMGEE_HAS_IMGWINDOW)
-            texID = ImgWindow::CreateTexture(item.pixels, item.width, item.height);
-#endif
+            ImTextureID texID = UploadTextureRGBA8Internal(item.pixels, item.width, item.height);
             FreeDecodedImageInternal(item.pixels);
             item.pixels = nullptr;
 
@@ -880,6 +928,17 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
         namedTex = ImgWindow::GetNamedTexture(url, &nativeSize, &uv0, &uv1, &tintCol, &borderCol);
     }
 #endif
+#if defined(IMGEE_HOST_BACKEND_H)
+    if (!namedTex) {
+        const ImGee::HostBackend& backend = ImGee::GetHostBackend();
+        if (backend.ResolveNamedTexture) {
+            namedTex = backend.ResolveNamedTexture(key.c_str(), &nativeSize, backend.UserData);
+            if (!namedTex && key != url) {
+                namedTex = backend.ResolveNamedTexture(url.c_str(), &nativeSize, backend.UserData);
+            }
+        }
+    }
+#endif
     if (!namedTex && Detail::GetNamedTextureResolver()) {
         namedTex = Detail::GetNamedTextureResolver()(key.c_str(), &nativeSize);
         if (!namedTex && key != url) {
@@ -902,8 +961,21 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
         return namedData;
     }
 
+    // Resolve optional active MarkdownConfig::baseDir for local relative paths:
+    bool isRemoteUrl = (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0);
+    const ImGui::MarkdownConfig* activeCfg = ImGui::GetActiveMarkdownConfig()
+                                             ? ImGui::GetActiveMarkdownConfig()
+                                             : ImGui::GetDefaultMarkdownConfig();
+    std::string activeBaseDir = (!isRemoteUrl && activeCfg && activeCfg->baseDir && activeCfg->baseDir[0] != '\0')
+                                ? std::string(activeCfg->baseDir)
+                                : std::string();
+    while (activeBaseDir.size() > 1 && (activeBaseDir.back() == '/' || activeBaseDir.back() == '\\')) {
+        activeBaseDir.pop_back();
+    }
+    const std::string cacheKey = activeBaseDir.empty() ? url : (activeBaseDir + "|" + url);
+
     // 2. Check Disk & Remote Texture Cache
-    auto it = GetDiskTextureCache().find(url);
+    auto it = GetDiskTextureCache().find(cacheKey);
     if (it != GetDiskTextureCache().end()) {
         if (it->second.inFlight) {
             ImGui::MarkdownImageData loadingData;
@@ -931,9 +1003,8 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
     }
 
     // 3. Tier 3: Remote Web URLs
-    bool isRemoteUrl = (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0);
     if (isRemoteUrl) {
-        auto& entry = GetDiskTextureCache()[url];
+        auto& entry = GetDiskTextureCache()[cacheKey];
         entry.inFlight = true;
         entry.failed = false;
         entry.lastAttemptTime = ImGui::GetTime();
@@ -955,44 +1026,113 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
         return loadingData;
     }
 
-    // 4. Tier 2: Resolve File Path on Disk (CWD -> X-Plane Root -> Calling Plugin Folders)
-    std::string resolvedPath = url;
+    // 4. Tier 2: Resolve File Path on Disk
+    //    (baseDir -> HostBackend::ResolveAssetPath -> CWD -> X-Plane Root / Calling Plugin Folders)
+    std::string resolvedPath;
     bool fileFound = false;
 
     auto checkCandidate = [](const std::string& candidate, struct stat& st_out) -> bool {
-        return (stat(candidate.c_str(), &st_out) == 0 && S_ISREG(st_out.st_mode));
+        return (!candidate.empty() && stat(candidate.c_str(), &st_out) == 0 && S_ISREG(st_out.st_mode));
     };
 
+    const bool hasWinDrivePrefix = (url.size() >= 3 && std::isalpha(static_cast<unsigned char>(url[0])) &&
+                                    url[1] == ':' && (url[2] == '/' || url[2] == '\\'));
+    const bool hasLeadingSlash = (!url.empty() && (url[0] == '/' || url[0] == '\\'));
+    const bool isAbsoluteOsPath = hasWinDrivePrefix || hasLeadingSlash;
+
+    std::string cleanUrl = url;
+    if (cleanUrl.rfind("./", 0) == 0 || cleanUrl.rfind(".\\", 0) == 0) {
+        cleanUrl = cleanUrl.substr(2);
+    }
+#if IMGEE_FILEPATHS_FORCE_RELATIVE
+    while (!cleanUrl.empty() && (cleanUrl[0] == '/' || cleanUrl[0] == '\\')) {
+        cleanUrl.erase(0, 1);
+    }
+    if (hasWinDrivePrefix) {
+        cleanUrl.clear(); // Disallow raw drive-letter absolute paths under strict relative mode
+    }
+#endif
+
     struct stat st;
-    if (checkCandidate(resolvedPath, st)) {
+
+#if !IMGEE_FILEPATHS_FORCE_RELATIVE
+    // In standalone mode (IMGEE_FILEPATHS_FORCE_RELATIVE == 0), preserve native OS absolute paths directly:
+    if (isAbsoluteOsPath && checkCandidate(url, st)) {
+        resolvedPath = url;
         fileFound = true;
     }
+#else
+    (void)isAbsoluteOsPath;
+#endif
 
-#if defined(IMGEE_HAS_XPLM_PATHS)
-    std::string cleanUrl = url;
-    if (cleanUrl.rfind("./", 0) == 0) {
-        cleanUrl = cleanUrl.substr(2);
-    } else if (cleanUrl.rfind("/", 0) == 0 || cleanUrl.rfind("\\", 0) == 0) {
-        cleanUrl = cleanUrl.substr(1);
-    }
-
-    // Try relative to X-Plane system root
-    if (!fileFound && !cleanUrl.empty()) {
-        char sysPath[512] = {0};
-        XPLMGetSystemPath(sysPath);
-        std::string sPath(sysPath);
-        if (!sPath.empty() && sPath.back() != '/' && sPath.back() != '\\') {
-            sPath += '/';
-        }
-        std::string candidate = sPath + cleanUrl;
+    // (a) Resolve relative to MarkdownConfig::baseDir (when configured)
+    if (!fileFound && !activeBaseDir.empty() && !cleanUrl.empty()) {
+        std::string candidate = activeBaseDir + "/" + cleanUrl;
         if (checkCandidate(candidate, st)) {
             resolvedPath = candidate;
             fileFound = true;
         }
     }
 
-    // Try relative to calling plugin directory (e.g. Resources/plugins/<Plugin>/)
+    // (b) Resolve via ImGee::HostBackend::ResolveAssetPath (when registered)
+#if defined(IMGEE_HOST_BACKEND_H)
     if (!fileFound && !cleanUrl.empty()) {
+        const ImGee::HostBackend& backend = ImGee::GetHostBackend();
+        if (backend.ResolveAssetPath) {
+            char hostBuf[1024] = {0};
+            if (backend.ResolveAssetPath(cleanUrl.c_str(), hostBuf, sizeof(hostBuf), backend.UserData) && hostBuf[0] != '\0') {
+                std::string candidate(hostBuf);
+                if (checkCandidate(candidate, st)) {
+                    resolvedPath = candidate;
+                    fileFound = true;
+                }
+            }
+        }
+    }
+#endif
+
+    // (c) Resolve relative to Current Working Directory
+    if (!fileFound && !cleanUrl.empty()) {
+#if IMGEE_FILEPATHS_FORCE_RELATIVE
+        if (checkCandidate(cleanUrl, st)) {
+            resolvedPath = cleanUrl;
+            fileFound = true;
+        }
+#else
+        if (checkCandidate(url, st)) {
+            resolvedPath = url;
+            fileFound = true;
+        } else if (cleanUrl != url && checkCandidate(cleanUrl, st)) {
+            resolvedPath = cleanUrl;
+            fileFound = true;
+        }
+#endif
+    }
+
+#if defined(IMGEE_HAS_XPLM_PATHS)
+    // In XPLM fallback, also strip a leading slash if IMGEE_FILEPATHS_FORCE_RELATIVE was overridden to 0
+    std::string xplmRelUrl = cleanUrl;
+    while (!xplmRelUrl.empty() && (xplmRelUrl[0] == '/' || xplmRelUrl[0] == '\\')) {
+        xplmRelUrl.erase(0, 1);
+    }
+
+    // (d) Try relative to X-Plane system root
+    if (!fileFound && !xplmRelUrl.empty()) {
+        char sysPath[512] = {0};
+        XPLMGetSystemPath(sysPath);
+        std::string sPath(sysPath);
+        if (!sPath.empty() && sPath.back() != '/' && sPath.back() != '\\') {
+            sPath += '/';
+        }
+        std::string candidate = sPath + xplmRelUrl;
+        if (checkCandidate(candidate, st)) {
+            resolvedPath = candidate;
+            fileFound = true;
+        }
+    }
+
+    // (e) Try relative to calling plugin directory (e.g. Resources/plugins/<Plugin>/)
+    if (!fileFound && !xplmRelUrl.empty()) {
         XPLMPluginID myId = XPLMGetMyID();
         if (myId != XPLM_NO_PLUGIN_ID) {
             char pluginFilePath[512] = {0};
@@ -1013,7 +1153,7 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
                 };
 
                 for (const auto& d : searchDirs) {
-                    std::string candidate = d + "/" + cleanUrl;
+                    std::string candidate = d + "/" + xplmRelUrl;
                     if (checkCandidate(candidate, st)) {
                         resolvedPath = candidate;
                         fileFound = true;
@@ -1026,7 +1166,7 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
 #endif
 
     if (!fileFound) {
-        auto& entry = GetDiskTextureCache()[url];
+        auto& entry = GetDiskTextureCache()[cacheKey];
         entry.inFlight = false;
         entry.failed = true;
         entry.lastAttemptTime = ImGui::GetTime();
@@ -1040,7 +1180,7 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
     unsigned char* pixels = DecodeImageFileInternal(resolvedPath.c_str(), &width, &height);
     if (!pixels || width <= 0 || height <= 0) {
         if (pixels) FreeDecodedImageInternal(pixels);
-        auto& entry = GetDiskTextureCache()[url];
+        auto& entry = GetDiskTextureCache()[cacheKey];
         entry.inFlight = false;
         entry.failed = true;
         entry.lastAttemptTime = ImGui::GetTime();
@@ -1050,14 +1190,11 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
         return invalid;
     }
 
-    ImTextureID texID = (ImTextureID)0;
-#if defined(IMGEE_HAS_IMGWINDOW)
-    texID = ImgWindow::CreateTexture(pixels, width, height);
-#endif
+    ImTextureID texID = UploadTextureRGBA8Internal(pixels, width, height);
     FreeDecodedImageInternal(pixels);
 
     if (!texID) {
-        auto& entry = GetDiskTextureCache()[url];
+        auto& entry = GetDiskTextureCache()[cacheKey];
         entry.inFlight = false;
         entry.failed = true;
         entry.lastAttemptTime = ImGui::GetTime();
@@ -1073,7 +1210,7 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
     successEntry.inFlight = false;
     successEntry.failed = false;
     successEntry.retryCount = 0;
-    GetDiskTextureCache()[url] = successEntry;
+    GetDiskTextureCache()[cacheKey] = successEntry;
 
     ImGui::MarkdownImageData img;
     img.isValid = true;
@@ -1098,6 +1235,9 @@ namespace MarkdownImageDetail {
     struct AutoMarkdownImageServiceInit {
         AutoMarkdownImageServiceInit() {
             EnableDefaultImageService(true);
+#if defined(IMGEE_HOST_BACKEND_H)
+            ImGee::AddShutdownHandler(&ClearTextureCache);
+#endif
         }
     };
     static AutoMarkdownImageServiceInit s_AutoMarkdownImageServiceInit;

@@ -552,7 +552,25 @@ namespace ImGui
         ImFont*                 boldItalicFont = nullptr;           // If nullptr, falls back to boldFont or italicFont
         ImFont*                 monoFont = nullptr;                 // If nullptr, falls back to ambient window font
         ImFont*                 regularFont = nullptr;              // If nullptr, falls back to ambient window font
+        const char*             baseDir = nullptr;                  // Optional base directory for resolving relative Markdown image paths
     };
+
+#ifndef IMGUI_MARKDOWN_CONFIG_REGISTRY_DEFINED
+#define IMGUI_MARKDOWN_CONFIG_REGISTRY_DEFINED
+    inline const MarkdownConfig*& GetDefaultMarkdownConfig() {
+        static const MarkdownConfig* s_DefaultConfig = nullptr;
+        return s_DefaultConfig;
+    }
+
+    inline void SetDefaultMarkdownConfig(const MarkdownConfig* config) {
+        GetDefaultMarkdownConfig() = config;
+    }
+
+    inline const MarkdownConfig*& GetActiveMarkdownConfig() {
+        static const MarkdownConfig* s_ActiveConfig = nullptr;
+        return s_ActiveConfig;
+    }
+#endif
 
     //-----------------------------------------------------------------------------
     // External interface (Low-Level Rendering Engine)
@@ -3594,6 +3612,16 @@ namespace ImGui
     {
         inline void Render( const char* markdown_, size_t markdownLength_, const MarkdownConfig& mdConfig_ )
     {
+        struct ScopedActiveMarkdownConfig {
+            const MarkdownConfig* prev;
+            explicit ScopedActiveMarkdownConfig( const MarkdownConfig* cur ) : prev( GetActiveMarkdownConfig() ) {
+                GetActiveMarkdownConfig() = cur;
+            }
+            ~ScopedActiveMarkdownConfig() {
+                GetActiveMarkdownConfig() = prev;
+            }
+        } activeConfigScope( &mdConfig_ );
+
         static const char* linkHoverStart = NULL; // we need to preserve status of link hovering between frames
         Line        line;
         Link        link;
