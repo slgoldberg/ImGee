@@ -38,12 +38,186 @@
 #if defined(__has_include)
     #if __has_include("imgui_internal.h")
         #include "imgui_internal.h"
+    #elif __has_include(<imgui_internal.h>)
+        #include <imgui_internal.h>
     #endif
 #else
     #include "imgui_internal.h"
 #endif
 #include <cmath>
 #include <algorithm>
+
+#ifndef IMGEE_GET_ITEM_ID_COMPAT_DEFINED
+#define IMGEE_GET_ITEM_ID_COMPAT_DEFINED
+namespace ImGui {
+namespace Detail {
+    inline ImGuiID GetLastItemIDCompat() {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM < 18300)
+        return (GImGui && GImGui->CurrentWindow) ? GImGui->CurrentWindow->DC.LastItemId : 0;
+#else
+        return GetItemID();
+#endif
+    }
+} // namespace Detail
+} // namespace ImGui
+#endif // IMGEE_GET_ITEM_ID_COMPAT_DEFINED
+
+#ifndef IMGUI_LINK_CLICK_RESULT_DEFINED
+#define IMGUI_LINK_CLICK_RESULT_DEFINED
+namespace ImGui {
+namespace Detail {
+    struct LinkClickToggleState {
+        ImGuiContext* context                 = nullptr;
+        int           frame_count             = -1;
+        ImGuiID       item_id                 = 0;
+        ImVec2        item_min                = ImVec2(-1.0f, -1.0f);
+        bool          toggle_mode             = false;
+        bool          click_consumed          = false;
+        bool          is_menu_item            = false;
+        bool          menu_item_selected      = false;
+        ImGuiContext* menu_active_context     = nullptr;
+        int           menu_active_frame       = -1;
+        bool          wheel_latched           = false;
+        ImGuiContext* wheel_latch_context     = nullptr;
+        int           wheel_latch_alive_frame = -1;
+        ImVec2        wheel_latch_mouse_pos   = ImVec2(-1.0f, -1.0f);
+    };
+
+    inline LinkClickToggleState& GetLinkClickToggleState() {
+        static LinkClickToggleState s_State;
+        return s_State;
+    }
+
+    inline void RegisterItemTooltipToggle(bool is_toggle_eligible = true) {
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        ImGuiContext* cur_ctx = GetCurrentContext();
+        int cur_frame = GetFrameCount();
+        ImGuiID cur_id = GetLastItemIDCompat();
+        ImVec2 cur_min = GetItemRectMin();
+        bool same_item = (st.context == cur_ctx) && (st.frame_count == cur_frame) &&
+                         ((cur_id != 0 && st.item_id == cur_id) ||
+                          (cur_id == 0 && st.item_id == 0 && st.item_min.x == cur_min.x && st.item_min.y == cur_min.y));
+        if (!same_item) {
+            st.context            = cur_ctx;
+            st.frame_count        = cur_frame;
+            st.item_id            = cur_id;
+            st.item_min           = cur_min;
+            st.click_consumed     = false;
+            st.is_menu_item       = false;
+            st.menu_item_selected = false;
+        }
+        if (IsItemClicked()) {
+            st.wheel_latched = false;
+        }
+        st.toggle_mode = st.click_consumed ? false : is_toggle_eligible;
+    }
+
+    inline void RegisterMenuItemSelection(bool is_selected, bool is_clicked = false, bool is_toggle_eligible = false) {
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        ImGuiContext* cur_ctx = GetCurrentContext();
+        int cur_frame = GetFrameCount();
+        st.context             = cur_ctx;
+        st.frame_count         = cur_frame;
+        st.item_id             = GetLastItemIDCompat();
+        st.item_min            = GetItemRectMin();
+        st.click_consumed      = false;
+        st.toggle_mode         = is_toggle_eligible;
+        st.is_menu_item        = true;
+        st.menu_item_selected  = is_selected;
+        st.menu_active_context = cur_ctx;
+        st.menu_active_frame   = cur_frame;
+        if (is_clicked) {
+            st.wheel_latched = false;
+        }
+    }
+
+    inline bool KeepWheelLatchAlive(bool wheel_stepped) {
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        ImGuiContext* cur_ctx = GetCurrentContext();
+        int cur_frame = GetFrameCount();
+        ImVec2 mouse_pos = GetIO().MousePos;
+        if (wheel_stepped) {
+            st.wheel_latched           = true;
+            st.wheel_latch_context     = cur_ctx;
+            st.wheel_latch_alive_frame = cur_frame;
+            st.wheel_latch_mouse_pos   = mouse_pos;
+            return false;
+        } else if (st.wheel_latched && st.wheel_latch_context == cur_ctx) {
+            float dx = mouse_pos.x - st.wheel_latch_mouse_pos.x;
+            float dy = mouse_pos.y - st.wheel_latch_mouse_pos.y;
+            if (dx > 6.0f || dx < -6.0f || dy > 6.0f || dy < -6.0f) {
+                st.wheel_latched = false;
+                return true;
+            } else {
+                st.wheel_latch_alive_frame = cur_frame;
+            }
+        }
+        return false;
+    }
+
+    inline bool ResolveItemTooltipHover(ImGuiID raw_item_id, bool raw_hovered) {
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        ImGuiContext* cur_ctx = GetCurrentContext();
+        int cur_frame = GetFrameCount();
+        if (!st.wheel_latched || st.wheel_latch_context != cur_ctx) {
+            return raw_hovered;
+        }
+        ImVec2 mouse_pos = GetIO().MousePos;
+        float dx = mouse_pos.x - st.wheel_latch_mouse_pos.x;
+        float dy = mouse_pos.y - st.wheel_latch_mouse_pos.y;
+        bool menu_still_open = (st.menu_active_context == cur_ctx) && (cur_frame - st.menu_active_frame <= 1);
+        if ((!menu_still_open && cur_frame - st.wheel_latch_alive_frame > 2) ||
+            dx > 6.0f || dx < -6.0f || dy > 6.0f || dy < -6.0f) {
+            st.wheel_latched = false;
+            return raw_hovered;
+        }
+        if (menu_still_open) {
+            ImVec2 cur_min = GetItemRectMin();
+            bool same_item = (st.context == cur_ctx) && (st.frame_count == cur_frame) &&
+                             ((raw_item_id != 0 && st.item_id == raw_item_id) ||
+                              (raw_item_id == 0 && st.item_id == 0 && st.item_min.x == cur_min.x && st.item_min.y == cur_min.y));
+            if (same_item && st.is_menu_item) {
+                return st.menu_item_selected;
+            }
+            return false;
+        }
+        return raw_hovered;
+    }
+
+    inline void MarkLastItemClickConsumed() {
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        if (st.context == GetCurrentContext() && st.frame_count == GetFrameCount()) {
+            st.click_consumed = true;
+            st.toggle_mode    = false;
+        }
+    }
+
+    inline bool ShouldToggleTooltipOnClick(ImGuiID raw_item_id, bool is_item_active) {
+        (void)is_item_active;
+        LinkClickToggleState& st = GetLinkClickToggleState();
+        ImVec2 cur_min = GetItemRectMin();
+        if (st.context == GetCurrentContext() && st.frame_count == GetFrameCount()) {
+            if ((raw_item_id != 0 && st.item_id == raw_item_id) ||
+                (raw_item_id == 0 && st.item_id == 0 && st.item_min.x == cur_min.x && st.item_min.y == cur_min.y)) {
+                return st.toggle_mode;
+            }
+        }
+        return false;
+    }
+} // namespace Detail
+
+    struct LinkClickResult {
+        bool clicked;
+
+        constexpr LinkClickResult(bool is_clicked = false) noexcept : clicked(is_clicked) {}
+
+        operator bool() const noexcept {
+            Detail::MarkLastItemClickConsumed();
+            return clicked;
+        }
+    };
+} // namespace ImGui
+#endif // IMGUI_LINK_CLICK_RESULT_DEFINED
 
 namespace ImGui {
 
@@ -88,6 +262,7 @@ namespace ImGui {
         ItemSize(bb, style.FramePadding.y);
         if (!ItemAdd(bb, id)) return false;
         ButtonBehavior(bb, id, nullptr, nullptr);
+        Detail::RegisterItemTooltipToggle(true);
 
         // Animate arc using sinusoidal expansion and contraction
         float t = (float)GetTime() * speed;
@@ -167,6 +342,7 @@ namespace ImGui {
         ItemSize(bb, style.FramePadding.y);
         if (!ItemAdd(bb, id)) return false;
         ButtonBehavior(bb, id, nullptr, nullptr);
+        Detail::RegisterItemTooltipToggle(true);
 
         ImVec2 center(pos.x + radius, pos.y + total_height * 0.5f);
         float track_radius = radius - thickness * 0.5f;

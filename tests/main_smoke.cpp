@@ -2007,6 +2007,165 @@ int main(int argc, char** argv) {
         CompleteHeadlessRenderTextures();
     }
 
+    // ========================================================================
+    // Read-Only Indicator TimedTooltip Click-to-Toggle Regression Tests:
+    //  Verifies multi-frame held-click toggle ON -> stay open across release ->
+    //  dismiss on second click across ActivitySpinner, ProgressDial,
+    //  CountdownDial, Badge, Kbd, and Icon (inside a movable window where
+    //  Badge / Kbd trigger ActiveId == MoveId during multi-frame holds), while
+    //  confirming ButtonMD("<icon undo /> <badge>OK</badge> Reset") preserves
+    //  standard action-button tooltip behavior without falsely auto-toggling.
+    // ========================================================================
+    {
+        auto setMouseInput = [&](float mx, float my, bool down) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddMousePosEvent(mx, my);
+            io.AddMouseButtonEvent(0, down);
+#else
+            io.MousePos = ImVec2(mx, my);
+            io.MouseDown[0] = down;
+#endif
+        };
+
+        ImGui::TimedTooltip::TooltipConfig roTipCfg;
+        roTipCfg.hover_delay_cycles = 60;
+        roTipCfg.grace_period_cycles = 3;
+
+        ImVec2 itemCenters[7];
+        bool tipShown[7] = { false, false, false, false, false, false, false };
+        bool btnMdActivated = false;
+
+        auto renderIndicatorFrame = [&](bool captureCenters = false, ImGuiMouseCursor* outCursor = nullptr) {
+            io.DeltaTime = 1.0f / 60.0f;
+            ImGui::NewFrame();
+
+            // Movable window (no ImGuiWindowFlags_NoMove) so non-ButtonBehavior items
+            // (Badge / Kbd) assign ActiveId = MoveId on mouse-down!
+            ImGui::SetNextWindowPos(ImVec2(25.0f, 25.0f), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(480.0f, 360.0f), ImGuiCond_Always);
+            ImGui::Begin("ReadOnlyIndicatorTooltipToggleWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot roSnap = StackSnapshot::Capture();
+
+            auto captureCenter = [&](int slot) {
+                if (captureCenters) {
+                    const ImVec2 mn = ImGui::GetItemRectMin();
+                    const ImVec2 mx = ImGui::GetItemRectMax();
+                    itemCenters[slot] = ImVec2((mn.x + mx.x) * 0.5f, (mn.y + mx.y) * 0.5f);
+                }
+            };
+
+            ImGui::ActivitySpinner("##ro_spin", 9.0f);
+            captureCenter(0);
+            tipShown[0] = ImGui::TimedTooltip::Text(&roTipCfg, "ActivitySpinner tooltip");
+
+            ImGui::ProgressDial("##ro_prog", 0.65f, 9.0f);
+            captureCenter(1);
+            tipShown[1] = ImGui::TimedTooltip::TextMD(&roTipCfg, "**ProgressDial** tooltip");
+
+            ImGui::CountdownDial("##ro_cnt", 12.0f, 30.0f, 9.0f);
+            captureCenter(2);
+            tipShown[2] = ImGui::TimedTooltip::Text(&roTipCfg, "CountdownDial tooltip");
+
+            ImGui::Badge("NAV");
+            captureCenter(3);
+            tipShown[3] = ImGui::TimedTooltip::TextMD(&roTipCfg, "**Badge** tooltip");
+
+            ImGui::Kbd("Ctrl+G");
+            captureCenter(4);
+            tipShown[4] = ImGui::TimedTooltip::Text(&roTipCfg, "Kbd shortcut tooltip");
+
+            ImGui::Icon("info", 16.0f);
+            captureCenter(5);
+            tipShown[5] = ImGui::TimedTooltip::TextMD(&roTipCfg, "**Icon** tooltip");
+
+            if (ImGui::MD::Button("<icon undo /> <badge>OK</badge> Reset")) {
+                btnMdActivated = true;
+            }
+            captureCenter(6);
+            tipShown[6] = ImGui::TimedTooltip::TextMD(&roTipCfg, "**Reset** button tooltip");
+
+            if (outCursor) {
+                *outCursor = ImGui::GetMouseCursor();
+            }
+
+            roSnap.VerifyBalanced("ReadOnlyIndicatorTooltipToggleWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        // Discover item centers with mouse parked away from the window:
+        setMouseInput(2.0f, 2.0f, false);
+        renderIndicatorFrame(true);
+
+        const char* kIndicatorNames[6] = {
+            "ActivitySpinner", "ProgressDial", "CountdownDial", "Badge", "Kbd", "Icon"
+        };
+        for (int idx = 0; idx < 6; ++idx) {
+            const ImVec2 c = itemCenters[idx];
+            ImGuiMouseCursor cur = ImGuiMouseCursor_Arrow;
+
+            // 1. Brief hover (< hover_delay_cycles == 60): Hand cursor shown, tooltip not yet visible
+            setMouseInput(c.x, c.y, false);
+            renderIndicatorFrame(false, &cur);
+            renderIndicatorFrame(false, &cur);
+            IMGEE_TEST_CHECK(cur == ImGuiMouseCursor_Hand);
+            IMGEE_TEST_CHECK(!tipShown[idx]);
+
+            // 2. Click and hold across 6 frames (> grace_period_cycles == 3):
+            //    Must pop immediately on Frame 1 AND stay displayed across all held frames!
+            for (int hf = 0; hf < 6; ++hf) {
+                setMouseInput(c.x, c.y, true);
+                renderIndicatorFrame();
+                if (!tipShown[idx]) {
+                    std::fprintf(stderr, "[FAIL] '%s' tooltip dropped on held frame %d\n", kIndicatorNames[idx], hf);
+                }
+                IMGEE_TEST_CHECK(tipShown[idx]);
+            }
+
+            // 3. Release mouse button and hover 2 frames: tooltip stays displayed!
+            setMouseInput(c.x, c.y, false);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(tipShown[idx]);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(tipShown[idx]);
+
+            // 4. Second multi-frame click dismisses the tooltip immediately and keeps it closed:
+            setMouseInput(c.x, c.y, true);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(!tipShown[idx]);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(!tipShown[idx]);
+            setMouseInput(c.x, c.y, false);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(!tipShown[idx]);
+        }
+
+        // Verify ButtonMD("<icon undo /> <badge>OK</badge> Reset") does NOT falsely auto-toggle
+        // its trailing action-button tooltip on click before hover_delay_cycles:
+        {
+            const ImVec2 bc = itemCenters[6];
+            btnMdActivated = false;
+            setMouseInput(bc.x, bc.y, false);
+            renderIndicatorFrame();
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(!tipShown[6]);
+
+            for (int hf = 0; hf < 4; ++hf) {
+                setMouseInput(bc.x, bc.y, true);
+                renderIndicatorFrame();
+                IMGEE_TEST_CHECK(!tipShown[6]);
+            }
+            setMouseInput(bc.x, bc.y, false);
+            renderIndicatorFrame();
+            IMGEE_TEST_CHECK(btnMdActivated);
+            IMGEE_TEST_CHECK(!tipShown[6]);
+        }
+
+        setMouseInput(2.0f, 2.0f, false);
+        renderIndicatorFrame();
+    }
+
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
     IMGEE_TEST_CHECK(gpuState.createdCount == 4);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);

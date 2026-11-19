@@ -3552,12 +3552,13 @@ namespace ImGui {
             (void)hash_id;
             ImVec2 calculated_size(0, 0);
 
-            // Save ambient context font metrics so dry-run measurement cannot leak side effects
+            // Save ambient context font metrics and tooltip click-toggle state so dry-run measurement cannot leak side effects
             float saved_font_size = GImGui ? GImGui->FontSize : 14.0f;
             float saved_drawlist_size = GImGui ? GImGui->DrawListSharedData.FontSize : 14.0f;
             float saved_win_scale = (GImGui && GImGui->CurrentWindow) ? GImGui->CurrentWindow->FontWindowScale : 1.0f;
             float caller_scale = ImGui::GetFontScale(false);
             ImFont* saved_font = GImGui ? GImGui->Font : nullptr;
+            const ImGui::Detail::LinkClickToggleState saved_toggle_state = ImGui::Detail::GetLinkClickToggleState();
             
             // Use static measurement window IDs so we NEVER create zombie windows or leak into g.WindowsFocusOrder!
             static const char* s_measure_windows[4] = {
@@ -3636,6 +3637,7 @@ namespace ImGui {
                     GImGui->Font = saved_font;
                 }
             }
+            ImGui::Detail::GetLinkClickToggleState() = saved_toggle_state;
         
             return calculated_size;
         }
@@ -3697,6 +3699,7 @@ namespace ImGui {
                 const ImGuiItemStatusFlags saved_last_st   = window->DC.LastItemStatusFlags;
                 const ImRect               saved_last_rect = window->DC.LastItemRect;
 #endif
+                const ImGui::Detail::LinkClickToggleState saved_toggle_state = ImGui::Detail::GetLinkClickToggleState();
 
                 const MarkdownConfig* base_cfg = GetDefaultMarkdownConfig();
                 MarkdownConfig nowrap_cfg = base_cfg ? *base_cfg : MarkdownConfig{};
@@ -3723,6 +3726,7 @@ namespace ImGui {
                 window->DC.LastItemStatusFlags    = saved_last_st;
                 window->DC.LastItemRect           = saved_last_rect;
 #endif
+                ImGui::Detail::GetLinkClickToggleState() = saved_toggle_state;
             }
         } // namespace Detail
 
@@ -3774,11 +3778,13 @@ namespace ImGui {
                 const ImVec2 orig_screen_pos      = ImGui::GetCursorScreenPos();
                 const ImVec2 saved_curr_line_size = window ? window->DC.CurrLineSize : ImVec2(0.0f, 0.0f);
                 const float  saved_curr_base_off  = window ? window->DC.CurrLineTextBaseOffset : 0.0f;
+                const ImGui::Detail::LinkClickToggleState saved_toggle_state = ImGui::Detail::GetLinkClickToggleState();
 
                 const MarkdownConfig* base_cfg = GetDefaultMarkdownConfig();
                 MarkdownConfig nowrap_cfg = base_cfg ? *base_cfg : MarkdownConfig{};
                 nowrap_cfg.wrapWidth = -1.0f;
                 Markdown::TextUnformatted(display_part, &nowrap_cfg);
+                ImGui::Detail::GetLinkClickToggleState() = saved_toggle_state;
 
                 ImVec2 item_sz = ImGui::GetItemRectSize();
                 ImVec2 final_sz = size_arg;
@@ -4059,7 +4065,11 @@ namespace ImGui {
                 return false;
             }
             ImGuiID raw_id = ImGui::GetItemID();
-            bool hovered = ImGui::IsItemHovered();
+            ImGuiHoveredFlags hov_flags = ImGuiHoveredFlags_None;
+            if (GImGui && GImGui->CurrentWindow && GImGui->ActiveId != 0 && GImGui->ActiveId == GImGui->CurrentWindow->MoveId) {
+                hov_flags |= ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+            }
+            bool hovered = ImGui::IsItemHovered(hov_flags);
             return MarkdownDetail::ShowMarkdownTooltip(raw_id, hovered, markdown_text.c_str(), wrap_width, delay_frames, ImGui::IsItemClicked());
         }
 
@@ -4068,7 +4078,11 @@ namespace ImGui {
                 return false;
             }
             ImGuiID raw_id = ImGui::GetItemID();
-            bool hovered = ImGui::IsItemHovered();
+            ImGuiHoveredFlags hov_flags = ImGuiHoveredFlags_None;
+            if (GImGui && GImGui->CurrentWindow && GImGui->ActiveId != 0 && GImGui->ActiveId == GImGui->CurrentWindow->MoveId) {
+                hov_flags |= ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+            }
+            bool hovered = ImGui::IsItemHovered(hov_flags);
             return MarkdownDetail::ShowMarkdownTooltip(raw_id, hovered, markdown_text, wrap_width, delay_frames, ImGui::IsItemClicked());
         }
 
@@ -4076,7 +4090,11 @@ namespace ImGui {
             if (!is_allowed || !markdown_text || markdown_text[0] == '\0') {
                 return false;
             }
-            bool hovered = ImGui::IsItemHovered();
+            ImGuiHoveredFlags hov_flags = ImGuiHoveredFlags_None;
+            if (GImGui && GImGui->CurrentWindow && GImGui->ActiveId != 0 && GImGui->ActiveId == GImGui->CurrentWindow->MoveId) {
+                hov_flags |= ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+            }
+            bool hovered = ImGui::IsItemHovered(hov_flags);
             return MarkdownDetail::ShowMarkdownTooltip(id, hovered, markdown_text, wrap_width, delay_frames, ImGui::IsItemClicked());
         }
 
@@ -4434,13 +4452,13 @@ namespace TimedTooltip {
     inline bool TextMDV(const TooltipConfig* config_override, const char* fmt, va_list args) {
         ImGuiID raw_id = ImGui::GetItemID();
         bool toggle = ImGui::Detail::ShouldToggleTooltipOnClick(raw_id, ImGui::IsItemActive());
-        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, ImGui::IsItemHovered());
+        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, Detail::IsTooltipTargetItemHovered());
         return TextMDProxyV(raw_id, hovered, config_override, fmt, args, ImGui::IsItemClicked(), toggle);
     }
 
     inline bool TextMDLinkV(const TooltipConfig* config_override, const char* fmt, va_list args) {
         ImGuiID raw_id = ImGui::GetItemID();
-        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, ImGui::IsItemHovered());
+        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, Detail::IsTooltipTargetItemHovered());
         return TextMDProxyV(raw_id, hovered, config_override, fmt, args, ImGui::IsItemClicked(), true);
     }
 

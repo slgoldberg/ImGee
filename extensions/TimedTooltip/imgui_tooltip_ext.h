@@ -227,6 +227,17 @@ namespace TimedTooltip {
     namespace Detail {
         typedef ImFont* (*BaseFontResolverFn)();
 
+        // Queries implicit hover on the preceding item while preserving hover continuity across
+        // multi-frame clicks on non-ButtonBehavior items (such as Badge / Kbd) where Dear ImGui
+        // assigns ActiveId = CurrentWindow->MoveId at end-of-frame on mouse-down.
+        inline bool IsTooltipTargetItemHovered() {
+            ImGuiHoveredFlags flags = ImGuiHoveredFlags_None;
+            if (GImGui && GImGui->CurrentWindow && GImGui->ActiveId != 0 && GImGui->ActiveId == GImGui->CurrentWindow->MoveId) {
+                flags |= ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
+            }
+            return ImGui::IsItemHovered(flags);
+        }
+
         inline BaseFontResolverFn& GetBaseFontResolver() {
             static BaseFontResolverFn s_Resolver = nullptr;
             return s_Resolver;
@@ -589,7 +600,7 @@ else // only *add* to max timeout if it's not very short per above:
     }
 
     inline bool BeginStationaryTooltip(ImGuiID hash_id, const TooltipConfig* config_override = nullptr) {
-        return BeginStationaryTooltipProxy(hash_id, ImGui::IsItemHovered(), config_override);
+        return BeginStationaryTooltipProxy(hash_id, Detail::IsTooltipTargetItemHovered(), config_override);
     }
 
     inline bool BeginStationaryTooltip(const char* str_id, const TooltipConfig* config_override = nullptr) {
@@ -956,13 +967,13 @@ namespace TimedTooltip {
     inline bool TextV(const TooltipConfig* config_override, const char* fmt, va_list args) {
         ImGuiID raw_id = ImGui::GetItemID();
         bool toggle = ImGui::Detail::ShouldToggleTooltipOnClick(raw_id, ImGui::IsItemActive());
-        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, ImGui::IsItemHovered());
+        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, Detail::IsTooltipTargetItemHovered());
         return TextProxyV(raw_id, hovered, config_override, fmt, args, ImGui::IsItemClicked(), toggle);
     }
 
     inline bool TextLinkV(const TooltipConfig* config_override, const char* fmt, va_list args) {
         ImGuiID raw_id = ImGui::GetItemID();
-        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, ImGui::IsItemHovered());
+        bool hovered = ImGui::Detail::ResolveItemTooltipHover(raw_id, Detail::IsTooltipTargetItemHovered());
         return TextProxyV(raw_id, hovered, config_override, fmt, args, ImGui::IsItemClicked(), true);
     }
 
