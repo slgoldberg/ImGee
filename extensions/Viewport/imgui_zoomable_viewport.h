@@ -46,8 +46,21 @@
 #ifndef IMGUI_DEFINE_MATH_OPERATORS
 #define IMGUI_DEFINE_MATH_OPERATORS
 #endif
-#include <imgui.h>
-#include <imgui_internal.h>
+#if defined(__has_include)
+    #if __has_include("imgui.h")
+        #include "imgui.h"
+    #else
+        #include <imgui.h>
+    #endif
+    #if __has_include("imgui_internal.h")
+        #include "imgui_internal.h"
+    #elif __has_include(<imgui_internal.h>)
+        #include <imgui_internal.h>
+    #endif
+#else
+    #include "imgui.h"
+    #include "imgui_internal.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -248,6 +261,7 @@ inline bool BeginZoomedViewport(
             const float wheel = io.MouseWheel;
             const float notches = (std::fabs(wheel) < 1.0f) ? wheel : std::round(wheel);
             state._zoom_changed_this_frame = state.StepZoom(notches * state.wheel_step);
+            ImGui::GetIO().MouseWheel = 0.0f;
         }
     }
 

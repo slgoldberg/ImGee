@@ -45,6 +45,19 @@ static const unsigned char kTinyRedPng[] = {
     0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
 };
 
+// Valid 69-byte 2x1 RGBA green PNG (used to distinguish subpath vs flattened image resolution)
+static const unsigned char kTiny2x1GreenPng[] = {
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0xF4, 0x22, 0x7F,
+    0x8A, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+    0x54, 0x78, 0x9C, 0x63, 0x60, 0xF8, 0x0F, 0x81,
+    0x00, 0x0F, 0xF9, 0x03, 0xFD, 0xD8, 0x39, 0x71,
+    0x41, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+    0x44, 0xAE, 0x42, 0x60, 0x82
+};
+
 struct MockGpuState {
     uintptr_t nextHandle = 100;
     int createdCount = 0;
@@ -1253,6 +1266,10 @@ int main(int argc, char** argv) {
             (void)ImGui::ZoomViewportControls(vpState);
 
             if (ImGui::BeginZoomedViewport("##DocBody", vpState, ImVec2(0.0f, -30.0f))) {
+                if (pass == 1) {
+                    // BeginZoomedViewport must zero io.MouseWheel after consuming Ctrl+MouseWheel zoom!
+                    IMGEE_TEST_CHECK(std::fabs(ImGui::GetIO().MouseWheel) <= 0.0001f);
+                }
                 innerFontSz = ImGui::GetFontSize();
                 MD::TextWrapped("# Zoomed Document Body\nParagraph scaled cleanly inside child viewport.", &mdCfg);
             }
@@ -1282,11 +1299,230 @@ int main(int argc, char** argv) {
 #endif
     }
 
-    // Verify ImGee::Shutdown() purges all 3 cached GPU textures via HostBackend::DeleteTexture
-    IMGEE_TEST_CHECK(gpuState.createdCount == 3);
+    // =========================================================================
+    // Wave 3 Regression Tests:
+    //  0) <img .../> placeholder width parity & images/subdir/foo.png priority
+    //  1) float=left mid-paragraph wrap + expansion below maxY
+    //  2) float=right (=35%) flush-right placement + right-inset wrap + expansion
+    //  3) Short text beside tall float (end-of-scope clearance, <callout>, CalcSize)
+    //  4) Explicit <clear/> & <!-- clear --> float clearing + narrow-viewport fallback
+    // =========================================================================
+    {
+        auto makeDir = [](const char* path) {
+#if defined(_WIN32)
+            (void)_mkdir(path);
+#else
+            (void)mkdir(path, 0755);
+#endif
+        };
+        auto rmDir = [](const char* path) {
+#if defined(_WIN32)
+            (void)_rmdir(path);
+#else
+            (void)rmdir(path);
+#endif
+        };
+
+        // 0a. <img src="missing_asset.png" /> placeholder width parity with ![Alt](missing_asset.png):
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave3PolishAndFloatsWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+        StackSnapshot w3Snap = StackSnapshot::Capture();
+
+        const char* mdMissing = "![Alt](nonexistent_remote_preview.png)";
+        const char* htmlMissing = "<img src=\"nonexistent_remote_preview.png\" />";
+        const float wMdPh = ImGui::MeasureMarkdownLineWidth(mdMissing, std::strlen(mdMissing), &mdCfg);
+        const float wHtmlPh = ImGui::MeasureMarkdownLineWidth(htmlMissing, std::strlen(htmlMissing), &mdCfg);
+        IMGEE_TEST_CHECK(wHtmlPh > 40.0f);
+        IMGEE_TEST_CHECK(std::fabs(wHtmlPh - wMdPh) <= 1.0f);
+
+        // 0b. Subpath priority: images/subdir/chart.png (2x1) MUST win over flattened images/chart.png (1x1)!
+        makeDir("imgee_ci_subprio");
+        makeDir("imgee_ci_subprio/docs");
+        makeDir("imgee_ci_subprio/docs/images");
+        makeDir("imgee_ci_subprio/docs/images/subdir");
+        const std::string flatChartPath = "imgee_ci_subprio/docs/images/chart.png";
+        const std::string subChartPath  = "imgee_ci_subprio/docs/images/subdir/chart.png";
+        {
+            std::ofstream ofsFlat(flatChartPath.c_str(), std::ios::binary | std::ios::trunc);
+            IMGEE_TEST_CHECK(ofsFlat.good());
+            ofsFlat.write(reinterpret_cast<const char*>(kTinyRedPng), static_cast<std::streamsize>(sizeof(kTinyRedPng)));
+
+            std::ofstream ofsSub(subChartPath.c_str(), std::ios::binary | std::ios::trunc);
+            IMGEE_TEST_CHECK(ofsSub.good());
+            ofsSub.write(reinterpret_cast<const char*>(kTiny2x1GreenPng), static_cast<std::streamsize>(sizeof(kTiny2x1GreenPng)));
+        }
+
+        ImGui::MarkdownConfig subPrioCfg = mdCfg;
+        subPrioCfg.baseDir = "imgee_ci_subprio/docs";
+        ImGui::MarkdownImageData subResolved;
+        {
+            struct ScopedCfg {
+                const ImGui::MarkdownConfig* prev;
+                explicit ScopedCfg(const ImGui::MarkdownConfig* c) : prev(ImGui::GetActiveMarkdownConfig()) { ImGui::GetActiveMarkdownConfig() = c; }
+                ~ScopedCfg() { ImGui::GetActiveMarkdownConfig() = prev; }
+            } sc(&subPrioCfg);
+            subResolved = ImGui::MarkdownImageService::DefaultMarkdownImageCallback({ "Chart", 5, "subdir/chart.png", 16, nullptr, true });
+        }
+        IMGEE_TEST_CHECK(subResolved.isValid);
+        IMGEE_TEST_CHECK(std::fabs(subResolved.native_size.x - 2.0f) <= 0.1f && std::fabs(subResolved.native_size.y - 1.0f) <= 0.1f);
+
+        std::remove(subChartPath.c_str());
+        std::remove(flatChartPath.c_str());
+        rmDir("imgee_ci_subprio/docs/images/subdir");
+        rmDir("imgee_ci_subprio/docs/images");
+        rmDir("imgee_ci_subprio/docs");
+        rmDir("imgee_ci_subprio");
+
+        // 1. float=left + mid-paragraph expansion once y >= maxY:
+        const float baseLeftX = ImGui::GetCursorScreenPos().x;
+        const float fullW = ImGui::GetContentRegionAvail().x;
+        const std::string floatLeftDoc =
+            "![Diagram](<test_logo =120x42 float=left gap=14x4>)\n\n"
+            "Autopilot flight director guidance continuously computes lateral roll commands and vertical pitch targets "
+            "across climb cruise descent and approach phases while monitoring dual redundant air data inertial reference "
+            "channels and autothrottle speed envelope protections throughout every segment of the flight plan.";
+        MD::TextWrapped(floatLeftDoc, &mdCfg);
+
+        ImVec2 flMin, flMax;
+        ImGui::GetLastMarkdownImageRect(&flMin, &flMax);
+        IMGEE_TEST_CHECK(std::fabs(flMin.x - baseLeftX) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs((flMax.x - flMin.x) - 120.0f) <= 1.0f);
+        const float flClearY = flMax.y + 4.0f;
+
+        const auto& leftLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(leftLines.size() >= 4);
+        bool sawWrappedBesideLeft = false;
+        bool sawExpandedBelowLeft = false;
+        for (size_t li = 0; li < leftLines.size(); ++li) {
+            if (leftLines[li].min.y < flMax.y - 2.0f) {
+                sawWrappedBesideLeft = true;
+                IMGEE_TEST_CHECK(leftLines[li].min.x >= baseLeftX + 120.0f + 14.0f - 2.0f);
+            } else if (leftLines[li].min.y >= flClearY + 1.0f) {
+                sawExpandedBelowLeft = true;
+                IMGEE_TEST_CHECK(std::fabs(leftLines[li].min.x - baseLeftX) <= 2.0f);
+            }
+        }
+        IMGEE_TEST_CHECK(sawWrappedBesideLeft && sawExpandedBelowLeft);
+
+        // 2. float=right (=35%) flush-right placement + right-inset wrap + expansion below maxY:
+        const std::string floatRightDoc =
+            "![Panel](<test_logo =35%x42 float=right gap=12x4>)\n\n"
+            "Primary hydraulic actuators receive pressurized fluid from engine driven pumps and electric standby pumps "
+            "ensuring full aileron elevator and rudder authority during asymmetric thrust or single system degraded "
+            "operations all the way down to touchdown rollout and taxiway turnoff.";
+        // Note: =35% with explicit height=42 via Pandoc attributes:
+        const std::string floatRightAttrDoc =
+            "![Panel](test_logo){width=35% height=42 float=right gap=12x4}\n\n"
+            "Primary hydraulic actuators receive pressurized fluid from engine driven pumps and electric standby pumps "
+            "ensuring full aileron elevator and rudder authority during asymmetric thrust or single system degraded "
+            "operations all the way down to touchdown rollout and taxiway turnoff while secondary accumulators maintain "
+            "parking brake pressure and nosewheel steering damping across extended gate turnaround operations.";
+        (void)floatRightDoc;
+        MD::TextWrapped(floatRightAttrDoc, &mdCfg);
+
+        ImVec2 frMin, frMax;
+        ImGui::GetLastMarkdownImageRect(&frMin, &frMax);
+        const float expectedRightW = std::round(fullW * 0.35f);
+        IMGEE_TEST_CHECK(std::fabs((frMax.x - frMin.x) - expectedRightW) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs(frMin.x - std::round(baseLeftX + fullW - expectedRightW)) <= 2.0f);
+        const float frClearY = frMax.y + 4.0f;
+
+        const auto& rightLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(rightLines.size() >= 4);
+        bool sawWrappedBesideRight = false;
+        bool sawExpandedBelowRight = false;
+        for (size_t li = 0; li < rightLines.size(); ++li) {
+            if (rightLines[li].min.y < frMax.y - 2.0f) {
+                sawWrappedBesideRight = true;
+                IMGEE_TEST_CHECK(std::fabs(rightLines[li].min.x - baseLeftX) <= 2.0f);
+                IMGEE_TEST_CHECK(rightLines[li].max.x <= frMin.x - 12.0f + 2.0f);
+            } else if (rightLines[li].min.y >= frClearY + 1.0f) {
+                if (rightLines[li].max.x > frMin.x + 40.0f) {
+                    sawExpandedBelowRight = true;
+                }
+            }
+        }
+        IMGEE_TEST_CHECK(sawWrappedBesideRight && sawExpandedBelowRight);
+
+        // 3. Short text beside a tall floated image:
+        //  (a) Top-level end-of-scope clearance prevents overlap with subsequent widgets
+        MD::TextWrapped("![Tall](test_logo){width=90 height=160 float=left}\n\nShort caption note.", &mdCfg);
+        ImVec2 tallMin, tallMax;
+        ImGui::GetLastMarkdownImageRect(&tallMin, &tallMax);
+        const float cursorAfterTallFloat = ImGui::GetCursorScreenPos().y;
+        IMGEE_TEST_CHECK(cursorAfterTallFloat >= tallMax.y);
+
+        //  (b) Inside <callout type=note>: card group height encompasses full 150px floated image!
+        const std::string calloutTallFloatDoc =
+            "> [!NOTE]\n"
+            "> ![Badge](test_logo){width=80 height=150 float=right}\n"
+            "> Brief note beside tall float.\n";
+        MD::TextWrapped(calloutTallFloatDoc, &mdCfg);
+        const ImVec2 calloutCardSz = ImGui::GetItemRectSize();
+        IMGEE_TEST_CHECK(calloutCardSz.y >= 150.0f);
+
+        //  (c) MD::CalcMarkdownSize encompasses full height of a tall floated image:
+        const ImVec2 calcFloatSz = MD::CalcMarkdownSize(
+            ImGui::GetID("##w3_calc_float"), 0,
+            "![TallCalc](test_logo){width=80 height=175 float=left}\n\nOne short line.",
+            400.0f, 1.0f, &mdCfg);
+        IMGEE_TEST_CHECK(calcFloatSz.y >= 175.0f);
+
+        // 4. Explicit <clear/> and <!-- clear --> advance cursor Y below active floats:
+        MD::TextWrapped(
+            "![Clr1](test_logo){width=90 height=130 float=left}\n\n"
+            "Beside float.\n"
+            "<clear/>\n"
+            "Line after explicit clear tag.", &mdCfg);
+        ImVec2 clrMin, clrMax;
+        ImGui::GetLastMarkdownImageRect(&clrMin, &clrMax);
+        const auto& clrLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(clrLines.size() >= 2);
+        IMGEE_TEST_CHECK(clrLines.front().min.y < clrMax.y);
+        IMGEE_TEST_CHECK(clrLines.front().min.x >= baseLeftX + 90.0f);
+        IMGEE_TEST_CHECK(clrLines.back().min.y >= clrMax.y);
+        IMGEE_TEST_CHECK(std::fabs(clrLines.back().min.x - baseLeftX) <= 2.0f);
+
+        MD::TextWrapped(
+            "![Clr2](test_logo){width=90 height=120 float=left}\n\n"
+            "Beside float two.\n"
+            "<!-- clear -->\n"
+            "Line after HTML clear comment.", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&clrMin, &clrMax);
+        const auto& clrCommentLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(clrCommentLines.size() >= 2);
+        IMGEE_TEST_CHECK(clrCommentLines.back().min.y >= clrMax.y);
+        IMGEE_TEST_CHECK(std::fabs(clrCommentLines.back().min.x - baseLeftX) <= 2.0f);
+
+        w3Snap.VerifyBalanced("Wave3PolishAndFloatsWin");
+        ImGui::End();
+
+        // 5. Responsive narrow-viewport fallback: when remaining text width < 90px * scale,
+        //    float gracefully falls back to block layout (text renders BELOW image at full width):
+        ImGui::SetNextWindowPos(ImVec2(680.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(180.0f, 300.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave3NarrowFallbackWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        const float narrowLeftX = ImGui::GetCursorScreenPos().x;
+        MD::TextWrapped("![WideInNarrow](test_logo){width=110 height=50 float=left}\n\nFallback prose below image.", &mdCfg);
+        ImVec2 nfMin, nfMax;
+        ImGui::GetLastMarkdownImageRect(&nfMin, &nfMax);
+        const auto& nfLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(!nfLines.empty());
+        IMGEE_TEST_CHECK(nfLines.front().min.y >= nfMax.y - 0.5f);
+        IMGEE_TEST_CHECK(std::fabs(nfLines.front().min.x - narrowLeftX) <= 2.0f);
+        ImGui::End();
+
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+    }
+
+    // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
+    IMGEE_TEST_CHECK(gpuState.createdCount == 4);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);
     ImGee::Shutdown();
-    IMGEE_TEST_CHECK(gpuState.deletedCount == 3);
+    IMGEE_TEST_CHECK(gpuState.deletedCount == 4);
 
     ImGui::DestroyContext(ctx);
     std::remove(tempPngName.c_str());

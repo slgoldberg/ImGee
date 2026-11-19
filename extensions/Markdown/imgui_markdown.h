@@ -255,6 +255,13 @@ namespace ImGui
         Right
     };
 
+    enum class MarkdownImageFloat : unsigned char
+    {
+        None = 0,
+        Left,
+        Right
+    };
+
     struct MarkdownImageData
     {
         bool                    isValid = false;                    // if true, will draw the image
@@ -272,6 +279,9 @@ namespace ImGui
         std::string             customCaption;                      // Optional custom caption override (uses [alt] when empty)
         std::string             altOverride;                        // Optional alt text extracted from HTML <img alt="...">
         int                     lightboxMode = 0;                   // 0 = follow MarkdownConfig::enableImageLightbox, 1 = force enable, -1 = force disable
+        MarkdownImageFloat      floatMode = MarkdownImageFloat::None; // Optional text-wrapping float (float=left, float=right)
+        float                   floatGapX = -1.0f;                  // Optional horizontal gap between floated figure and wrapped text (-1 = auto ~12px * scale)
+        float                   floatGapY = -1.0f;                  // Optional vertical margin below floated figure (-1 = auto ~6px * scale)
     };
 
     enum class MarkdownFormatType
@@ -652,6 +662,235 @@ namespace ImGui
         return endLine;
     }
 
+    struct MarkdownRenderedLineSpan
+    {
+        ImVec2 min = ImVec2( 0.0f, 0.0f );
+        ImVec2 max = ImVec2( 0.0f, 0.0f );
+    };
+
+    namespace MarkdownDetail
+    {
+        struct FloatBox
+        {
+            MarkdownImageFloat side = MarkdownImageFloat::None;
+            float              minY = 0.0f;
+            float              maxY = 0.0f;
+            float              xMin = 0.0f;
+            float              xMax = 0.0f;
+            float              hGap = 0.0f;
+        };
+
+        struct FloatLayoutScope
+        {
+            ImGuiWindow*        window = nullptr;
+            float               containerLeftX = 0.0f;
+            float               containerRightX = 0.0f;
+            float               deepestMaxY = -FLT_MAX;
+            bool                justPlacedFloat = false;
+            std::vector<FloatBox> boxes;
+        };
+
+        inline std::vector<FloatLayoutScope*>& GetFloatScopeStack()
+        {
+            static std::vector<FloatLayoutScope*> s_Stack;
+            return s_Stack;
+        }
+
+        inline FloatLayoutScope* GetActiveFloatScope()
+        {
+            std::vector<FloatLayoutScope*>& st = GetFloatScopeStack();
+            if( st.empty() ) return nullptr;
+            FloatLayoutScope* top = st.back();
+            if( !top || top->window != ImGui::GetCurrentWindow() ) return nullptr;
+            return top;
+        }
+
+        inline std::vector<MarkdownRenderedLineSpan>& GetRenderedLineSpans()
+        {
+            static std::vector<MarkdownRenderedLineSpan> s_Lines;
+            return s_Lines;
+        }
+
+        inline void RecordRenderedTextLineSpan( const ImVec2& r_min, const ImVec2& r_max )
+        {
+            std::vector<MarkdownRenderedLineSpan>& lines = GetRenderedLineSpans();
+            if( lines.size() < 128 ) {
+                MarkdownRenderedLineSpan sp;
+                sp.min = r_min;
+                sp.max = r_max;
+                lines.push_back( sp );
+            }
+        }
+
+        inline float GetWindowNaturalLineStartX( ImGuiWindow* win )
+        {
+            if( !win ) return ImGui::GetCursorScreenPos().x;
+            return ImTrunc( win->Pos.x + win->DC.Indent.x + win->DC.ColumnsOffset.x );
+        }
+
+        // Queries active float insets (leftInset, rightInset) over [lineY, lineY + lineH).
+        // Returns true if at least one active float overlaps that vertical span.
+        inline bool QueryFloatBandAtY( float lineY, float lineH, float& out_left_inset, float& out_right_inset )
+        {
+            out_left_inset = 0.0f;
+            out_right_inset = 0.0f;
+            FloatLayoutScope* scope = GetActiveFloatScope();
+            if( !scope || scope->boxes.empty() ) return false;
+
+            float eff_left = scope->containerLeftX;
+            float eff_right = scope->containerRightX;
+            bool any_overlap = false;
+            const float span_h = ( lineH > 1.0f ) ? lineH : ImMax( 1.0f, ImGui::GetTextLineHeight() );
+
+            for( size_t i = 0; i < scope->boxes.size(); ++i ) {
+                const FloatBox& b = scope->boxes[i];
+                if( lineY < ( b.maxY - 0.5f ) && ( lineY + span_h ) > ( b.minY + 0.5f ) ) {
+                    any_overlap = true;
+                    if( b.side == MarkdownImageFloat::Left ) {
+                        eff_left = ImMax( eff_left, b.xMax + b.hGap );
+                    } else if( b.side == MarkdownImageFloat::Right ) {
+                        eff_right = ImMin( eff_right, b.xMin - b.hGap );
+                    }
+                }
+            }
+
+            if( any_overlap ) {
+                out_left_inset = ImMax( 0.0f, eff_left - scope->containerLeftX );
+                out_right_inset = ImMax( 0.0f, scope->containerRightX - eff_right );
+            }
+            return any_overlap;
+        }
+
+        inline void PrepareLineStartForFloats()
+        {
+            FloatLayoutScope* scope = GetActiveFloatScope();
+            if( !scope || scope->boxes.empty() ) return;
+            scope->justPlacedFloat = false;
+
+            ImGuiWindow* win = scope->window;
+            const ImVec2 cur_pos = ImGui::GetCursorScreenPos();
+            float left_inset = 0.0f, right_inset = 0.0f;
+            if( !QueryFloatBandAtY( cur_pos.y, ImGui::GetTextLineHeight(), left_inset, right_inset ) ) {
+                return;
+            }
+            if( left_inset > 0.0f ) {
+                const float natural_start_x = GetWindowNaturalLineStartX( win );
+                const float semantic_indent = ImMax( 0.0f, natural_start_x - scope->containerLeftX );
+                const float target_start_x = scope->containerLeftX + left_inset + semantic_indent;
+                if( cur_pos.x < target_start_x - 0.5f ) {
+                    ImGui::SetCursorScreenPos( ImVec2( target_start_x, cur_pos.y ) );
+                }
+            }
+        }
+
+        inline void ResolveLineFloatGeometry( float explicit_wrap_width, float& out_line_start_x, float& out_width_left )
+        {
+            ImGuiWindow* win = ImGui::GetCurrentWindow();
+            ImVec2 cur_pos = ImGui::GetCursorScreenPos();
+            float natural_start_x = GetWindowNaturalLineStartX( win );
+#if !defined(IMGUI_VERSION_NUM) || IMGUI_VERSION_NUM >= 18000
+            if( ImGuiTable* cur_table = ImGui::GetCurrentTable() ) {
+                if( cur_table->CurrentColumn != -1 && cur_table->CurrentColumn < cur_table->ColumnsCount ) {
+                    natural_start_x = ImMax( natural_start_x, cur_table->Columns[cur_table->CurrentColumn].WorkMinX );
+                }
+            }
+#endif
+            FloatLayoutScope* scope = GetActiveFloatScope();
+            if( scope ) {
+                scope->justPlacedFloat = false;
+            }
+            if( !scope || scope->boxes.empty() ) {
+                out_line_start_x = natural_start_x;
+                const float used_on_line = ImMax( 0.0f, cur_pos.x - out_line_start_x );
+                out_width_left = ( explicit_wrap_width > 0.0f )
+                                     ? ImMax( 10.0f, explicit_wrap_width - used_on_line )
+                                     : ImGui::GetContentRegionAvail().x;
+                return;
+            }
+
+            float left_inset = 0.0f, right_inset = 0.0f;
+            QueryFloatBandAtY( cur_pos.y, ImGui::GetTextLineHeight(), left_inset, right_inset );
+
+            const float semantic_indent = ImMax( 0.0f, natural_start_x - scope->containerLeftX );
+            const float target_start_x = scope->containerLeftX + left_inset + semantic_indent;
+            if( left_inset > 0.0f && cur_pos.x < target_start_x - 0.5f ) {
+                ImGui::SetCursorScreenPos( ImVec2( target_start_x, cur_pos.y ) );
+                cur_pos.x = target_start_x;
+            }
+            out_line_start_x = target_start_x;
+
+            const float base_right_x = ( explicit_wrap_width > 0.0f )
+                                           ? ( scope->containerLeftX + explicit_wrap_width )
+                                           : scope->containerRightX;
+            const float right_limit_x = base_right_x - right_inset;
+            out_width_left = ImMax( 10.0f, right_limit_x - cur_pos.x );
+        }
+
+        // Advances cursor Y past active floats matching 'which' (None = clear both Left and Right).
+        inline bool ClearActiveFloats( MarkdownImageFloat which = MarkdownImageFloat::None )
+        {
+            FloatLayoutScope* scope = GetActiveFloatScope();
+            if( !scope ) return false;
+            scope->justPlacedFloat = false;
+            if( scope->boxes.empty() ) return false;
+
+            ImGuiWindow* win = scope->window;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+            if( win && win->DC.IsSameLine ) {
+                ImGui::NewLine();
+            }
+#endif
+            const float cur_y = ImGui::GetCursorScreenPos().y;
+            float target_y = cur_y;
+            for( size_t i = 0; i < scope->boxes.size(); ++i ) {
+                const FloatBox& b = scope->boxes[i];
+                if( which == MarkdownImageFloat::None || b.side == which ) {
+                    if( b.maxY > target_y ) target_y = b.maxY;
+                }
+            }
+            if( target_y > cur_y + 0.25f ) {
+                const float natural_start_x = GetWindowNaturalLineStartX( win );
+                ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( 0.0f, 0.0f ) );
+                ImGui::SetCursorScreenPos( ImVec2( natural_start_x, target_y ) );
+                ImGui::Dummy( ImVec2( 0.0f, 0.0f ) );
+                ImGui::PopStyleVar();
+                return true;
+            }
+            return false;
+        }
+
+        inline MarkdownImageFloat ParseClearFloatMode( const char* param, size_t param_len, bool require_clear_keyword )
+        {
+            std::string s = ( param && param_len > 0 ) ? std::string( param, param_len ) : std::string();
+            for( size_t i = 0; i < s.size(); ++i ) {
+                s[i] = static_cast<char>( tolower( static_cast<unsigned char>( s[i] ) ) );
+            }
+            size_t st = 0;
+            while( st < s.size() && ( s[st] == ' ' || s[st] == '\t' || s[st] == '=' || s[st] == ':' || s[st] == '"' || s[st] == '\'' ) ) ++st;
+            size_t en = s.size();
+            while( en > st && ( s[en - 1] == ' ' || s[en - 1] == '\t' || s[en - 1] == '/' || s[en - 1] == '"' || s[en - 1] == '\'' ) ) --en;
+            s = s.substr( st, en - st );
+
+            if( require_clear_keyword ) {
+                size_t cpos = s.find( "clear" );
+                if( cpos == std::string::npos ) return static_cast<MarkdownImageFloat>( 255 ); // Not a clear directive
+                s = s.substr( cpos + 5 );
+                size_t cst = 0;
+                while( cst < s.size() && ( s[cst] == ' ' || s[cst] == '\t' || s[cst] == '=' || s[cst] == ':' || s[cst] == '"' || s[cst] == '\'' ) ) ++cst;
+                s = s.substr( cst );
+            }
+
+            if( s.rfind( "left", 0 ) == 0 ) return MarkdownImageFloat::Left;
+            if( s.rfind( "right", 0 ) == 0 ) return MarkdownImageFloat::Right;
+            return MarkdownImageFloat::None; // None == clear all/both
+        }
+    } // namespace MarkdownDetail
+
+    inline const std::vector<MarkdownRenderedLineSpan>& GetLastMarkdownRenderedLines()
+    {
+        return MarkdownDetail::GetRenderedLineSpans();
+    }
+
     struct TextRegion
     {
         TextRegion() : wrapWidth( 0.0f ), indentX( 0.0f ), leadIndents( 0 )
@@ -667,7 +906,15 @@ namespace ImGui
             (void)bIndentToHere_;
             if( wrapWidth < 0.0f )
             {
+                if( text_end_ > text_ )
+                {
+                    MarkdownDetail::PrepareLineStartForFloats();
+                }
                 ImGui::TextUnformatted( text_, text_end_ );
+                if( text_end_ > text_ )
+                {
+                    MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
+                }
                 return;
             }
 #ifdef ORIGINAL
@@ -675,18 +922,10 @@ namespace ImGui
 #else /* brat's version: */
 			float		scale = ImGui::GetFontScale(false);// use parent's scale
 #endif
-            float       lineStartX = ImGui::GetCurrentWindow()->WorkRect.Min.x;
-#if !defined(IMGUI_VERSION_NUM) || IMGUI_VERSION_NUM >= 18000
-            if( ImGuiTable* cur_table = ImGui::GetCurrentTable() )
-            {
-                if( cur_table->CurrentColumn != -1 && cur_table->CurrentColumn < cur_table->ColumnsCount )
-                {
-                    lineStartX = cur_table->Columns[cur_table->CurrentColumn].WorkMinX;
-                }
-            }
-#endif
+            float       lineStartX = 0.0f;
+            float       widthLeft = 0.0f;
+            MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
             float       usedOnLine = ImMax( 0.0f, ImGui::GetCursorScreenPos().x - lineStartX );
-            float       widthLeft = ( wrapWidth > 0.0f ) ? ImMax( 10.0f, wrapWidth - usedOnLine ) : GetContentRegionAvail().x;
             const char* endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
             endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
 
@@ -718,18 +957,22 @@ namespace ImGui
                     // Push to next line and suppress inter-item leading space!
                     ImGui::NewLine();
                     text_ = first_non_space;
-                    widthLeft = ( wrapWidth > 0.0f ) ? wrapWidth : ImGui::GetContentRegionAvail().x;
+                    MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
                     endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
                     endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
                 }
             }
             
             ImGui::TextUnformatted( text_, endLine );
-            widthLeft = ( wrapWidth > 0.0f ) ? wrapWidth : GetContentRegionAvail().x;
+            if( endLine > text_ )
+            {
+                MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
+            }
             while( endLine < text_end_ )
             {
                 text_ = endLine;
                 while( text_ < text_end_ && *text_ == ' ' ) { ++text_; }    // skip spaces at start of line
+                MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
                 endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
                 endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
                 if( text_ == endLine && text_ < text_end_ ) 
@@ -737,6 +980,10 @@ namespace ImGui
                     endLine++;
                 }
                 ImGui::TextUnformatted( text_, endLine );
+                if( endLine > text_ )
+                {
+                    MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
+                }
             }
         }
 
@@ -749,6 +996,7 @@ namespace ImGui
 
         void ApplyBullet( float custom_spacing = -1.0f )
         {
+            MarkdownDetail::PrepareLineStartForFloats();
             float startX = ImGui::GetCursorScreenPos().x;
             ImGui::Bullet();
             ImGui::SameLine( 0.0f, GetBulletSpacing( custom_spacing ) );
@@ -769,6 +1017,7 @@ namespace ImGui
 
         void ApplyOrderedNumber( const char* num_str, const char* num_str_end, float custom_spacing = -1.0f )
         {
+            MarkdownDetail::PrepareLineStartForFloats();
             float startX = ImGui::GetCursorScreenPos().x;
             ImGui::TextUnformatted( num_str, num_str_end );
             float spacing = ( custom_spacing >= 0.0f ) ? custom_spacing : ( ImGui::GetStyle().ItemSpacing.x * 0.5f );
@@ -1040,6 +1289,14 @@ namespace ImGui
             if( isLineEmpty )
             {
                 line_.wasBlank = true;
+                MarkdownDetail::FloatLayoutScope* fl_scope = MarkdownDetail::GetActiveFloatScope();
+                if( fl_scope && fl_scope->justPlacedFloat )
+                {
+                    // Suppress the single blank separator line immediately following a floated image
+                    // so the adjacent paragraph/heading aligns pixel-flush with the top of the float!
+                    fl_scope->justPlacedFloat = false;
+                    return;
+                }
             }
 
             formatInfo.type = MarkdownFormatType::NORMAL_TEXT;
@@ -1347,6 +1604,10 @@ namespace ImGui
             const FullLineWidthContext& ctx = GetActiveFullLineWidthContext();
             if( ctx.width > 0.0f ) return ctx.width;
             if( cfg && cfg->wrapWidth > 0.0f ) return cfg->wrapWidth;
+            if( FloatLayoutScope* fl = GetActiveFloatScope() ) {
+                const float scope_w = fl->containerRightX - fl->containerLeftX;
+                if( scope_w > 1.0f ) return scope_w;
+            }
             return ImGui::GetContentRegionAvail().x;
         }
 
@@ -4155,16 +4416,10 @@ namespace ImGui
             }
 
             const bool parent_aligned = GetActiveFullLineWidthContext().parentAligned;
-            const bool has_explicit_align = ( imageData.align != MarkdownImageAlign::None );
-            res.isBlockFigure = has_explicit_align || show_caption;
-
-            if( !parent_aligned && ( imageData.align == MarkdownImageAlign::Center || imageData.align == MarkdownImageAlign::Right ) ) {
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
-                if( cur_win && cur_win->DC.IsSameLine ) {
-                    ImGui::NewLine();
-                }
-#endif
-            }
+            FloatLayoutScope* float_scope = GetActiveFloatScope();
+            MarkdownImageFloat effective_float = ( !parent_aligned && float_scope != nullptr )
+                                                     ? imageData.floatMode
+                                                     : MarkdownImageFloat::None;
 
             const float full_avail_w = ResolveFullLineAvailWidth( &mdConfig_ );
             ImVec2 render_size = imageData.size;
@@ -4176,17 +4431,75 @@ namespace ImGui
             if( render_size.x < 1.0f ) render_size.x = 1.0f;
             if( render_size.y < 1.0f ) render_size.y = 1.0f;
 
-            const float margin_left_screen_x = ImGui::GetCursorScreenPos().x;
+            float vis_scale = ImGui::GetVisualScale();
+            if( vis_scale <= 0.0f ) vis_scale = 1.0f;
+            const float float_h_gap = ( imageData.floatGapX >= 0.0f ) ? imageData.floatGapX : std::round( 12.0f * vis_scale );
+            const float float_v_gap = ( imageData.floatGapY >= 0.0f ) ? imageData.floatGapY : std::round( 6.0f * vis_scale );
+            const float min_readable_text_w = std::round( 90.0f * vis_scale );
 
-            if( !parent_aligned ) {
-                float offset_x = 0.0f;
-                if( imageData.align == MarkdownImageAlign::Center && full_avail_w > render_size.x ) {
-                    offset_x = std::round( ( full_avail_w - render_size.x ) * 0.5f );
-                } else if( imageData.align == MarkdownImageAlign::Right && full_avail_w > render_size.x ) {
-                    offset_x = std::round( full_avail_w - render_size.x );
+            if( effective_float != MarkdownImageFloat::None ) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                if( cur_win && cur_win->DC.IsSameLine ) {
+                    ImGui::NewLine();
                 }
-                if( offset_x > 0.0f ) {
-                    ImGui::SetCursorPosX( ImGui::GetCursorPosX() + offset_x );
+#endif
+                // Responsive narrow-viewport fallback: if container is too narrow to leave a readable
+                // text column beside this image, clear active floats and render as a standard block figure!
+                if( full_avail_w > 1.0f && ( full_avail_w - ( render_size.x + float_h_gap ) ) < min_readable_text_w ) {
+                    ClearActiveFloats();
+                    effective_float = MarkdownImageFloat::None;
+                }
+            }
+
+            float float_top_y = 0.0f;
+            float margin_left_screen_x = ImGui::GetCursorScreenPos().x;
+
+            if( effective_float != MarkdownImageFloat::None && float_scope != nullptr ) {
+                res.isBlockFigure = true;
+                float_top_y = ImGui::GetCursorScreenPos().y;
+                float left_in = 0.0f, right_in = 0.0f;
+                if( QueryFloatBandAtY( float_top_y, render_size.y, left_in, right_in ) ) {
+                    const float band_w = ( float_scope->containerRightX - float_scope->containerLeftX ) - left_in - right_in;
+                    if( ( band_w - ( render_size.x + float_h_gap ) ) < min_readable_text_w ) {
+                        // Stack below conflicting active floats when horizontal room is exhausted
+                        ClearActiveFloats();
+                        float_top_y = ImGui::GetCursorScreenPos().y;
+                        left_in = 0.0f;
+                        right_in = 0.0f;
+                        QueryFloatBandAtY( float_top_y, render_size.y, left_in, right_in );
+                    }
+                }
+
+                margin_left_screen_x = float_scope->containerLeftX;
+                const float band_left_x = float_scope->containerLeftX + left_in;
+                const float band_right_x = float_scope->containerRightX - right_in;
+                const float fig_x = ( effective_float == MarkdownImageFloat::Right )
+                                        ? std::round( band_right_x - render_size.x )
+                                        : std::round( band_left_x );
+                ImGui::SetCursorScreenPos( ImVec2( fig_x, float_top_y ) );
+            } else {
+                const bool has_explicit_align = ( imageData.align != MarkdownImageAlign::None );
+                res.isBlockFigure = has_explicit_align || show_caption || ( imageData.floatMode != MarkdownImageFloat::None );
+
+                if( !parent_aligned && ( imageData.align == MarkdownImageAlign::Center || imageData.align == MarkdownImageAlign::Right ) ) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                    if( cur_win && cur_win->DC.IsSameLine ) {
+                        ImGui::NewLine();
+                    }
+#endif
+                }
+                margin_left_screen_x = ImGui::GetCursorScreenPos().x;
+
+                if( !parent_aligned ) {
+                    float offset_x = 0.0f;
+                    if( imageData.align == MarkdownImageAlign::Center && full_avail_w > render_size.x ) {
+                        offset_x = std::round( ( full_avail_w - render_size.x ) * 0.5f );
+                    } else if( imageData.align == MarkdownImageAlign::Right && full_avail_w > render_size.x ) {
+                        offset_x = std::round( full_avail_w - render_size.x );
+                    }
+                    if( offset_x > 0.0f ) {
+                        ImGui::SetCursorPosX( ImGui::GetCursorPosX() + offset_x );
+                    }
                 }
             }
 
@@ -4208,8 +4521,7 @@ namespace ImGui
             const bool img_clicked_down = img_hovered && ImGui::IsMouseClicked( 0 );
 
             if( show_caption ) {
-                float scale = ImGui::GetVisualScale();
-                if( scale <= 0.0f ) scale = 1.0f;
+                float scale = vis_scale;
                 const float cap_gap_y = std::round( 4.0f * scale );
 
                 MarkdownConfig cap_cfg = mdConfig_;
@@ -4218,7 +4530,9 @@ namespace ImGui
 
                 const float cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), cap_cfg );
                 const float img_center_x = ( res.imageRectMin.x + res.imageRectMax.x ) * 0.5f;
-                const float min_readable_w = ImMin( cap_single_w, 180.0f * scale );
+                const float min_readable_w = ( effective_float != MarkdownImageFloat::None )
+                                                 ? render_size.x
+                                                 : ImMin( cap_single_w, 180.0f * scale );
                 const float max_cap_w = ( full_avail_w > 10.0f )
                                             ? ImMin( full_avail_w, ImMax( render_size.x, min_readable_w ) )
                                             : ImMax( render_size.x, cap_single_w );
@@ -4269,6 +4583,35 @@ namespace ImGui
                 }
 
                 ImGui::EndGroup();
+            }
+
+            if( effective_float != MarkdownImageFloat::None && float_scope != nullptr ) {
+                const ImVec2 fig_min = ImGui::GetItemRectMin();
+                const ImVec2 fig_max = ImGui::GetItemRectMax();
+                FloatBox fbox;
+                fbox.side = effective_float;
+                fbox.minY = float_top_y;
+                fbox.maxY = fig_max.y + float_v_gap;
+                fbox.xMin = ImMin( res.imageRectMin.x, fig_min.x );
+                fbox.xMax = ImMax( res.imageRectMax.x, fig_max.x );
+                fbox.hGap = float_h_gap;
+                float_scope->boxes.push_back( fbox );
+                if( fbox.maxY > float_scope->deepestMaxY ) {
+                    float_scope->deepestMaxY = fbox.maxY;
+                }
+                float_scope->justPlacedFloat = true;
+
+                // Rewind cursor back to float_top_y so subsequent prose/headings/lists wrap alongside the figure!
+                const float natural_start_x = GetWindowNaturalLineStartX( cur_win );
+                ImGui::SetCursorScreenPos( ImVec2( natural_start_x, float_top_y ) );
+                if( cur_win ) {
+                    cur_win->DC.CurrLineSize = ImVec2( 0.0f, 0.0f );
+                    cur_win->DC.CurrLineTextBaseOffset = 0.0f;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                    cur_win->DC.IsSameLine = false;
+                    cur_win->DC.IsSetPos = false;
+#endif
+                }
             }
 
             if( use_lightbox || has_link_cb ) {
@@ -4450,12 +4793,74 @@ namespace ImGui
 
             return res;
         }
+        struct ScopedFloatLayout
+        {
+            FloatLayoutScope scope;
+            bool             active = false;
+
+            ScopedFloatLayout( bool enable, const MarkdownConfig& cfg )
+            {
+                if( !enable ) return;
+                ImGuiWindow* win = ImGui::GetCurrentWindow();
+                if( !win ) return;
+                active = true;
+                if( GetFloatScopeStack().empty() ) {
+                    GetRenderedLineSpans().clear();
+                }
+                scope.window = win;
+                scope.containerLeftX = GetWindowNaturalLineStartX( win );
+                const float full_w = ResolveFullLineAvailWidth( &cfg );
+                scope.containerRightX = scope.containerLeftX + ImMax( 0.0f, full_w );
+                GetFloatScopeStack().push_back( &scope );
+            }
+
+            ~ScopedFloatLayout()
+            {
+                if( !active ) return;
+                // End-of-scope clearance: ensure cursor Y and parent group/card/CalcMarkdownSize bounds
+                // advance past the deepest floated figure registered in this scope!
+                if( scope.window == ImGui::GetCurrentWindow() && scope.deepestMaxY > -FLT_MAX * 0.5f ) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                    if( scope.window->DC.IsSameLine ) {
+                        ImGui::NewLine();
+                    }
+#endif
+                    const float cur_y = ImGui::GetCursorScreenPos().y;
+                    if( scope.deepestMaxY > cur_y + 0.25f ) {
+                        const float natural_start_x = GetWindowNaturalLineStartX( scope.window );
+                        ImGui::PushStyleVar( ImGuiStyleVar_ItemSpacing, ImVec2( 0.0f, 0.0f ) );
+                        ImGui::SetCursorScreenPos( ImVec2( natural_start_x, scope.deepestMaxY ) );
+                        ImGui::Dummy( ImVec2( 0.0f, 0.0f ) );
+                        ImGui::PopStyleVar();
+                    }
+                }
+                std::vector<FloatLayoutScope*>& st = GetFloatScopeStack();
+                if( !st.empty() && st.back() == &scope ) {
+                    st.pop_back();
+                } else {
+                    for( size_t idx = st.size(); idx > 0; --idx ) {
+                        if( st[idx - 1] == &scope ) {
+                            st.erase( st.begin() + static_cast<std::ptrdiff_t>( idx - 1 ) );
+                            break;
+                        }
+                    }
+                }
+            }
+        };
+
+        inline void RenderInternal( const char* markdown_, size_t markdownLength_, const MarkdownConfig& mdConfig_, bool create_float_scope );
     } // namespace MarkdownDetail
     
     // render markdown (low-level rendering pipeline)
     namespace Markdown
     {
         inline void Render( const char* markdown_, size_t markdownLength_, const MarkdownConfig& mdConfig_ )
+        {
+            MarkdownDetail::RenderInternal( markdown_, markdownLength_, mdConfig_, true );
+        }
+    } // namespace Markdown
+
+    inline void MarkdownDetail::RenderInternal( const char* markdown_, size_t markdownLength_, const MarkdownConfig& mdConfig_, bool create_float_scope )
     {
         struct ScopedActiveMarkdownConfig {
             const MarkdownConfig* prev;
@@ -4466,6 +4871,8 @@ namespace ImGui
                 GetActiveMarkdownConfig() = prev;
             }
         } activeConfigScope( &mdConfig_ );
+
+        ScopedFloatLayout floatLayoutScope( create_float_scope, mdConfig_ );
 
         static const char* linkHoverStart = NULL; // we need to preserve status of link hovering between frames
         Line        line;
@@ -4514,6 +4921,7 @@ namespace ImGui
                             headers, alignments, rows, metadata );
                         if( table_end > i )
                         {
+                            ClearActiveFloats();
                             RenderTableBlock( headers, alignments, rows, metadata, mdConfig_, table_idx++ );
 
                             textRegion.ResetIndent();
@@ -4562,6 +4970,7 @@ namespace ImGui
                         }
                         if( is_thematic_break && tb_count >= 3 )
                         {
+                            ClearActiveFloats();
                             ImGui::Separator();
                             textRegion.ResetIndent();
                             lastWasSeparator = true;
@@ -4735,7 +5144,7 @@ namespace ImGui
                                     headingConfig.boldFont = h_font;
                                 }
 
-                                Markdown::Render( h_start, heading_text_len, headingConfig );
+                                RenderInternal( h_start, heading_text_len, headingConfig, false );
                             }
 
                             mdConfig_.formatCallback( formatInfo, false );
@@ -4837,6 +5246,7 @@ namespace ImGui
                             i = (int)markdownLength_ - 1;
                         }
 
+                        ClearActiveFloats();
                         RenderCodeBlock( markdown_ + code_start, (size_t)(code_end - code_start),
                                          markdown_ + info_start, (size_t)(trimmed_info_end - info_start),
                                          mdConfig_, code_block_idx++, line.leadSpaceCount );
@@ -4875,6 +5285,84 @@ namespace ImGui
                 continue;
             }
 
+            // HTML comments (e.g. <!-- clear -->, <!-- clear: left -->, or general inline/block comments):
+            if( c == '<' && link.state == Link::NO_LINK && !( em.state != Emphasis::NONE && em.sym == '`' ) &&
+                i + 3 < (int)markdownLength_ && markdown_[i + 1] == '!' && markdown_[i + 2] == '-' && markdown_[i + 3] == '-' )
+            {
+                int commentEnd = -1;
+                for( int k = i + 4; k + 2 < (int)markdownLength_; ++k )
+                {
+                    if( markdown_[k] == '-' && markdown_[k + 1] == '-' && markdown_[k + 2] == '>' )
+                    {
+                        commentEnd = k + 3;
+                        break;
+                    }
+                }
+                if( commentEnd != -1 )
+                {
+                    line.lineEnd = i;
+                    const bool hadPrecedingText = ( line.lineEnd > line.lineStart && line.lineEnd > line.lastRenderPosition + 1 );
+                    if( hadPrecedingText )
+                    {
+                        RenderLine( markdown_, line, textRegion, mdConfig_ );
+                        line.isUnorderedListStart = false;
+                        line.isOrderedListStart = false;
+                    }
+
+                    const char* c_body = markdown_ + i + 4;
+                    const size_t c_len = (size_t)( ( commentEnd - 3 ) - ( i + 4 ) );
+                    size_t cs = 0;
+                    while( cs < c_len && ( c_body[cs] == ' ' || c_body[cs] == '\t' || c_body[cs] == '\r' || c_body[cs] == '\n' ) ) ++cs;
+                    size_t ce = c_len;
+                    while( ce > cs && ( c_body[ce - 1] == ' ' || c_body[ce - 1] == '\t' || c_body[ce - 1] == '\r' || c_body[ce - 1] == '\n' ) ) --ce;
+                    const size_t trimmed_len = ce - cs;
+                    bool wasClearComment = false;
+                    if( trimmed_len >= 5 && TableDetail::StrCaseEqualN( c_body + cs, "clear", 5 ) )
+                    {
+                        const char after_c = ( trimmed_len > 5 ) ? c_body[cs + 5] : '\0';
+                        if( after_c == '\0' || after_c == ':' || after_c == '=' || after_c == ' ' || after_c == '\t' || after_c == '-' )
+                        {
+                            const MarkdownImageFloat mode = ParseClearFloatMode( c_body + cs + 5, trimmed_len - 5, false );
+                            ClearActiveFloats( mode );
+                            wasClearComment = true;
+                        }
+                    }
+
+                    int peek = commentEnd;
+                    while( peek < (int)markdownLength_ && ( markdown_[peek] == ' ' || markdown_[peek] == '\t' ) ) ++peek;
+                    if( peek >= (int)markdownLength_ || markdown_[peek] == '\n' || markdown_[peek] == '\r' )
+                    {
+                        if( peek < (int)markdownLength_ && markdown_[peek] == '\r' ) ++peek;
+                        if( peek < (int)markdownLength_ && markdown_[peek] == '\n' ) ++peek;
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18900
+                        if( hadPrecedingText && ImGui::GetCurrentWindow()->DC.IsSameLine )
+                        {
+                            ImGui::NewLine();
+                        }
+#endif
+                        textRegion.ResetIndent();
+                        line = Line();
+                        em = Emphasis();
+                        link = Link();
+                        line.lineStart = peek;
+                        line.lastRenderPosition = peek - 1;
+                        i = peek - 1;
+                        continue;
+                    }
+                    else
+                    {
+                        if( hadPrecedingText && !wasClearComment )
+                        {
+                            ImGui::SameLine( 0.0f, 0.0f );
+                        }
+                        i = commentEnd - 1;
+                        line.lastRenderPosition = commentEnd - 1;
+                        line.lineStart = commentEnd;
+                        continue;
+                    }
+                }
+            }
+
             // Transition from Emphasis::LEFT to Emphasis::MIDDLE if we hit a tag immediately after opening delimiter (e.g. **<icon...>)
             if( em.state == Emphasis::LEFT && c == '<' )
             {
@@ -4882,9 +5370,8 @@ namespace ImGui
                 em.state = Emphasis::MIDDLE;
             }
 
-            // Test to see if we have a custom styling tag <tag=param>...</tag> or self-closing/void tag <img ... />
-            if( c == '<' && link.state == Link::NO_LINK && !( em.state != Emphasis::NONE && em.sym == '`' ) &&
-                ( mdConfig_.tagCallback != NULL || mdConfig_.imageCallback != NULL || GetDefaultMarkdownImageCallback() != NULL ) )
+            // Test to see if we have a custom styling tag <tag=param>...</tag> or self-closing/void tag <img ... />, <clear/>, <br .../>
+            if( c == '<' && link.state == Link::NO_LINK && !( em.state != Emphasis::NONE && em.sym == '`' ) )
             {
                 int openClose = -1;
                 for( int k = i + 1; k < (int)markdownLength_; ++k )
@@ -4899,7 +5386,7 @@ namespace ImGui
                     int sep = -1;
                     for( int k = tagHeaderStart; k < tagHeaderEnd; ++k )
                     {
-                        if( markdown_[k] == '=' || markdown_[k] == ':' || markdown_[k] == ' ' || markdown_[k] == '\t' )
+                        if( markdown_[k] == '=' || markdown_[k] == ':' || markdown_[k] == ' ' || markdown_[k] == '\t' || markdown_[k] == '/' )
                         {
                             sep = k;
                             break;
@@ -4908,7 +5395,7 @@ namespace ImGui
                     int nameEnd = ( sep != -1 ) ? sep : tagHeaderEnd;
                     int nameLen = nameEnd - tagHeaderStart;
 
-                    // Check for self-closing tag (<tag ... />) or HTML void tag (<img ...>)
+                    // Check for self-closing tag (<tag ... />) or HTML void tag (<img ...>, <clear>, <br>)
                     bool isSelfClosing = false;
                     int actualHeaderEnd = openClose;
                     int p_slash = openClose - 1;
@@ -4920,20 +5407,32 @@ namespace ImGui
                     {
                         isSelfClosing = true;
                         actualHeaderEnd = p_slash;
+                        if( sep == p_slash ) sep = -1;
                     }
 
-                    bool isImgTag = ( nameLen == 3 && ( ( markdown_[tagHeaderStart] == 'i' || markdown_[tagHeaderStart] == 'I' ) &&
-                                                        ( markdown_[tagHeaderStart + 1] == 'm' || markdown_[tagHeaderStart + 1] == 'M' ) &&
-                                                        ( markdown_[tagHeaderStart + 2] == 'g' || markdown_[tagHeaderStart + 2] == 'G' ) ) );
+                    const bool isImgTag = ( nameLen == 3 && TableDetail::StrCaseEqualN( markdown_ + tagHeaderStart, "img", 3 ) );
+                    const bool isClearTag = ( nameLen == 5 && TableDetail::StrCaseEqualN( markdown_ + tagHeaderStart, "clear", 5 ) );
+                    const bool isBrTag = ( nameLen == 2 && TableDetail::StrCaseEqualN( markdown_ + tagHeaderStart, "br", 2 ) );
+                    const bool isVoidTag = isImgTag || isClearTag || isBrTag;
 
+                    if( mdConfig_.tagCallback != NULL || isVoidTag || mdConfig_.imageCallback != NULL || GetDefaultMarkdownImageCallback() != NULL )
+                    {
                     int closeStart = -1;
                     int closeEnd = -1;
 
-                    if( isSelfClosing || isImgTag )
+                    if( isSelfClosing || isVoidTag )
                     {
                         closeStart = openClose + 1;
                         closeEnd = openClose + 1;
                         tagHeaderEnd = actualHeaderEnd;
+                        // Consume optional immediate </clear> or </br> if written as paired tag:
+                        const int optCloseLen = nameLen + 3;
+                        if( ( isClearTag || isBrTag ) && !isSelfClosing && closeEnd + optCloseLen <= (int)markdownLength_ &&
+                            markdown_[closeEnd] == '<' && markdown_[closeEnd + 1] == '/' && markdown_[closeEnd + 2 + nameLen] == '>' &&
+                            TableDetail::StrCaseEqualN( markdown_ + closeEnd + 2, markdown_ + tagHeaderStart, (size_t)nameLen ) )
+                        {
+                            closeEnd += optCloseLen;
+                        }
                     }
                     else
                     {
@@ -5156,7 +5655,7 @@ namespace ImGui
                             ++tagData.tagParam;
                             tagData.tagParamLength -= 2;
                         }
-                        if( isSelfClosing || isImgTag )
+                        if( isSelfClosing || isVoidTag )
                         {
                             tagData.innerText = "";
                             tagData.innerTextLength = 0;
@@ -5169,7 +5668,27 @@ namespace ImGui
                         tagData.config = &mdConfig_;
                         tagData.userData = mdConfig_.userData;
 
-                        if( mdConfig_.tagCallback != NULL )
+                        if( isClearTag )
+                        {
+                            const MarkdownImageFloat mode = ParseClearFloatMode( tagData.tagParam, tagData.tagParamLength, false );
+                            ClearActiveFloats( mode );
+                        }
+                        else if( isBrTag )
+                        {
+                            const MarkdownImageFloat mode = ParseClearFloatMode( tagData.tagParam, tagData.tagParamLength, true );
+                            if( static_cast<unsigned char>( mode ) != 255 )
+                            {
+                                if( !ClearActiveFloats( mode ) )
+                                {
+                                    ImGui::NewLine();
+                                }
+                            }
+                            else
+                            {
+                                ImGui::NewLine();
+                            }
+                        }
+                        else if( mdConfig_.tagCallback != NULL )
                         {
                             mdConfig_.tagCallback( tagData );
                         }
@@ -5229,9 +5748,13 @@ namespace ImGui
                             {
                                 em.text.start = closeEnd;
                             }
-                            ImGui::SameLine( 0.0f, 0.0f );
+                            if( !isClearTag && !isBrTag && !( isImgTag && GetActiveFloatScope() && GetActiveFloatScope()->justPlacedFloat ) )
+                            {
+                                ImGui::SameLine( 0.0f, 0.0f );
+                            }
                             continue;
                         }
+                    }
                     }
                 }
             }
@@ -5620,7 +6143,6 @@ namespace ImGui
             RenderLine( markdown_, line, textRegion, mdConfig_ );
         }
     }
-    } // namespace Markdown
 
     inline bool TextRegion::RenderLinkText( const char* text_, const char* text_end_, const Link& link_,
         const char* markdown_, const MarkdownConfig& mdConfig_, const char** linkHoverStart_ )
@@ -5663,6 +6185,10 @@ namespace ImGui
         {
             if( wrapWidth < 0.0f )
             {
+                if( text_end_ > text_ )
+                {
+                    MarkdownDetail::PrepareLineStartForFloats();
+                }
                 bool bHovered = RenderLinkText( text_, text_end_, link_, markdown_, mdConfig_, linkHoverStart_ );
                 if( !bHovered && *linkHoverStart_ == markdown_ + link_.text.start )
                 {
@@ -5675,18 +6201,10 @@ namespace ImGui
 #else /* brat's version: */
 		float		scale = ImGui::GetFontScale(false);	  // use parent's scale
 #endif
-            float       lineStartX = ImGui::GetCurrentWindow()->WorkRect.Min.x;
-#if !defined(IMGUI_VERSION_NUM) || IMGUI_VERSION_NUM >= 18000
-            if( ImGuiTable* cur_table = ImGui::GetCurrentTable() )
-            {
-                if( cur_table->CurrentColumn != -1 && cur_table->CurrentColumn < cur_table->ColumnsCount )
-                {
-                    lineStartX = cur_table->Columns[cur_table->CurrentColumn].WorkMinX;
-                }
-            }
-#endif
+            float       lineStartX = 0.0f;
+            float       widthLeft = 0.0f;
+            MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
             float       usedOnLine = ImMax( 0.0f, ImGui::GetCursorScreenPos().x - lineStartX );
-            float       widthLeft = ( wrapWidth > 0.0f ) ? ImMax( 10.0f, wrapWidth - usedOnLine ) : GetContentRegionAvail().x;
             const char* endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
             endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
 
@@ -5718,7 +6236,7 @@ namespace ImGui
                     // Push to next line and suppress inter-item leading space!
                     ImGui::NewLine();
                     text_ = first_non_space;
-                    widthLeft = ( wrapWidth > 0.0f ) ? wrapWidth : ImGui::GetContentRegionAvail().x;
+                    MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
                     endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
                     endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
                 }
@@ -5734,11 +6252,11 @@ namespace ImGui
                     indentX += indentNeeded;
                 }
             }
-            widthLeft = ( wrapWidth > 0.0f ) ? wrapWidth : GetContentRegionAvail().x;
             while( endLine < text_end_ )
             {
                 text_ = endLine;
                 while( text_ < text_end_ && *text_ == ' ' ) { ++text_; }    // skip spaces at start of line
+                MarkdownDetail::ResolveLineFloatGeometry( wrapWidth, lineStartX, widthLeft );
                 endLine = ImGui::MarkdownDetail::CalcWordWrapPositionCompat( ImGui::GetFont(), scale, text_, text_end_, widthLeft );
                 endLine = AdjustWrapForTypography( text_, endLine, text_end_ );
                 if( text_ == endLine && text_ < text_end_ ) 
@@ -5920,7 +6438,23 @@ namespace ImGui
             {
                 if( fmt.separator )
                 {
-                    ImGui::Separator();
+                    MarkdownDetail::FloatLayoutScope* fl_scope = MarkdownDetail::GetActiveFloatScope();
+                    float left_in = 0.0f, right_in = 0.0f;
+                    const float sep_y = ImGui::GetCursorScreenPos().y;
+                    if( fl_scope && MarkdownDetail::QueryFloatBandAtY( sep_y, 2.0f, left_in, right_in ) )
+                    {
+                        const float x1 = fl_scope->containerLeftX + left_in;
+                        const float x2 = fl_scope->containerRightX - right_in;
+                        if( x2 > x1 + 4.0f )
+                        {
+                            ImGui::GetWindowDrawList()->AddLine( ImVec2( x1, sep_y ), ImVec2( x2, sep_y ), ImGui::GetColorU32( ImGuiCol_Separator ), 1.0f );
+                            ImGui::Dummy( ImVec2( 0.0f, ImMax( 2.0f, ImGui::GetStyle().ItemSpacing.y * 0.5f ) ) );
+                        }
+                    }
+                    else
+                    {
+                        ImGui::Separator();
+                    }
                 }
                 else
                 {

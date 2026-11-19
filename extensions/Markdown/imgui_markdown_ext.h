@@ -524,13 +524,15 @@ namespace ImGui {
     inline void EnsureTagFitsOnLine(float required_width) {
         const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
         if (config && config->wrapWidth < 0.0f) return;
-        float lineStartX = ImGui::GetCurrentWindow()->WorkRect.Min.x;
+        float lineStartX = 0.0f;
+        float avail = 0.0f;
+        MarkdownDetail::ResolveLineFloatGeometry(config ? config->wrapWidth : 0.0f, lineStartX, avail);
         float cursorX = ImGui::GetCursorScreenPos().x;
-        float avail = (config && config->wrapWidth > 0.0f) ? (config->wrapWidth - (cursorX - lineStartX)) : ImGui::GetContentRegionAvail().x;
         float scale = (ImGui::GetFontSize() > 0.0f) ? (ImGui::GetFontSize() / 14.0f) : 1.0f;
         // Only wrap down if we are mid-line (cursor is not at the start) and the tag doesn't fit on this line:
         if ((cursorX - lineStartX) > (10.0f * scale) && required_width > avail) {
             ImGui::NewLine();
+            MarkdownDetail::PrepareLineStartForFloats();
         }
     }
 
@@ -1115,6 +1117,13 @@ namespace ImGui {
                                     float img_w = imgData.size.x;
                                     if (line_avail_w > 1.0f && img_w > line_avail_w) img_w = line_avail_w;
                                     total_w += img_w;
+                                } else {
+                                    std::string disp = MarkdownDetail::CleanDisplayImageUrl(params.c_str(), (int)params.size());
+                                    std::string ph = imgData.isLoading
+                                                         ? ("( Loading " + disp + "... )")
+                                                         : ("( Image " + disp + " not loaded )");
+                                    ImFont* pf = base_font ? base_font : ImGui::GetFont();
+                                    total_w += pf->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ph.c_str(), ph.c_str() + ph.size()).x;
                                 }
                                 i = tag_close + 1;
                                 continue;
@@ -2452,9 +2461,16 @@ namespace ImGui {
                         trimmed = trimmed.substr(0, last_non + 1);
                     }
 
-                    MarkdownDetail::ScopedFullLineWidth center_full_w_scope(avail_w, true);
+                    float line_avail_w = avail_w;
+                    float left_in = 0.0f, right_in = 0.0f;
+                    if (MarkdownDetail::QueryFloatBandAtY(ImGui::GetCursorScreenPos().y, ImGui::GetTextLineHeight(), left_in, right_in)) {
+                        MarkdownDetail::PrepareLineStartForFloats();
+                        line_avail_w = ImMax(10.0f, avail_w - left_in - right_in);
+                    }
+
+                    MarkdownDetail::ScopedFullLineWidth center_full_w_scope(line_avail_w, true);
                     float line_w = MeasureMarkdownLineWidth(trimmed.c_str(), trimmed.size(), config);
-                    float offset_x = (avail_w - line_w) * 0.5f;
+                    float offset_x = (line_avail_w - line_w) * 0.5f;
                     if (offset_x > 0.0f) {
                         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset_x);
                     }
@@ -2554,9 +2570,22 @@ namespace ImGui {
                 const float inset_x  = std::round(1.0f * scale);
                 const float rounding = is_callout ? std::round(4.0f * scale)  : std::round(3.0f * scale);
 
-                const float raw_avail_w = (active_cfg && active_cfg->wrapWidth > 0.0f)
-                                              ? active_cfg->wrapWidth
-                                              : ImGui::GetContentRegionAvail().x;
+                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
+
+                float raw_avail_w = (active_cfg && active_cfg->wrapWidth > 0.0f)
+                                        ? active_cfg->wrapWidth
+                                        : ImGui::GetContentRegionAvail().x;
+                {
+                    float fl_left = 0.0f, fl_right = 0.0f;
+                    if (MarkdownDetail::QueryFloatBandAtY(ImGui::GetCursorScreenPos().y, ImGui::GetTextLineHeight() * 2.0f, fl_left, fl_right)) {
+                        if ((raw_avail_w - fl_left - fl_right) < 200.0f * scale) {
+                            MarkdownDetail::ClearActiveFloats();
+                        } else {
+                            MarkdownDetail::PrepareLineStartForFloats();
+                            raw_avail_w -= (fl_left + fl_right);
+                        }
+                    }
+                }
                 const bool shrink_to_content = (active_cfg && active_cfg->wrapWidth < 0.0f && ImGui::GetContentRegionAvail().x > 16384.0f);
                 const float outer_w = ImMax(60.0f * scale, raw_avail_w - inset_x * 2.0f);
                 const float inner_avail_w = ImMax(40.0f * scale, outer_w - (bar_w + pad_x * 2.0f));
@@ -2572,8 +2601,6 @@ namespace ImGui {
                     --b_end;
                 }
                 std::string clean_body = (b_end > b_start) ? inner_text.substr(b_start, b_end - b_start) : std::string();
-
-                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
 
                 ImGui::BeginGroup();
                 ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -2705,6 +2732,18 @@ namespace ImGui {
                 MarkdownDetail::RenderMarkdownImageElement(cfg_ref, imgData, "", 0, param.c_str(), (int)param.length(), false);
             };
             s_CustomTags["img"] = imgHandler;
+            s_CustomTags["clear"] = [](const std::string&, const std::string& param) {
+                const MarkdownImageFloat mode = MarkdownDetail::ParseClearFloatMode(param.c_str(), param.size(), false);
+                MarkdownDetail::ClearActiveFloats(mode);
+            };
+            s_CustomTags["br"] = [](const std::string&, const std::string& param) {
+                const MarkdownImageFloat mode = MarkdownDetail::ParseClearFloatMode(param.c_str(), param.size(), true);
+                if (static_cast<unsigned char>(mode) != 255) {
+                    if (!MarkdownDetail::ClearActiveFloats(mode)) ImGui::NewLine();
+                } else {
+                    ImGui::NewLine();
+                }
+            };
 #if defined(CONTRIB_HAS_ICONS)
             // Built-in Tag 10: <icon ... /> or <icon>...</icon>
             // Renders zero-dependency, zero-font procedural vector icons

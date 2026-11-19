@@ -87,9 +87,9 @@ The Markdown system is structured as a clean two-layer architecture:
   * Fence-aware preprocessing (including quoted code fences inside callouts/blockquotes) and built-in `<blockquote>` + `<callout>` / `<alert>` / `<notice>` tag rendering for standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GFM alert variants (`NOTE` / `INFO`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`), supporting both multi-line and same-line alert bodies.
   * Uses zero-font procedural vector icons (`imgui_icons.h`, with an automatic minimal `ImDrawList` fallback when `IMGEE_DISABLE_WIDGETS` / `IMGEE_DISABLE_ICONS` is active) and a zero-`ImDrawListSplitter` underlay pass so callouts and blockquotes can freely contain fenced code blocks, interactive Markdown tables, and nested quotes.
   * Explicit host `ImGui::RegisterMarkdownTag("callout", ...)` registrations cleanly override the built-in default when custom card chrome is desired.
-* **Markdown Images, Horizontal Alignment, Captions, & In-Context Lightbox:**
-  * Supports percentage sizing (`=68%`, `width=68%`), horizontal alignment (`left`, `center` / `centered` / `centre`, `right`, `align=center`), zoom-proportional scaling for natural/pixel images (with `nozoom` / `scale=fixed` opt-out for strict 1:1 pixel assets), centered figure captions (`caption`, `caption="Custom **Markdown** caption"`, `nocaption`, `mdConfig.showImageCaptions`), and an opt-in same-context click-to-enlarge lightbox overlay (`lightbox` / `zoom` / `expand`, `nolightbox`, `mdConfig.enableImageLightbox`) clamped strictly to the host window bounds with zero OS windows.
-  * When `MarkdownConfig::baseDir` is configured (for example pointing at a plugin's `docs/` folder), relative image lookups automatically check `baseDir/<url>` as well as `baseDir/images/<file>`, `baseDir/../<url>`, and `baseDir/../images/<file>` (when `<url>` contains no `..` traversal segments).
+* **Markdown Images, Text-Wrapping Floats, Captions, & In-Context Lightbox:**
+  * Supports percentage sizing (`=68%`, `width=68%`), horizontal block alignment (`left`, `center` / `centered` / `centre`, `right`, `align=center`), true text-wrapping floats (`float=left` / `float-left` / `wrap=left`, `float=right` / `float-right` / `wrap=right`, optional `gap=` / `margin=` spacing, explicit `<clear/>` / `<br clear="all"/>` / `<!-- clear -->` clearing, and responsive narrow-viewport fallback), zoom-proportional scaling for natural/pixel images (with `nozoom` / `scale=fixed` opt-out for strict 1:1 pixel assets), centered figure captions (`caption`, `caption="Custom **Markdown** caption"`, `nocaption`, `mdConfig.showImageCaptions`), and an opt-in same-context click-to-enlarge lightbox overlay (`lightbox` / `zoom` / `expand`, `nolightbox`, `mdConfig.enableImageLightbox`) clamped strictly to the host window bounds with zero OS windows.
+  * When `MarkdownConfig::baseDir` is configured (for example pointing at a plugin's `docs/` folder), relative image lookups automatically check `baseDir/<url>` as well as `baseDir/images/<url>`, `baseDir/images/<file>`, `baseDir/../<url>`, `baseDir/../images/<url>`, and `baseDir/../images/<file>` (when `<url>` contains no `..` traversal segments).
 * **Two-Layer Zoomable Viewport (`imgui_zoomable_viewport.h`):**
   * Provides `ImGui::ZoomableViewportState` + `ImGui::BeginZoomedViewport(...)` / `ImGui::EndZoomedViewport()` + `ImGui::ZoomViewportControls(...)` so document viewers keep header, toolbar, and footer chrome at crisp `1.0x` while zooming inner scrollable Markdown content across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS).
 * **Dynamic Font Scaling:**
@@ -669,7 +669,21 @@ Both inline angle-bracket modifiers (`![Alt](<diagram.png =68% center>)`), Pando
 ![Strict 1:1 Annunciator](annunciator.png){width=120 height=40 nozoom align=right caption="Master **Warning** Lamp"}
 ```
 
-#### 6.3 Two-Layer Chrome (`1.0x`) + Zoomed Content (`Nx`) Viewport Helper
+#### 6.3 Text-Wrapping Image Floats (`float=left` / `float=right`) & Float Clearing
+Add `float=left` (aliases `float-left`, `wrap=left`) or `float=right` (aliases `float-right`, `wrap=right`) in inline URL modifiers, `{...}` attribute blocks, or `<img ... float="left" />` tags so subsequent paragraphs, headings, and lists flow cleanly alongside the figure and automatically expand back out to the full container width mid-paragraph as soon as text advances past the bottom of the floated figure:
+* **Custom Float Margins:** Optional `gap=16` / `margin=16` (or `gap=16x8` / `hgap=16` / `vgap=8`) overrides the default scaled horizontal (`~12px`) and bottom (`~6px`) breathing room around the floated figure.
+* **Explicit & Automatic Clearing:** Use `<clear/>`, `<clear />`, `<br clear="all"/>`, or `<!-- clear -->` (plus optional `left` / `right` targets such as `<clear=left/>` or `<!-- clear: right -->`) to advance below active floats on demand. Horizontal rules (`---`), GFM tables, and fenced code blocks automatically clear active floats, and each `Markdown::Render` scope (including `<callout>` / `<blockquote>` cards and `MD::CalcMarkdownSize`) automatically clears its own floats before returning so tall floated figures never overlap subsequent widgets.
+* **Responsive Narrow-Viewport Fallback:** Percentage widths (`=35%`) resolve against the full container width before placing the float. If the remaining text column beside the float would be narrower than a readable minimum (`~90px * scale`), the image automatically degrades to a standard non-floated block figure.
+
+```markdown
+![Cockpit Callout](<overhead_bus.png =35% float=right caption="Bus Tie Panel" lightbox>)
+
+Primary electrical buses automatically isolate faulted generators while preserving essential avionics power...
+
+<clear/>
+```
+
+#### 6.4 Two-Layer Chrome (`1.0x`) + Zoomed Content (`Nx`) Viewport Helper
 When building in-app manuals or briefing viewers, `ImGui::ZoomableViewportState` and `ImGui::BeginZoomedViewport` / `ImGui::EndZoomedViewport` (`extensions/Viewport/imgui_zoomable_viewport.h`, included automatically by `imgee.h` and `imgui_markdown_ext.h`) keep window toolbars and footers at crisp `1.0x` while zooming the scrollable inner document body across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS):
 
 ```cpp

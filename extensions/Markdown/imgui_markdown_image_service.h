@@ -640,6 +640,9 @@ struct MarkdownImageModifiers {
     std::string custom_caption;
     std::string alt_text;
     int lightbox_mode = 0;        // 0 = default, 1 = force enable, -1 = force disable (nolightbox)
+    ImGui::MarkdownImageFloat float_mode = ImGui::MarkdownImageFloat::None;
+    float float_gap_x = -1.0f;
+    float float_gap_y = -1.0f;
 };
 
 inline std::string TrimMarkdownModifierWhitespace(const std::string& str) {
@@ -807,6 +810,50 @@ inline bool ApplySingleMarkdownImageModifier(MarkdownImageModifiers& mods, const
         } else if (vlow == "1" || vlow == "true" || vlow == "on" || vlow == "lightbox") {
             mods.lightbox_mode = 1;
         }
+        return true;
+    }
+
+    // Text-wrapping image floats: float=left|right, float-left|right, wrap=left|right, gap=..., margin=...
+    if (!has_eq && (key == "float-left" || key == "float_left" || key == "wrap-left" || key == "wrap_left")) {
+        mods.float_mode = ImGui::MarkdownImageFloat::Left;
+        return true;
+    }
+    if (!has_eq && (key == "float-right" || key == "float_right" || key == "wrap-right" || key == "wrap_right")) {
+        mods.float_mode = ImGui::MarkdownImageFloat::Right;
+        return true;
+    }
+    if (!has_eq && (key == "nofloat" || key == "no-float" || key == "no_float" || key == "nowrap" || key == "no-wrap")) {
+        mods.float_mode = ImGui::MarkdownImageFloat::None;
+        return true;
+    }
+    if (key == "float" || key == "wrap") {
+        if (vlow == "left") {
+            mods.float_mode = ImGui::MarkdownImageFloat::Left;
+        } else if (vlow == "right") {
+            mods.float_mode = ImGui::MarkdownImageFloat::Right;
+        } else if (vlow == "none" || vlow == "off" || vlow == "false" || vlow == "0") {
+            mods.float_mode = ImGui::MarkdownImageFloat::None;
+        }
+        return true;
+    }
+    if ((key == "gap" || key == "margin") && has_eq && !val.empty()) {
+        size_t x_pos = val.find_first_of("xX");
+        if (x_pos != std::string::npos) {
+            std::string gx = val.substr(0, x_pos);
+            std::string gy = val.substr(x_pos + 1);
+            if (!gx.empty()) mods.float_gap_x = static_cast<float>(std::atof(gx.c_str()));
+            if (!gy.empty()) mods.float_gap_y = static_cast<float>(std::atof(gy.c_str()));
+        } else {
+            mods.float_gap_x = static_cast<float>(std::atof(val.c_str()));
+        }
+        return true;
+    }
+    if ((key == "hgap" || key == "hmargin") && has_eq && !val.empty()) {
+        mods.float_gap_x = static_cast<float>(std::atof(val.c_str()));
+        return true;
+    }
+    if ((key == "vgap" || key == "vmargin") && has_eq && !val.empty()) {
+        mods.float_gap_y = static_cast<float>(std::atof(val.c_str()));
         return true;
     }
 
@@ -1006,6 +1053,9 @@ inline void ApplyMarkdownImageModifiers(ImGui::MarkdownImageData& img, const Mar
     img.customCaption = mods.custom_caption;
     img.altOverride = mods.alt_text;
     img.lightboxMode = mods.lightbox_mode;
+    img.floatMode = mods.float_mode;
+    img.floatGapX = mods.float_gap_x;
+    img.floatGapY = mods.float_gap_y;
 
     float target_w = base_w;
     float target_h = base_h;
@@ -1255,9 +1305,10 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
             std::string baseName = (slash_pos == std::string::npos) ? cleanUrl : cleanUrl.substr(slash_pos + 1);
 
             const std::string fallbacks[] = {
-                !baseName.empty() ? (activeBaseDir + "/images/" + baseName) : std::string(),
                 (cleanUrl != baseName) ? (activeBaseDir + "/images/" + cleanUrl) : std::string(),
+                !baseName.empty() ? (activeBaseDir + "/images/" + baseName) : std::string(),
                 activeBaseDir + "/../" + cleanUrl,
+                (cleanUrl != baseName) ? (activeBaseDir + "/../images/" + cleanUrl) : std::string(),
                 !baseName.empty() ? (activeBaseDir + "/../images/" + baseName) : std::string()
             };
 
