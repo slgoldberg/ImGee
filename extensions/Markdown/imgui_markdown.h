@@ -1006,6 +1006,7 @@ namespace ImGui
             {
                 ImGui::Indent( bulletIndent );
                 indentX += bulletIndent;
+                MarkdownDetail::PrepareLineStartForFloats();
             }
         }
 
@@ -1028,6 +1029,7 @@ namespace ImGui
             {
                 ImGui::Indent( numIndent );
                 indentX += numIndent;
+                MarkdownDetail::PrepareLineStartForFloats();
             }
         }
 

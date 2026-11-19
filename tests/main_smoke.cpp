@@ -106,6 +106,7 @@ struct AtlasFonts {
     ImFont* small9     = nullptr;
     ImFont* baseline14 = nullptr;
     ImFont* compact12  = nullptr;
+    ImFont* wideBold24 = nullptr;
 };
 
 static AtlasFonts PrepareHeadlessFontAtlas(ImGuiIO& io) {
@@ -129,6 +130,10 @@ static AtlasFonts PrepareHeadlessFontAtlas(ImGuiIO& io) {
     ImFontConfig comp12Cfg;
     comp12Cfg.SizePixels = 12.0f;
     fonts.compact12 = io.Fonts->AddFontDefault(&comp12Cfg);
+
+    ImFontConfig wide24Cfg;
+    wide24Cfg.SizePixels = 24.0f;
+    fonts.wideBold24 = io.Fonts->AddFontDefault(&wide24Cfg);
 
     // Intentionally leave io.FontDefault == nullptr to verify X-Plane / ImgWindow fallback behavior
     io.FontDefault = nullptr;
@@ -1512,6 +1517,199 @@ int main(int argc, char** argv) {
         IMGEE_TEST_CHECK(!nfLines.empty());
         IMGEE_TEST_CHECK(nfLines.front().min.y >= nfMax.y - 0.5f);
         IMGEE_TEST_CHECK(std::fabs(nfLines.front().min.x - narrowLeftX) <= 2.0f);
+        ImGui::End();
+
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+    }
+
+    // ========================================================================
+    // Wave 3 Peer-Review Polish Regression Tests:
+    //  1. CalcMarkdownSize() default MarkdownConfig inheritance, caller window
+    //     zoom parity, and non-leakage across passes when font_scale <= 0.0f
+    //  2. Word-wrapped <center>...</center> preserving outer float=left &
+    //     float=right bounds across all wrapped lines
+    //  3. Tall floated image + > [!NOTE] callout non-overlap in both wide
+    //     (narrows beside float) and narrow (< 220px clears below float) layouts
+    //  4. Unordered & ordered list items starting immediately with a custom
+    //     inline tag beside float=left
+    //  5. Wrapped <style bg=...> background pill coordinates matching the
+    //     wrapped text line rather than the pre-wrap cursor position
+    // ========================================================================
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        io.MousePos = ImVec2(0.0f, 0.0f);
+        io.MouseDown[0] = false;
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(640.0f, 960.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave3PeerReviewPolishWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        StackSnapshot w3PolishSnap = StackSnapshot::Capture();
+
+        const float polishLeftX = ImGui::GetCursorScreenPos().x;
+        const float polishFullW = ImGui::GetContentRegionAvail().x;
+
+        // 1. CalcMarkdownSize() default MarkdownConfig + zoom parity + non-leakage:
+        {
+            ImGui::SetDefaultMarkdownConfig(nullptr);
+            const ImGuiID calcId = ImGui::GetID("##w3_polish_calc");
+            const ImVec2 szNoDefBold = MD::CalcMarkdownSize(calcId, 0, "**Reset**", 0.0f, 0.0f, nullptr);
+
+            ImGui::MarkdownConfig defBoldCfg;
+            defBoldCfg.boldFont = atlasFonts.wideBold24;
+            defBoldCfg.wrapWidth = 42.0f; // Ensure wrap_width == 0.0f with md_config == nullptr resets wrapWidth to 0.0f!
+            ImGui::SetDefaultMarkdownConfig(&defBoldCfg);
+
+            const ImVec2 szWithDefBold1x = MD::CalcMarkdownSize(calcId, 0, "**Reset**", 0.0f, 0.0f, nullptr);
+            IMGEE_TEST_CHECK(szWithDefBold1x.x > szNoDefBold.x * 1.3f);
+
+            // Explicit font_scale = 2.0f on pass 0 (and fresh pass 1) must scale ~2x (never 4x!) and NOT leak:
+            const ImVec2 szFreshPass1_2x = MD::CalcMarkdownSize(calcId, 1, "**Reset**", 0.0f, 2.0f, nullptr);
+            IMGEE_TEST_CHECK(szFreshPass1_2x.x > szWithDefBold1x.x * 1.85f);
+            IMGEE_TEST_CHECK(szFreshPass1_2x.x < szWithDefBold1x.x * 2.2f);
+
+            const ImVec2 szExplicit2x = MD::CalcMarkdownSize(calcId, 0, "**Reset**", 0.0f, 2.0f, nullptr);
+            IMGEE_TEST_CHECK(szExplicit2x.x > szWithDefBold1x.x * 1.85f);
+            IMGEE_TEST_CHECK(szExplicit2x.x < szWithDefBold1x.x * 2.2f);
+
+            const ImVec2 szAfter2x = MD::CalcMarkdownSize(calcId, 0, "**Reset**", 0.0f, 0.0f, nullptr);
+            IMGEE_TEST_CHECK(std::fabs(szAfter2x.x - szWithDefBold1x.x) <= 0.5f);
+            IMGEE_TEST_CHECK(std::fabs(szAfter2x.y - szWithDefBold1x.y) <= 0.5f);
+
+            // Inherit caller window's 1.5x zoom when font_scale <= 0.0f:
+            ImGui::ImGeeCompat::SetWindowFontScale(1.5f);
+            const ImVec2 szInherited15x = MD::CalcMarkdownSize(calcId, 0, "**Reset**", 0.0f, 0.0f, nullptr);
+            ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+            IMGEE_TEST_CHECK(szInherited15x.x > szWithDefBold1x.x * 1.4f);
+            IMGEE_TEST_CHECK(szInherited15x.x < szWithDefBold1x.x * 1.6f);
+
+            ImGui::SetDefaultMarkdownConfig(nullptr);
+        }
+
+        // 2. Word-wrapped <center>...</center> beside active float=left AND float=right:
+        {
+            const std::string wrappedCenterFloatDoc =
+                "![FL](test_logo){width=100 height=95 float=left gap=10x4}\n"
+                "![FR](test_logo){width=100 height=95 float=right gap=10x4}\n"
+                "<center>Long centered advisory sentence that wraps cleanly across multiple lines while staying strictly inside both left and right active float margins throughout the entire block.</center>";
+            MD::TextWrapped(wrappedCenterFloatDoc, &mdCfg);
+
+            const auto& cfLines = ImGui::GetLastMarkdownRenderedLines();
+            IMGEE_TEST_CHECK(cfLines.size() >= 2);
+            const float expectedMinX = polishLeftX + 100.0f + 10.0f - 2.0f;
+            const float expectedMaxX = polishLeftX + polishFullW - (100.0f + 10.0f) + 2.0f;
+            for (size_t li = 0; li < cfLines.size(); ++li) {
+                IMGEE_TEST_CHECK(cfLines[li].min.x >= expectedMinX);
+                IMGEE_TEST_CHECK(cfLines[li].max.x <= expectedMaxX);
+            }
+        }
+
+        // 3a. Tall floated image + > [!NOTE] callout in a wide window (narrows cleanly beside float):
+        {
+            const std::string wideFloatCalloutDoc =
+                "![TallFl](test_logo){width=120 height=160 float=left gap=12x4}\n\n"
+                "> [!NOTE]\n"
+                "> Multi-line advisory callout card beside a tall floated diagram that narrows cleanly inside the remaining column without overlapping the float.\n";
+            MD::TextWrapped(wideFloatCalloutDoc, &mdCfg);
+
+            ImVec2 tallFlMin, tallFlMax;
+            ImGui::GetLastMarkdownImageRect(&tallFlMin, &tallFlMax);
+            const auto& wideCalloutLines = ImGui::GetLastMarkdownRenderedLines();
+            IMGEE_TEST_CHECK(wideCalloutLines.size() >= 2);
+            // Confirm callout sits vertically alongside the float and horizontally strictly to its right:
+            IMGEE_TEST_CHECK(wideCalloutLines.front().min.y < tallFlMax.y - 10.0f);
+            for (size_t li = 0; li < wideCalloutLines.size(); ++li) {
+                IMGEE_TEST_CHECK(wideCalloutLines[li].min.x >= tallFlMax.x + 12.0f + 6.0f);
+                IMGEE_TEST_CHECK(wideCalloutLines[li].max.x <= polishLeftX + polishFullW + 2.0f);
+            }
+        }
+
+        // 4. Unordered & ordered list items starting immediately with a custom inline tag beside float=left:
+        {
+            static std::vector<float> s_probeStartXs;
+            s_probeStartXs.clear();
+            ImGui::RegisterMarkdownTag("w3probe", [](const std::string& inner, const std::string& /*param*/) {
+                s_probeStartXs.push_back(ImGui::GetCursorScreenPos().x);
+                ImGui::TextUnformatted(inner.c_str());
+            });
+
+            const std::string listTagFloatDoc =
+                "![ListFl](test_logo){width=100 height=70 float=left gap=12x4}\n\n"
+                "* <w3probe>Tagged bullet item</w3probe>\n"
+                "1. <w3probe>Tagged ordered item</w3probe>";
+            MD::TextWrapped(listTagFloatDoc, &mdCfg);
+
+            IMGEE_TEST_CHECK(s_probeStartXs.size() == 2);
+            IMGEE_TEST_CHECK(s_probeStartXs[0] >= polishLeftX + 100.0f + 12.0f + 8.0f);
+            IMGEE_TEST_CHECK(s_probeStartXs[1] >= polishLeftX + 100.0f + 12.0f + 8.0f);
+        }
+
+        // 5. Wrapped <style bg=...> pill background rectangle lands on the wrapped text line (not line 1):
+        {
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const int vtxBefore = dl->VtxBuffer.Size;
+
+            ImGui::MarkdownConfig pillWrapCfg = mdCfg;
+            pillWrapCfg.wrapWidth = 240.0f;
+            MD::TextWrapped("Prefix words filling nearly all of line one <style color=#FFEE44 bg=#225588>HighlightedPillSpan</style>", &pillWrapCfg);
+
+            const auto& pillLines = ImGui::GetLastMarkdownRenderedLines();
+            IMGEE_TEST_CHECK(!pillLines.empty());
+            const float line1BottomY = pillLines.front().max.y;
+
+            const ImU32 expectedBgCol   = IM_COL32(0x22, 0x55, 0x88, 0xFF);
+            const ImU32 expectedTextCol = IM_COL32(0xFF, 0xEE, 0x44, 0xFF);
+
+            ImVec2 bgMin(1e9f, 1e9f), bgMax(-1e9f, -1e9f);
+            ImVec2 txtMin(1e9f, 1e9f), txtMax(-1e9f, -1e9f);
+            bool sawBg = false;
+            bool sawTxt = false;
+            for (int vi = vtxBefore; vi < dl->VtxBuffer.Size; ++vi) {
+                const ImDrawVert& v = dl->VtxBuffer[vi];
+                if (v.col == expectedBgCol) {
+                    sawBg = true;
+                    if (v.pos.x < bgMin.x) bgMin.x = v.pos.x;
+                    if (v.pos.y < bgMin.y) bgMin.y = v.pos.y;
+                    if (v.pos.x > bgMax.x) bgMax.x = v.pos.x;
+                    if (v.pos.y > bgMax.y) bgMax.y = v.pos.y;
+                } else if (v.col == expectedTextCol) {
+                    sawTxt = true;
+                    if (v.pos.x < txtMin.x) txtMin.x = v.pos.x;
+                    if (v.pos.y < txtMin.y) txtMin.y = v.pos.y;
+                    if (v.pos.x > txtMax.x) txtMax.x = v.pos.x;
+                    if (v.pos.y > txtMax.y) txtMax.y = v.pos.y;
+                }
+            }
+            IMGEE_TEST_CHECK(sawBg && sawTxt);
+            // Pill background must sit on line 2 (>= line1BottomY - 2.0f) near polishLeftX, matching wrapped text:
+            IMGEE_TEST_CHECK(bgMin.y >= line1BottomY - 2.0f);
+            IMGEE_TEST_CHECK(std::fabs(bgMin.x - polishLeftX) <= 6.0f);
+            IMGEE_TEST_CHECK(std::fabs(bgMin.y - txtMin.y) <= 5.0f);
+            IMGEE_TEST_CHECK(bgMin.x <= txtMin.x + 1.0f && bgMax.x >= txtMax.x - 1.0f);
+        }
+
+        w3PolishSnap.VerifyBalanced("Wave3PeerReviewPolishWin");
+        ImGui::End();
+
+        // 3b. Tall floated image + > [!NOTE] callout in a medium-narrow window where < 220px * scale
+        //     remains beside the float: callout auto-clears below the float (zero X/Y overlap):
+        ImGui::SetNextWindowPos(ImVec2(680.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(310.0f, 420.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave3CalloutClearNarrowWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        const std::string narrowFloatCalloutDoc =
+            "![TallNarrowFl](test_logo){width=120 height=90 float=left gap=12x4}\n\n"
+            "> [!NOTE]\n"
+            "> Callout clears cleanly below the float when remaining width is below 220px.\n";
+        MD::TextWrapped(narrowFloatCalloutDoc, &mdCfg);
+
+        ImVec2 narrowFlMin, narrowFlMax;
+        ImGui::GetLastMarkdownImageRect(&narrowFlMin, &narrowFlMax);
+        const auto& narrowCalloutLines = ImGui::GetLastMarkdownRenderedLines();
+        IMGEE_TEST_CHECK(!narrowCalloutLines.empty());
+        for (size_t li = 0; li < narrowCalloutLines.size(); ++li) {
+            IMGEE_TEST_CHECK(narrowCalloutLines[li].min.y >= narrowFlMax.y - 0.5f);
+        }
         ImGui::End();
 
         ImGui::Render();

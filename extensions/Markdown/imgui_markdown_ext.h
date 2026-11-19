@@ -1874,8 +1874,8 @@ namespace ImGui {
     }
 
     // Forward declarations
-    inline void MarkdownExt(const char* markdown_text, size_t markdown_len, const MarkdownConfig* config_override = nullptr);
-    inline void MarkdownExt(const std::string& markdown_text, const MarkdownConfig* config_override = nullptr);
+    inline void MarkdownExt(const char* markdown_text, size_t markdown_len, const MarkdownConfig* config_override = nullptr, bool create_float_scope = true);
+    inline void MarkdownExt(const std::string& markdown_text, const MarkdownConfig* config_override = nullptr, bool create_float_scope = true);
     inline void RenderInlineTaggedText(const std::string& text, const MarkdownConfig* config);
 
     inline std::unordered_map<std::string, CustomTagCallback>& GetCustomMarkdownTags() {
@@ -1891,30 +1891,32 @@ namespace ImGui {
                 PushMarkdownTagFont(config, style);
 
                 ImVec2 text_size = ImGui::CalcTextSize(style.clean_text.c_str());
+                const float rendered_w = MeasureMarkdownLineWidth(style.clean_text.c_str(), style.clean_text.length(), config);
+                const float font_size = ImGui::GetFontSize();
+                const float scale = (font_size > 0.0f) ? (font_size / 14.0f) : 1.0f;
 
                 bool has_bg = false;
                 ImVec4 bg_col(0.0f, 0.0f, 0.0f, 1.0f);
                 float pad_x = 0.0f;
-                if (!style.bg_color.empty()) {
-                    if (ParseMarkdownColor(style.bg_color, bg_col)) {
-                        has_bg = true;
-                        float rendered_w = MeasureMarkdownLineWidth(style.clean_text.c_str(), style.clean_text.length(), config);
-                        float font_size = ImGui::GetFontSize();
-                        ImVec2 text_pos = ImGui::GetCursorScreenPos();
-                        float scale = (font_size > 0.0f) ? (font_size / 14.0f) : 1.0f;
-                        pad_x = 3.0f * scale;
-                        float pad_y = 1.0f * scale;
-                        float rounding = 3.0f * scale;
-                        ImU32 u_bg = ImGui::GetColorU32(bg_col);
-                        ImDrawList* dl = ImGui::GetWindowDrawList();
-                        dl->AddRectFilled(
-                            ImVec2(text_pos.x - pad_x, text_pos.y - pad_y),
-                            ImVec2(text_pos.x + rendered_w + pad_x, text_pos.y + font_size + pad_y),
-                            u_bg, rounding);
-                    }
+                if (!style.bg_color.empty() && ParseMarkdownColor(style.bg_color, bg_col)) {
+                    has_bg = true;
+                    pad_x = 3.0f * scale;
                 }
 
-                EnsureTagFitsOnLine(text_size.x + (has_bg ? pad_x * 2.0f : 0.0f));
+                const float req_w = (std::max)(text_size.x, rendered_w) + (has_bg ? pad_x * 2.0f : 0.0f);
+                EnsureTagFitsOnLine(req_w);
+
+                if (has_bg) {
+                    const ImVec2 text_pos = ImGui::GetCursorScreenPos();
+                    const float pad_y = 1.0f * scale;
+                    const float rounding = 3.0f * scale;
+                    const ImU32 u_bg = ImGui::GetColorU32(bg_col);
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    dl->AddRectFilled(
+                        ImVec2(text_pos.x - pad_x, text_pos.y - pad_y),
+                        ImVec2(text_pos.x + rendered_w + pad_x, text_pos.y + font_size + pad_y),
+                        u_bg, rounding);
+                }
 
                 ImVec4 col(1.0f, 1.0f, 1.0f, 1.0f);
                 bool has_col = false;
@@ -2442,7 +2444,7 @@ namespace ImGui {
             // Built-in Tag 8: <center>, <centre>
             auto centerHandler = [](const std::string& inner_text, const std::string& /*param*/) {
                 const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
-                float avail_w = (config && config->wrapWidth > 0.0f) ? config->wrapWidth : ImGui::GetContentRegionAvail().x;
+                const float avail_w = MarkdownDetail::ResolveFullLineAvailWidth(config);
 
                 std::istringstream stream(inner_text);
                 std::string line;
@@ -2475,7 +2477,7 @@ namespace ImGui {
                         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + offset_x);
                     }
 
-                    MarkdownExt(trimmed.c_str(), trimmed.size(), config);
+                    MarkdownExt(trimmed.c_str(), trimmed.size(), config, false);
                     first = false;
                 }
             };
@@ -2574,15 +2576,26 @@ namespace ImGui {
 
                 float raw_avail_w = (active_cfg && active_cfg->wrapWidth > 0.0f)
                                         ? active_cfg->wrapWidth
-                                        : ImGui::GetContentRegionAvail().x;
+                                        : MarkdownDetail::ResolveFullLineAvailWidth(active_cfg);
                 {
-                    float fl_left = 0.0f, fl_right = 0.0f;
-                    if (MarkdownDetail::QueryFloatBandAtY(ImGui::GetCursorScreenPos().y, ImGui::GetTextLineHeight() * 2.0f, fl_left, fl_right)) {
-                        if ((raw_avail_w - fl_left - fl_right) < 200.0f * scale) {
-                            MarkdownDetail::ClearActiveFloats();
-                        } else {
-                            MarkdownDetail::PrepareLineStartForFloats();
-                            raw_avail_w -= (fl_left + fl_right);
+                    MarkdownDetail::FloatLayoutScope* fl_scope = MarkdownDetail::GetActiveFloatScope();
+                    const float cur_y = ImGui::GetCursorScreenPos().y;
+                    if (fl_scope && !fl_scope->boxes.empty() && fl_scope->deepestMaxY > cur_y + 0.5f) {
+                        const float remaining_span = ImMax(ImGui::GetTextLineHeight() * 2.0f, fl_scope->deepestMaxY - cur_y);
+                        float fl_left = 0.0f, fl_right = 0.0f;
+                        if (MarkdownDetail::QueryFloatBandAtY(cur_y, remaining_span, fl_left, fl_right)) {
+                            if ((raw_avail_w - fl_left - fl_right) < 220.0f * scale) {
+                                MarkdownDetail::ClearActiveFloats();
+                            } else {
+                                fl_scope->justPlacedFloat = false;
+                                const float natural_start_x = MarkdownDetail::GetWindowNaturalLineStartX(win);
+                                const float semantic_indent = ImMax(0.0f, natural_start_x - fl_scope->containerLeftX);
+                                const float target_start_x = fl_scope->containerLeftX + fl_left + semantic_indent;
+                                if (ImGui::GetCursorScreenPos().x < target_start_x - 0.5f) {
+                                    ImGui::SetCursorScreenPos(ImVec2(target_start_x, cur_y));
+                                }
+                                raw_avail_w -= (fl_left + fl_right);
+                            }
                         }
                     }
                 }
@@ -3194,7 +3207,7 @@ namespace ImGui {
     }
 
     // 4. Core Markdown Extension Engine (Unified Single-Pass Pipeline)
-    inline void MarkdownExt(const char* markdown_text, size_t markdown_len, const MarkdownConfig* config_override) {
+    inline void MarkdownExt(const char* markdown_text, size_t markdown_len, const MarkdownConfig* config_override, bool create_float_scope) {
         if (!markdown_text) return;
         const MarkdownConfig* config = config_override ? config_override : GetDefaultMarkdownConfig();
         static const MarkdownConfig s_FallbackConfig;
@@ -3241,13 +3254,13 @@ namespace ImGui {
             GetActiveMarkdownConfig() = prev;
         };
 
-        Markdown::Render(actual_text, actual_len, local_config);
+        MarkdownDetail::RenderInternal(actual_text, actual_len, local_config, create_float_scope);
 
         GetActiveMarkdownConfig() = prev_active;
     }
 
-    inline void MarkdownExt(const std::string& markdown_text, const MarkdownConfig* config_override) {
-        MarkdownExt(markdown_text.c_str(), markdown_text.length(), config_override);
+    inline void MarkdownExt(const std::string& markdown_text, const MarkdownConfig* config_override, bool create_float_scope) {
+        MarkdownExt(markdown_text.c_str(), markdown_text.length(), config_override, create_float_scope);
     }
 
 } // namespace ImGui
@@ -3603,6 +3616,7 @@ namespace ImGui {
             float saved_font_size = GImGui ? GImGui->FontSize : 14.0f;
             float saved_drawlist_size = GImGui ? GImGui->DrawListSharedData.FontSize : 14.0f;
             float saved_win_scale = (GImGui && GImGui->CurrentWindow) ? GImGui->CurrentWindow->FontWindowScale : 1.0f;
+            float caller_scale = ImGui::GetFontScale(false);
             ImFont* saved_font = GImGui ? GImGui->Font : nullptr;
             
             // Use static measurement window IDs so we NEVER create zombie windows or leak into g.WindowsFocusOrder!
@@ -3611,7 +3625,10 @@ namespace ImGui {
             };
             const char* measure_name = s_measure_windows[pass & 3];
             
-            float s = (font_scale > 0.0f) ? font_scale : 1.0f;
+            float effective_scale = (font_scale > 0.0f)
+                                        ? font_scale
+                                        : ((caller_scale > 0.0f) ? caller_scale : ((saved_win_scale > 0.0f) ? saved_win_scale : 1.0f));
+            float s = effective_scale;
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4.0f * s, 0.0f));
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2.0f * s, 1.0f * s));
             ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, 20.0f * s);
@@ -3625,13 +3642,19 @@ namespace ImGui {
             }
 #endif
             ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-            if (font_scale > 0.0f) {
-                ImGui::ImGeeCompat::SetWindowFontScale(font_scale);
-            }
+            // Keep outer measurement window at 1.0x so child window scale never compounds
+            // (Dear ImGui multiplies child FontWindowScale by parent FontWindowScale).
+            ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
         
-            MarkdownConfig measure_cfg;
-            if (md_config) measure_cfg = *md_config;
-            if (wrap_width > 0.0f) measure_cfg.wrapWidth = wrap_width;
+            const MarkdownConfig* default_cfg = GetDefaultMarkdownConfig();
+            MarkdownConfig measure_cfg = md_config ? *md_config : (default_cfg ? *default_cfg : MarkdownConfig{});
+            if (wrap_width > 0.0f) {
+                measure_cfg.wrapWidth = wrap_width;
+            } else if (wrap_width < 0.0f) {
+                measure_cfg.wrapWidth = -1.0f;
+            } else if (!md_config) {
+                measure_cfg.wrapWidth = 0.0f;
+            }
 
             // Feed it a massive constraint if 0.0f so it doesn't word-wrap infinitely to 1 char.
             // For wrap_width > 0, make child_width generous so the measurement harness never clips text!
@@ -3650,9 +3673,7 @@ namespace ImGui {
             }
 #endif
             ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
-            if (font_scale > 0.0f) {
-                ImGui::ImGeeCompat::SetWindowFontScale(font_scale);
-            }
+            ImGui::ImGeeCompat::SetWindowFontScale(effective_scale);
             
             ImGui::BeginGroup();
             MarkdownExt(markdown_text, &measure_cfg);
