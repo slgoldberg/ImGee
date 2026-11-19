@@ -271,7 +271,9 @@ ImGui::Markdown::Text(doc);
 * **Delayed Table Control Tooltips:** Sortable headers, column dividers, and the right-edge width grip automatically display context-aware `TimedTooltip` guidance (announcing the next step in the tristate sort cycle or A/B layout toggle), with `MarkdownConfig::enableTableTooltips`, `MarkdownConfig::tableTooltipCallback`, and per-table `<!-- table-preset: tooltips=off ... -->` or per-column `col-tooltips="A|B|off"` / `tip0="..."` overrides. When `TimedTooltip` is disabled and no custom callback is set, table controls stay silent rather than falling back to instant-pop tooltips.
 * **Interactive Drag Sizing:** Adjust column dividers directly with instant mouse feedback.
 * **Persistent Presets:** Save and restore column widths via inline comment tags (`<!-- table-state: ... -->`).
-* **Native Blockquotes & GFM Callout Cards:** Standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GitHub-Flavored Markdown callouts (`> [!NOTE]` / `[!INFO]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` in both multi-line and inline forms, plus `<callout type=... title="...">` and `<blockquote>` tags) render out of the box with zero-font procedural vector icons and full nesting support for code blocks and tables.
+* **Native Blockquotes & GFM Callout Cards:** Standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GitHub-Flavored Markdown callouts (`> [!NOTE]` / `[!INFO]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` in both multi-line and inline forms, plus `<callout type=... title="...">` and `<blockquote>` tags) render out of the box with zero-font procedural vector icons and full nesting support for code blocks (including quoted code fences) and tables.
+* **Aligned Figures, Captions, & Same-Context Lightbox:** Markdown images support horizontal alignment (`=68% center`, `align=right`, `<center>![Alt](<pic.png =68%>)</center>`), proportional content-zoom scaling (`nozoom` / `scale=fixed` opt-out), centered inline-Markdown figure captions (`caption`, `caption="Figure 1: **AFDS**"` , `nocaption`, `mdConfig.showImageCaptions`), `baseDir` documentation subfolder fallbacks (`images/`, `../`, `../images/`), and an opt-in same-context click-to-enlarge lightbox (`lightbox` / `zoom` / `expand`, `nolightbox`, `mdConfig.enableImageLightbox`) clamped to the host window bounds with zero OS windows.
+* **Two-Layer Zoomable Document Viewports (`imgui_zoomable_viewport.h`):** `ImGui::ZoomableViewportState` + `ImGui::BeginZoomedViewport(...)` / `ImGui::EndZoomedViewport()` + `ImGui::ZoomViewportControls(...)` keep header/footer chrome at crisp `1.0x` while zooming scrollable inner content across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (`Cmd+MouseWheel` on macOS).
 * **Code Block Copy Buttons:** Shaded code blocks automatically include one-click clipboard copying with 1.5s visual feedback.
 
 ![GFM Markdown Tables: Resizable, sortable avionics tables with inline status badges](images/fig_gfm_tables.png)
@@ -624,12 +626,13 @@ ImGui::StyleColorsRusty();    // Warm aviation bronze / terracotta with ivory te
 ### A.2 Subsystem & Feature Opt-Outs
 | Macro Directive | Description |
 | :--- | :--- |
-| `IMGEE_DISABLE_EXTENSIONS` | Excludes `Typography`, `Markdown`, and `TimedTooltip`. |
+| `IMGEE_DISABLE_EXTENSIONS` | Excludes `Typography`, `Markdown`, `TimedTooltip`, and `ZoomableViewport`. |
 | `IMGEE_DISABLE_WIDGETS` | Excludes all immediate-mode widgets in `widgets/`. |
 | `IMGEE_DISABLE_THEMES` | Excludes `StyleColorsCharcoal` / `StyleColorsRusty` in `themes/`. |
 | `IMGEE_DISABLE_TIMED_TOOLTIP` | Excludes stationary delayed tooltip engine. |
 | `IMGEE_DISABLE_MARKDOWN` | Excludes Markdown parser, GFM tables, and callouts. |
 | `IMGEE_DISABLE_TYPOGRAPHY` | Excludes `ImFontRole` and `ImGui::StyledText`. |
+| `IMGEE_DISABLE_ZOOMABLE_VIEWPORT` | Excludes `ZoomableViewportState` and `BeginZoomedViewport` / `EndZoomedViewport`. |
 | `IMGEE_DISABLE_ICONS` | Excludes procedural vector icon rendering engine. |
 | `IMGEE_DISABLE_ICON_BUTTON` | Excludes `IconButton` and `ButtonIcon` push buttons. |
 | `IMGEE_DISABLE_KNOBS` | Excludes avionics rotary knobs, dials, and detents. |

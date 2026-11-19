@@ -84,9 +84,14 @@ The Markdown system is structured as a clean two-layer architecture:
   * Effortlessly center briefing headers, warnings, and status lines via HTML-style `<center>text</center>` (or `<centre>`) tags or ASCII block-level markers (`-> Centered Text <-` and `= Centered Text =`).
   * Dynamically pre-measures line advance width across headers, bold/italics, pills, and badges to ensure true horizontal optical centering.
 * **Native Blockquotes & GFM Callout Cards (`> ...` and `> [!NOTE]` .. `[!CAUTION]`):**
-  * Fence-aware preprocessing and built-in `<blockquote>` + `<callout>` / `<alert>` / `<notice>` tag rendering for standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GFM alert variants (`NOTE` / `INFO`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`), supporting both multi-line and same-line alert bodies.
+  * Fence-aware preprocessing (including quoted code fences inside callouts/blockquotes) and built-in `<blockquote>` + `<callout>` / `<alert>` / `<notice>` tag rendering for standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GFM alert variants (`NOTE` / `INFO`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`), supporting both multi-line and same-line alert bodies.
   * Uses zero-font procedural vector icons (`imgui_icons.h`, with an automatic minimal `ImDrawList` fallback when `IMGEE_DISABLE_WIDGETS` / `IMGEE_DISABLE_ICONS` is active) and a zero-`ImDrawListSplitter` underlay pass so callouts and blockquotes can freely contain fenced code blocks, interactive Markdown tables, and nested quotes.
   * Explicit host `ImGui::RegisterMarkdownTag("callout", ...)` registrations cleanly override the built-in default when custom card chrome is desired.
+* **Markdown Images, Horizontal Alignment, Captions, & In-Context Lightbox:**
+  * Supports percentage sizing (`=68%`, `width=68%`), horizontal alignment (`left`, `center` / `centered` / `centre`, `right`, `align=center`), zoom-proportional scaling for natural/pixel images (with `nozoom` / `scale=fixed` opt-out for strict 1:1 pixel assets), centered figure captions (`caption`, `caption="Custom **Markdown** caption"`, `nocaption`, `mdConfig.showImageCaptions`), and an opt-in same-context click-to-enlarge lightbox overlay (`lightbox` / `zoom` / `expand`, `nolightbox`, `mdConfig.enableImageLightbox`) clamped strictly to the host window bounds with zero OS windows.
+  * When `MarkdownConfig::baseDir` is configured (for example pointing at a plugin's `docs/` folder), relative image lookups automatically check `baseDir/<url>` as well as `baseDir/images/<file>`, `baseDir/../<url>`, and `baseDir/../images/<file>` (when `<url>` contains no `..` traversal segments).
+* **Two-Layer Zoomable Viewport (`imgui_zoomable_viewport.h`):**
+  * Provides `ImGui::ZoomableViewportState` + `ImGui::BeginZoomedViewport(...)` / `ImGui::EndZoomedViewport()` + `ImGui::ZoomViewportControls(...)` so document viewers keep header, toolbar, and footer chrome at crisp `1.0x` while zooming inner scrollable Markdown content across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS).
 * **Dynamic Font Scaling:**
   * Uses `ImGui::GetFontScale()` to cleanly honor parent window text zoom and high-DPI display scales.
 * **Custom Tag Registration:**
@@ -222,6 +227,10 @@ For clean namespace symmetry with `ImGui::TimedTooltip::Config`, the configurati
 | `codeBlockDescriptionCallback` | `const char* (*)(const char*, size_t, void*)` | `nullptr` | Optional host callback returning tooltip documentation for custom or recognized code block languages. |
 | `setClipboardTextFn` | `void (*)(const char*, void*)` | `nullptr` | Optional host callback to forward code block copies directly to OS-level system clipboards (e.g. macOS NSPasteboard). |
 | `showCodeCopyButton` | `bool` | `true` | When true, renders an interactive one-click `[Copy]` button in the code block header bar. |
+| `enableTableTooltips` | `bool` | `true` | Emits delayed `TimedTooltip` hints for sortable table headers, column dividers, and width grips (silent when `TimedTooltip` is omitted). |
+| `baseDir` | `const char*` | `nullptr` | Optional base directory for resolving relative Markdown image paths (including automatic `images/`, `../`, and `../images/` fallbacks when the URL contains no `..` segments). |
+| `showImageCaptions` | `bool` | `false` | When true, renders `[alt]` text as a centered figure caption beneath images by default (unless `nocaption` is set on an image). |
+| `enableImageLightbox` | `bool` | `false` | When true, clicking rendered images opens an in-context zoom lightbox overlay clamped to the host window bounds by default (unless `nolightbox` or `useLinkCallback` applies). |
 | `tabSize` | `int` | `4` | Column-aligned tabstop expansion width for `\t` characters in code blocks. |
 | `headingFormats` | `HeadingFormat[4]` | `{}` | Upstream array fallback for H1 (`[0]`), H2 (`[1]`), H3 (`[2]`), and Bold (`[3]`). |
 | `linkCallback` | `LinkCallback` | `nullptr` | Upstream hook invoked when the user clicks a markdown `[link](url)`. |
@@ -639,6 +648,47 @@ ImGui::MD::RegisterTag("notice", [](const std::string& text) {
 > If you are new to modern C++, the `[](const std::string& text, const std::string& param) { ... }` syntax is standard C++11 lambda notation for an inline anonymous function. The lambda receives whatever text was enclosed between `<tag>` and `</tag>` as `text`, and any parameters or attributes from the opening tag as `param`.
 
 *(Note: `ImGui::RegisterMarkdownTag` and `ImGui::RegisterMarkdownWidget` are also preserved as direct backward-compatible aliases.)*
+
+---
+
+### 6. Markdown Images, Figure Captions, Lightbox, & Two-Layer Zoomable Viewports
+
+#### 6.1 Image Sizing, Horizontal Alignment, & Zoom Scaling
+Both inline angle-bracket modifiers (`![Alt](<diagram.png =68% center>)`), Pandoc-style curly attribute blocks (`![Alt](diagram.png){width=68% align=center}`), and HTML `<img src="diagram.png" width="68%" align="center" />` tags support unified layout modifiers:
+* **Width & Height:** `=68%`, `=320x200`, `width=68%`, `width=320`, `height=200`. Percentage widths are always resolved against the full pre-offset line width before horizontal centering or right-alignment is applied, so `=68% center` renders at `0.68 * full_avail_w` centered cleanly at `+0.16 * full_avail_w`.
+* **Horizontal Alignment:** `left`, `center` / `centered` / `centre`, `right`, or `align=left|center|right`. Wrapping an image inside `<center>![Alt](<diagram.png =68%>)</center>` also measures the rendered image width directly.
+* **Content Zoom Scaling (`nozoom` / `scale=fixed` opt-out):** Natural and pixel-sized images scale proportionally with active window/font zoom (`SetWindowFontScale` / `BeginZoomedViewport`), clamped to available width while preserving aspect ratio. Add `nozoom` or `scale=fixed` for strict `1:1` pixel assets.
+* **`baseDir` Documentation Layouts:** When `mdConfig.baseDir` points at a documentation folder (e.g. `plugin/docs`), relative image URLs without `..` traversal segments automatically check `baseDir/<url>`, `baseDir/images/<file>`, `baseDir/../<url>`, and `baseDir/../images/<file>` before falling through to `ImGee::HostBackend::ResolveAssetPath` and working-directory paths.
+
+#### 6.2 Optional Visible Figure Captions & Same-Context Lightbox
+* **Figure Captions:** Add `caption` / `figcaption` to display the `[alt]` text centered beneath `[img_x .. img_x + img_w]`, `caption="Figure 1: **AFDS** Mode Panel"` for custom inline-Markdown captions, or `nocaption` to suppress captions on an individual image when `mdConfig.showImageCaptions = true`.
+* **Same-Context Lightbox Overlay:** Add `lightbox` (or `zoom` / `expand`, with `nolightbox` opt-out and `mdConfig.enableImageLightbox` global default) to enable click-to-enlarge thumbnails with a `Hand` cursor affordance and delayed instructional tooltip. Clicking opens a dimmed, aspect-fit overlay inside the **same `ImGuiContext` and clamped strictly to the host window's bounds** (zero secondary OS windows), dismissing on backdrop click, `[X]`, or `Esc`.
+
+```markdown
+![Figure 1: **AFDS** Mode Panel](<afds_panel.png =68% center caption lightbox>)
+![Strict 1:1 Annunciator](annunciator.png){width=120 height=40 nozoom align=right caption="Master **Warning** Lamp"}
+```
+
+#### 6.3 Two-Layer Chrome (`1.0x`) + Zoomed Content (`Nx`) Viewport Helper
+When building in-app manuals or briefing viewers, `ImGui::ZoomableViewportState` and `ImGui::BeginZoomedViewport` / `ImGui::EndZoomedViewport` (`extensions/Viewport/imgui_zoomable_viewport.h`, included automatically by `imgee.h` and `imgui_markdown_ext.h`) keep window toolbars and footers at crisp `1.0x` while zooming the scrollable inner document body across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS):
+
+```cpp
+static ImGui::ZoomableViewportState s_DocZoom;
+
+// Fixed 1.0x header & [-][100%][+] toolbar:
+ImGui::TextUnformatted("Operations Manual");
+ImGui::SameLine();
+ImGui::ZoomViewportControls(s_DocZoom);
+
+// Scrollable Nx-zoomed Markdown body (always pair BeginZoomedViewport / EndZoomedViewport):
+if (ImGui::BeginZoomedViewport("##ManualBody", s_DocZoom, ImVec2(0.0f, -26.0f))) {
+    ImGui::MD::TextWrapped(manualMarkdown, &mdConfig);
+}
+ImGui::EndZoomedViewport();
+
+// Fixed 1.0x footer:
+ImGui::TextDisabled("Use Ctrl+Wheel (or Cmd+Wheel on macOS) to zoom");
+```
 
 ---
 

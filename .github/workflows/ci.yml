@@ -112,6 +112,7 @@ jobs:
             extensions/Markdown/imgui_markdown_image_service.h
             extensions/Typography/imgui_font_roles.h
             extensions/Typography/imgui_styled_text.h
+            extensions/Viewport/imgui_zoomable_viewport.h
             widgets/includes.h
             widgets/imgui_icons.h
             widgets/imgui_knobs.h

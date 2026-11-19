@@ -11,6 +11,12 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#if defined(_WIN32)
+#include <direct.h>
+#else
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #if defined(IMGEE_HAS_IMGWINDOW)
 #error "IMGEE_HAS_IMGWINDOW must not be defined in pure standalone builds"
@@ -859,14 +865,428 @@ int main(int argc, char** argv) {
         CompleteHeadlessRenderTextures();
     }
 
-    // Verify HostBackend callbacks actually resolved named textures and uploaded our disk PNG
+    // Verify HostBackend callbacks actually resolved named textures and uploaded our initial disk PNG
     IMGEE_TEST_CHECK(gpuState.namedLookups >= 2);
     IMGEE_TEST_CHECK(gpuState.createdCount == 1);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);
 
-    // Verify ImGee::Shutdown() purges cached GPU textures via HostBackend::DeleteTexture
+    // =========================================================================
+    // Wave 2 Regression Tests:
+    //  0) Quoted code fences inside > [!TIP] callouts (quote_in_fence)
+    //  1) MeasureMarkdownLineWidth & <center> zoom + image + link measurement
+    //  2) =68% center / align=right horizontal positioning + pixel zoom + nozoom
+    //  3) Figure captions + multi-image same-context lightbox (Esc / [X] / backdrop)
+    //  4) MarkdownConfig::baseDir images/ & ../images/ fallback + '..' guard
+    //  5) BeginZoomedViewport / EndZoomedViewport 1.0x chrome + Nx content zoom
+    // =========================================================================
+    {
+        // 0. Quoted code fence inside > [!TIP] callout must NOT split callout on > [!WARNING]:
+        const std::string quotedFenceAlertDoc =
+            "> [!TIP]\n"
+            "> Example alert syntax inside a quoted code block:\n"
+            "> ~~~markdown\n"
+            "> [!WARNING]\n"
+            "> Watch out for hydraulic pressure!\n"
+            "> ~~~\n"
+            "> Still inside the outer TIP callout.\n";
+
+        std::string quotedFenceOut;
+        const bool qfChanged = ImGui::PreprocessMarkdownBlockquotesAndAlerts(
+            quotedFenceAlertDoc.c_str(), quotedFenceAlertDoc.size(), quotedFenceOut);
+        IMGEE_TEST_CHECK(qfChanged);
+        IMGEE_TEST_CHECK(quotedFenceOut.find("<callout type=tip>") != std::string::npos);
+        IMGEE_TEST_CHECK(quotedFenceOut.find("<callout type=warning>") == std::string::npos);
+        IMGEE_TEST_CHECK(quotedFenceOut.find("~~~markdown\n[!WARNING]\nWatch out for hydraulic pressure!\n~~~") != std::string::npos);
+        IMGEE_TEST_CHECK(quotedFenceOut.find("Still inside the outer TIP callout.\n</callout>") != std::string::npos);
+
+        // 1 & 2. MeasureMarkdownLineWidth zoom scaling, [label](url), <center>![Alt](<img =68%>)>,
+        //        =68% center / align=right positioning, pixel-image zoom scaling, and nozoom:
+        float measuredText1x = 0.0f;
+        float measuredText15x = 0.0f;
+        float measuredLinkLabelOnly = 0.0f;
+        float measuredPlainLabel = 0.0f;
+
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(820.0f, 640.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave2ImageAlignWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+        StackSnapshot w2Snap = StackSnapshot::Capture();
+
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        measuredText1x = ImGui::MeasureMarkdownLineWidth("Centered **Flight** Advisory", 28, &mdCfg);
+        measuredPlainLabel = ImGui::MeasureMarkdownLineWidth("Visible **Link** Label", 22, &mdCfg);
+        measuredLinkLabelOnly = ImGui::MeasureMarkdownLineWidth(
+            "[Visible **Link** Label](https://example.com/very/long/unrendered/url/path/that/must/not/inflate/width)",
+            103, &mdCfg);
+        IMGEE_TEST_CHECK(measuredText1x > 40.0f);
+        IMGEE_TEST_CHECK(std::fabs(measuredLinkLabelOnly - measuredPlainLabel) <= 1.5f);
+
+        const float fullAvailW = ImGui::GetContentRegionAvail().x;
+        const float leftMarginScreenX = ImGui::GetCursorScreenPos().x;
+        IMGEE_TEST_CHECK(fullAvailW > 500.0f);
+
+        // Measure ![Alt](<test_logo =68%>) directly:
+        const std::string pctImgMd = "![Alt](<test_logo =68%>)";
+        const float measuredImg68 = ImGui::MeasureMarkdownLineWidth(pctImgMd.c_str(), pctImgMd.size(), &mdCfg);
+        const float expectedW68 = std::round(fullAvailW * 0.68f);
+        IMGEE_TEST_CHECK(std::fabs(measuredImg68 - expectedW68) <= 1.0f);
+
+        // Render <center>![Alt](<test_logo =68%>)</center> at 1.0x -> must stay 0.68 * fullAvailW (no post-offset shrinkage!):
+        MD::Text("<center>![Alt](<test_logo =68%>)</center>", &mdCfg);
+        ImVec2 imgMin, imgMax;
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - expectedW68) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMin.x - leftMarginScreenX) - (fullAvailW - expectedW68) * 0.5f) <= 2.0f);
+
+        // Render inline =68% center modifier:
+        MD::Text("![Alt](<test_logo =68% center>)", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - expectedW68) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMin.x - leftMarginScreenX) - std::round((fullAvailW - expectedW68) * 0.5f)) <= 1.5f);
+
+        // Render Pandoc {width=68% align=right} modifier:
+        MD::Text("![Alt](test_logo){width=68% align=right}", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - expectedW68) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMin.x - leftMarginScreenX) - std::round(fullAvailW - expectedW68)) <= 1.5f);
+
+        // Pixel-sized image at 1.0x vs 1.5x zoom vs nozoom:
+        MD::Text("![Px](<test_logo =100x50>)", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - 100.0f) <= 0.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.y - imgMin.y) - 50.0f) <= 0.5f);
+
+        ImGui::ImGeeCompat::SetWindowFontScale(1.5f);
+        measuredText15x = ImGui::MeasureMarkdownLineWidth("Centered **Flight** Advisory", 28, &mdCfg);
+        IMGEE_TEST_CHECK(std::fabs(measuredText15x - measuredText1x * 1.5f) <= 3.0f);
+
+        // <center>![Alt](<test_logo =68%>)</center> under 1.5x window zoom:
+        MD::Text("<center>![Alt](<test_logo =68%>)</center>", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - expectedW68) <= 1.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMin.x - leftMarginScreenX) - (fullAvailW - expectedW68) * 0.5f) <= 2.0f);
+
+        // Pixel image scales 1.5x with active zoom:
+        MD::Text("![PxZoom](<test_logo =100x50>)", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - 150.0f) <= 1.0f);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.y - imgMin.y) - 75.0f) <= 1.0f);
+
+        // Opt-out nozoom / scale=fixed stays strict 1:1 100x50 even at 1.5x zoom:
+        MD::Text("![PxFixed](<test_logo =100x50 nozoom>)", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - 100.0f) <= 0.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.y - imgMin.y) - 50.0f) <= 0.5f);
+
+        MD::Text("![PxFixedAttr](test_logo){width=100 height=50 scale=fixed}", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.x - imgMin.x) - 100.0f) <= 0.5f);
+        IMGEE_TEST_CHECK(std::fabs((imgMax.y - imgMin.y) - 50.0f) <= 0.5f);
+
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+
+        // 3a. Centered figure captions beneath centered & right-aligned images + nocaption:
+        MD::Text("![Figure 1: **AFDS** Mode Panel](<test_logo =50% center caption>)", &mdCfg);
+        ImVec2 capMin, capMax;
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        ImGui::GetLastMarkdownCaptionRect(&capMin, &capMax);
+        const float imgCenter = (imgMin.x + imgMax.x) * 0.5f;
+        const float capCenter = (capMin.x + capMax.x) * 0.5f;
+        IMGEE_TEST_CHECK(capMax.x > capMin.x);
+        IMGEE_TEST_CHECK(capMin.y >= imgMax.y);
+        IMGEE_TEST_CHECK(std::fabs(capCenter - imgCenter) <= 2.5f);
+
+        // Right-aligned image with custom caption="...":
+        MD::Text("![Raw Alt](test_logo){width=40% align=right caption=\"Custom *italic* `NAV1` caption\"}", &mdCfg);
+        ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+        ImGui::GetLastMarkdownCaptionRect(&capMin, &capMax);
+        IMGEE_TEST_CHECK(std::fabs(((capMin.x + capMax.x) * 0.5f) - ((imgMin.x + imgMax.x) * 0.5f)) <= 2.5f);
+        IMGEE_TEST_CHECK(capMin.x > leftMarginScreenX + 100.0f); // Not stuck at left margin!
+
+        // Global showImageCaptions = true with per-image nocaption suppression:
+        ImGui::MarkdownConfig globalCapCfg = mdCfg;
+        globalCapCfg.showImageCaptions = true;
+        ImVec2 prevCapMin = capMin;
+        MD::Text("![Suppressed Alt](<test_logo =80x40 nocaption>)", &globalCapCfg);
+        ImVec2 afterNoCapMin, afterNoCapMax;
+        ImGui::GetLastMarkdownCaptionRect(&afterNoCapMin, &afterNoCapMax);
+        IMGEE_TEST_CHECK(afterNoCapMin.x == prevCapMin.x && afterNoCapMin.y == prevCapMin.y); // No new caption emitted!
+
+        w2Snap.VerifyBalanced("Wave2ImageAlignWin");
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        // 3b. Multi-Image Same-Context Lightbox: hover Hand cursor, open/dismiss (Esc, [X], backdrop), & ID isolation:
+        const std::string twoLightboxDoc =
+            "![Primary PFD](test_logo){width=120 height=80 lightbox}\n\n"
+            "![Secondary MFD](test_logo){width=120 height=80 align=right lightbox caption=\"**MFD** Map\"}\n";
+
+        auto setMouseAndButton = [&](float mx, float my, bool down) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddMousePosEvent(mx, my);
+            io.AddMouseButtonEvent(0, down);
+#else
+            io.MousePos = ImVec2(mx, my);
+            io.MouseDown[0] = down;
+#endif
+        };
+
+        auto setEscapeKey = [&](bool down) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddKeyEvent(ImGuiKey_Escape, down);
+#else
+            io.KeyMap[ImGuiKey_Escape] = 27;
+            io.KeysDown[27] = down;
+#endif
+        };
+
+        // Pass A: Discover exact screen rects of image #1 and image #2
+        ImVec2 thumb1Center(0.0f, 0.0f), thumb2Center(0.0f, 0.0f);
+        setMouseAndButton(5.0f, 5.0f, false);
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(760.0f, 520.0f), ImGuiCond_Always);
+        ImGui::Begin("Wave2LightboxHostWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        MD::Text("![Primary PFD](test_logo){width=120 height=80 lightbox}", &mdCfg);
+        ImVec2 r1Min, r1Max;
+        ImGui::GetLastMarkdownImageRect(&r1Min, &r1Max);
+        thumb1Center = ImVec2((r1Min.x + r1Max.x) * 0.5f, (r1Min.y + r1Max.y) * 0.5f);
+        MD::Text("![Secondary MFD](test_logo){width=120 height=80 align=right lightbox caption=\"**MFD** Map\"}", &mdCfg);
+        ImVec2 r2Min, r2Max;
+        ImGui::GetLastMarkdownImageRect(&r2Min, &r2Max);
+        thumb2Center = ImVec2((r2Min.x + r2Max.x) * 0.5f, (r2Min.y + r2Max.y) * 0.5f);
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        auto renderLightboxHostFrame = [&](ImGuiMouseCursor* outCursor = nullptr) {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(760.0f, 520.0f), ImGuiCond_Always);
+            ImGui::Begin("Wave2LightboxHostWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot lbSnap = StackSnapshot::Capture();
+            MD::Text(twoLightboxDoc, &mdCfg);
+            if (outCursor) *outCursor = ImGui::GetMouseCursor();
+            lbSnap.VerifyBalanced("Wave2LightboxHostWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        // Pass B: Hover thumbnail #1 -> Hand cursor affordance, then click + release to open Lightbox #1
+        ImGuiMouseCursor hoveredCursor = ImGuiMouseCursor_Arrow;
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderLightboxHostFrame(&hoveredCursor);
+        IMGEE_TEST_CHECK(hoveredCursor == ImGuiMouseCursor_Hand);
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+        renderLightboxHostFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        const ImGuiID lbId1 = ImGui::GetActiveMarkdownLightboxID();
+        IMGEE_TEST_CHECK(lbId1 != 0);
+
+        // Verify enlarged lightbox image is clamped strictly inside host window [30..790, 30..550]:
+        ImVec2 lbImgMin, lbImgMax;
+        ImGui::GetActiveMarkdownLightboxImageRect(&lbImgMin, &lbImgMax);
+        IMGEE_TEST_CHECK(lbImgMin.x >= 30.0f && lbImgMax.x <= 790.0f);
+        IMGEE_TEST_CHECK(lbImgMin.y >= 30.0f && lbImgMax.y <= 550.0f);
+
+        // Dismiss Lightbox #1 via Escape key:
+        setEscapeKey(true);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        setEscapeKey(false);
+        renderLightboxHostFrame();
+
+        // Pass C: Click + release thumbnail #2 -> opens Lightbox #2 with a DISTINCT salted popup ID!
+        setMouseAndButton(thumb2Center.x, thumb2Center.y, false);
+        renderLightboxHostFrame();
+        setMouseAndButton(thumb2Center.x, thumb2Center.y, true);
+        renderLightboxHostFrame();
+        setMouseAndButton(thumb2Center.x, thumb2Center.y, false);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        const ImGuiID lbId2 = ImGui::GetActiveMarkdownLightboxID();
+        IMGEE_TEST_CHECK(lbId2 != 0 && lbId2 != lbId1);
+
+        // Dismiss Lightbox #2 via [X] close button:
+        ImVec2 closeMin, closeMax;
+        ImGui::GetActiveMarkdownLightboxCloseRect(&closeMin, &closeMax);
+        const ImVec2 closeCenter((closeMin.x + closeMax.x) * 0.5f, (closeMin.y + closeMax.y) * 0.5f);
+        setMouseAndButton(closeCenter.x, closeCenter.y, false);
+        renderLightboxHostFrame(&hoveredCursor);
+        IMGEE_TEST_CHECK(hoveredCursor == ImGuiMouseCursor_Hand);
+        setMouseAndButton(closeCenter.x, closeCenter.y, true);
+        renderLightboxHostFrame();
+        setMouseAndButton(closeCenter.x, closeCenter.y, false);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+
+        // Pass D: Re-open Lightbox #1 and dismiss by clicking dimmed backdrop outside enlarged image:
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderLightboxHostFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+        renderLightboxHostFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+
+        // Click top-left corner of host backdrop (well outside centered enlarged image & top-right [X]):
+        setMouseAndButton(45.0f, 80.0f, true);
+        renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        setMouseAndButton(45.0f, 80.0f, false);
+        renderLightboxHostFrame();
+
+        // 4. MarkdownConfig::baseDir subfolder (images/) & parent (../, ../images/) lookup + '..' guard:
+        auto makeDir = [](const char* path) {
+#if defined(_WIN32)
+            (void)_mkdir(path);
+#else
+            (void)mkdir(path, 0755);
+#endif
+        };
+        auto rmDir = [](const char* path) {
+#if defined(_WIN32)
+            (void)_rmdir(path);
+#else
+            (void)rmdir(path);
+#endif
+        };
+
+        makeDir("imgee_ci_docroot");
+        makeDir("imgee_ci_docroot/docs");
+        makeDir("imgee_ci_docroot/docs/images");
+        makeDir("imgee_ci_docroot/images");
+
+        const std::string subImgPath = "imgee_ci_docroot/docs/images/sub_diagram.png";
+        const std::string parentSibImgPath = "imgee_ci_docroot/images/parent_diagram.png";
+        {
+            std::ofstream ofs1(subImgPath.c_str(), std::ios::binary | std::ios::trunc);
+            IMGEE_TEST_CHECK(ofs1.good());
+            ofs1.write(reinterpret_cast<const char*>(kTinyRedPng), static_cast<std::streamsize>(sizeof(kTinyRedPng)));
+
+            std::ofstream ofs2(parentSibImgPath.c_str(), std::ios::binary | std::ios::trunc);
+            IMGEE_TEST_CHECK(ofs2.good());
+            ofs2.write(reinterpret_cast<const char*>(kTinyRedPng), static_cast<std::streamsize>(sizeof(kTinyRedPng)));
+        }
+
+        ImGui::MarkdownConfig docDirCfg = mdCfg;
+        docDirCfg.baseDir = "imgee_ci_docroot/docs";
+        const int prevCreated = gpuState.createdCount;
+
+        ImGui::NewFrame();
+        ImGui::Begin("Wave2BaseDirWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        // Resolves via baseDir + "/images/" + baseName:
+        MD::Text("![Sub](sub_diagram.png)", &docDirCfg);
+        // Resolves via baseDir + "/../images/" + baseName:
+        MD::Text("![ParentSib](parent_diagram.png)", &docDirCfg);
+        // '../imgee_ci_test_pixel.png' contains '..': direct baseDir/../imgee_ci_test_pixel.png does NOT exist
+        // (it lives at CWD == ../.. from baseDir!), and fallback MUST NOT double-climb '../..' when '..' is present:
+        ImGui::MarkdownImageData travCheck;
+        {
+            struct ScopedCfg {
+                const ImGui::MarkdownConfig* prev;
+                explicit ScopedCfg(const ImGui::MarkdownConfig* c) : prev(ImGui::GetActiveMarkdownConfig()) { ImGui::GetActiveMarkdownConfig() = c; }
+                ~ScopedCfg() { ImGui::GetActiveMarkdownConfig() = prev; }
+            } sc(&docDirCfg);
+            travCheck = ImGui::MarkdownImageService::DefaultMarkdownImageCallback({ "Trav", 4, "../imgee_ci_test_pixel.png", 26, nullptr, true });
+        }
+        IMGEE_TEST_CHECK(!travCheck.isValid);
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        IMGEE_TEST_CHECK(gpuState.createdCount == prevCreated + 2);
+
+        std::remove(subImgPath.c_str());
+        std::remove(parentSibImgPath.c_str());
+        rmDir("imgee_ci_docroot/docs/images");
+        rmDir("imgee_ci_docroot/docs");
+        rmDir("imgee_ci_docroot/images");
+        rmDir("imgee_ci_docroot");
+
+        // 5. Two-Layer Zoomable Viewport (1.0x chrome + Nx zoomed content + Ctrl+Wheel + A/B reset):
+        ImGui::ZoomableViewportState vpState;
+        IMGEE_TEST_CHECK(vpState.GetZoomPercent() == 100);
+        vpState.SetZoom(0.10f);
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 0.50f) <= 0.001f);
+        vpState.SetZoom(9.00f);
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 2.50f) <= 0.001f);
+        vpState.SetZoom(1.60f);
+        IMGEE_TEST_CHECK(vpState.ToggleResetZoom());
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 1.00f) <= 0.001f);
+        IMGEE_TEST_CHECK(vpState.ToggleResetZoom());
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 1.60f) <= 0.001f);
+        ImGui::StepViewportZoom(vpState, -0.10f);
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 1.50f) <= 0.001f);
+
+        // Render two-layer window (1 warm-up frame so NewFrame hover routing sees Wave2ZoomViewportWin,
+        // then fire Ctrl+MouseWheel on pass 1) and verify 1.0x header/footer isolation + Ctrl+Wheel zoom step:
+        float headerFontSz = 0.0f;
+        float innerFontSz = 0.0f;
+        float footerFontSz = 0.0f;
+        for (int pass = 0; pass < 2; ++pass) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+            io.AddMousePosEvent(200.0f, 200.0f);
+            io.AddKeyEvent(ImGuiMod_Ctrl, pass == 1);
+            if (pass == 1) io.AddMouseWheelEvent(0.0f, 1.0f);
+#else
+            io.MousePos = ImVec2(200.0f, 200.0f);
+            io.KeyCtrl = (pass == 1);
+            io.MouseWheel = (pass == 1) ? 1.0f : 0.0f;
+#endif
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(600.0f, 420.0f), ImGuiCond_Always);
+            ImGui::Begin("Wave2ZoomViewportWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot vpSnap = StackSnapshot::Capture();
+
+            headerFontSz = ImGui::GetFontSize();
+            ImGui::TextUnformatted("1.0x Header Chrome");
+            ImGui::SameLine();
+            (void)ImGui::ZoomViewportControls(vpState);
+
+            if (ImGui::BeginZoomedViewport("##DocBody", vpState, ImVec2(0.0f, -30.0f))) {
+                innerFontSz = ImGui::GetFontSize();
+                MD::TextWrapped("# Zoomed Document Body\nParagraph scaled cleanly inside child viewport.", &mdCfg);
+            }
+            ImGui::EndZoomedViewport();
+
+            footerFontSz = ImGui::GetFontSize();
+            ImGui::TextDisabled("1.0x Footer Chrome");
+
+            vpSnap.VerifyBalanced("Wave2ZoomViewportWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        }
+
+        // Ctrl+Wheel (+1 notch == +0.05) stepped 1.50 -> 1.55 inside hovered viewport!
+        IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 1.55f) <= 0.001f);
+        IMGEE_TEST_CHECK(std::fabs(innerFontSz - headerFontSz * 1.55f) <= 0.5f);
+        // Header and footer chrome remain strictly 1.0x!
+        IMGEE_TEST_CHECK(std::fabs(footerFontSz - headerFontSz) <= 0.01f);
+
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        io.AddMouseWheelEvent(0.0f, 0.0f);
+#else
+        io.KeyCtrl = false;
+        io.MouseWheel = 0.0f;
+#endif
+    }
+
+    // Verify ImGee::Shutdown() purges all 3 cached GPU textures via HostBackend::DeleteTexture
+    IMGEE_TEST_CHECK(gpuState.createdCount == 3);
+    IMGEE_TEST_CHECK(gpuState.deletedCount == 0);
     ImGee::Shutdown();
-    IMGEE_TEST_CHECK(gpuState.deletedCount == 1);
+    IMGEE_TEST_CHECK(gpuState.deletedCount == 3);
 
     ImGui::DestroyContext(ctx);
     std::remove(tempPngName.c_str());

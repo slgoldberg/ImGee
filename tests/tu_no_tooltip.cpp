@@ -91,6 +91,35 @@ int main() {
 
     IMGEE_TEST_CHECK(callbackCount > 0 && sawFuelSort);
 
+    // 3. Lightbox image hover without TimedTooltip stays silent (never spawns "##Tooltip_00")
+    //    while still setting Hand cursor and rendering captions cleanly!
+    ImGui::SetNamedTextureResolver([](const char* name, ImVec2* outSz) -> ImTextureID {
+        if (name && std::string(name) == "mock_img") {
+            if (outSz) *outSz = ImVec2(120.0f, 80.0f);
+            return (ImTextureID)(uintptr_t)42;
+        }
+        return (ImTextureID)0;
+    });
+
+    for (int f = 0; f < 2; ++f) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+        io.AddMousePosEvent(50.0f, 50.0f);
+#else
+        io.MousePos = ImVec2(50.0f, 50.0f);
+#endif
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f), ImGuiCond_Always);
+        ImGui::Begin("SilentLightboxWin", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+        ImGui::Markdown::Text("![Chart **A**](mock_img){lightbox caption}");
+        if (f > 0) {
+            IMGEE_TEST_CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_Hand);
+        }
+        ImGui::End();
+        ImGui::EndFrame();
+    }
+    IMGEE_TEST_CHECK(ImGui::FindWindowByName("##Tooltip_00") == nullptr);
+
     ImGui::DestroyContext(ctx);
     std::printf("[PASS] IMGEE_DISABLE_TIMED_TOOLTIP silent-fallback test succeeded.\n");
     return 0;

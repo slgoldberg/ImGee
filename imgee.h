@@ -59,6 +59,9 @@
 #if defined(CONTRIB_DISABLE_TYPOGRAPHY) && !defined(IMGEE_DISABLE_TYPOGRAPHY)
     #define IMGEE_DISABLE_TYPOGRAPHY
 #endif
+#if defined(CONTRIB_DISABLE_ZOOMABLE_VIEWPORT) && !defined(IMGEE_DISABLE_ZOOMABLE_VIEWPORT)
+    #define IMGEE_DISABLE_ZOOMABLE_VIEWPORT
+#endif
 #if defined(CONTRIB_DISABLE_TEXT_MD) && !defined(IMGEE_DISABLE_TEXT_MD)
     #define IMGEE_DISABLE_TEXT_MD
 #endif
@@ -134,6 +137,7 @@
 // #define IMGEE_DISABLE_TIMED_TOOLTIP          // Exclude TimedTooltip extension
 // #define IMGEE_DISABLE_MARKDOWN               // Exclude Markdown extension
 // #define IMGEE_DISABLE_TYPOGRAPHY             // Exclude Typography & StyledText extensions
+// #define IMGEE_DISABLE_ZOOMABLE_VIEWPORT      // Exclude two-layer ZoomableViewport extension
 // #define IMGEE_DISABLE_TEXT_MD                // Exclude all root ImGui::TextMD / TextWrappedMD aliases
 // #define IMGEE_DISABLE_TEXT_WRAPPED_MD        // Exclude ONLY root ImGui::TextWrappedMD (retains TextMD)
 // #define IMGEE_DISABLE_BUTTON_MD              // Exclude all root ImGui::ButtonMD / ButtonMarkdown aliases
@@ -187,6 +191,9 @@
     #ifndef IMGEE_DISABLE_TYPOGRAPHY
         #define IMGEE_DISABLE_TYPOGRAPHY
     #endif
+    #ifndef IMGEE_DISABLE_ZOOMABLE_VIEWPORT
+        #define IMGEE_DISABLE_ZOOMABLE_VIEWPORT
+    #endif
 #endif
 #if defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS)
     #define CONTRIB_DISABLE_WIDGETS
@@ -199,6 +206,9 @@
 #endif
 #if defined(IMGEE_DISABLE_TYPOGRAPHY) && !defined(CONTRIB_DISABLE_TYPOGRAPHY)
     #define CONTRIB_DISABLE_TYPOGRAPHY
+#endif
+#if defined(IMGEE_DISABLE_ZOOMABLE_VIEWPORT) && !defined(CONTRIB_DISABLE_ZOOMABLE_VIEWPORT)
+    #define CONTRIB_DISABLE_ZOOMABLE_VIEWPORT
 #endif
 #if defined(IMGEE_DISABLE_TEXT_MD) && !defined(CONTRIB_DISABLE_TEXT_MD)
     #define CONTRIB_DISABLE_TEXT_MD

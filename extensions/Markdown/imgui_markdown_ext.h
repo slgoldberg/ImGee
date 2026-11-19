@@ -61,6 +61,17 @@
 #endif
 #include "imgui_markdown.h"
 #include "imgui_markdown_image_service.h"
+#if !defined(IMGEE_DISABLE_ZOOMABLE_VIEWPORT) && \
+    !defined(CONTRIB_DISABLE_ZOOMABLE_VIEWPORT) && \
+    !defined(IMGUI_DISABLE_ZOOMABLE_VIEWPORT)
+#if defined(__has_include)
+    #if __has_include("../Viewport/imgui_zoomable_viewport.h")
+        #include "../Viewport/imgui_zoomable_viewport.h"
+    #endif
+#else
+    #include "../Viewport/imgui_zoomable_viewport.h"
+#endif
+#endif
 #if !defined(IMGEE_DISABLE_BADGES) && \
     !defined(IMGEE_DISABLE_WIDGETS) && \
     !defined(CONTRIB_DISABLE_BADGES) && \
@@ -777,10 +788,25 @@ namespace ImGui {
             i = h_start;
         }
 
-        ImFont* base_font = ImGui::GetFont();
-        if (heading_level == 1 && config && config->h1Font) base_font = config->h1Font;
-        else if (heading_level == 2 && config && config->h2Font) base_font = config->h2Font;
-        else if (heading_level >= 3 && config && config->h3Font) base_font = config->h3Font;
+        ImFont* ambient_font = ImGui::GetFont();
+        const float ambient_size = ImGui::GetFontSize();
+        const float ambient_native = MarkdownDetail::GetNativeFontPixelSize(ambient_font);
+        const float zoom_ratio = (ambient_size > 0.0f && ambient_native > 0.0f)
+                                     ? (ambient_size / ambient_native)
+                                     : ImGui::MarkdownDetail::GetActiveContentZoom();
+
+        ImFont* base_font = (config && config->regularFont) ? config->regularFont : ambient_font;
+        if (heading_level == 1 && config) {
+            if (config->h1Font) base_font = config->h1Font;
+            else if (config->headingFormats[0].font) base_font = config->headingFormats[0].font;
+        } else if (heading_level == 2 && config) {
+            if (config->h2Font) base_font = config->h2Font;
+            else if (config->headingFormats[1].font) base_font = config->headingFormats[1].font;
+        } else if (heading_level >= 3 && config) {
+            if (config->h3Font) base_font = config->h3Font;
+            else if (heading_level == 3 && config->headingFormats[2].font) base_font = config->headingFormats[2].font;
+            else if (heading_level >= 4 && config->headingFormats[3].font) base_font = config->headingFormats[3].font;
+        }
 
         ImFont* heading_italic = nullptr;
         if (heading_level == 1 && config && config->h1ItalicFont) heading_italic = config->h1ItalicFont;
@@ -790,19 +816,28 @@ namespace ImGui {
 
         float body_italic_size = 0.0f;
         if (config && config->italicFont) {
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
-            body_italic_size = (config->italicFont->LegacySize > 0.0f) ? config->italicFont->LegacySize : 0.0f;
-#else
-            body_italic_size = (config->italicFont->FontSize > 0.0f) ? config->italicFont->FontSize : 0.0f;
-#endif
+            const float italic_native = MarkdownDetail::GetNativeFontPixelSize(config->italicFont);
+            if (italic_native > 0.0f) body_italic_size = italic_native * zoom_ratio;
         }
 
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
-        float font_size = (base_font && base_font->LegacySize > 0.0f) ? base_font->LegacySize : ImGui::GetFontSize();
-#else
-        float font_size = (base_font && base_font->FontSize > 0.0f) ? base_font->FontSize : ImGui::GetFontSize();
-#endif
-        float scale = (font_size > 0.0f) ? (font_size / 14.0f) : 1.0f;
+        float font_size = ambient_size;
+        if (base_font && base_font != ambient_font) {
+            const float base_native = MarkdownDetail::GetNativeFontPixelSize(base_font);
+            if (base_native > 0.0f) font_size = base_native * zoom_ratio;
+        }
+        if (font_size <= 0.0f) font_size = 14.0f * zoom_ratio;
+        const float scale = (font_size > 0.0f) ? (font_size / 14.0f) : 1.0f;
+        const float line_avail_w = MarkdownDetail::ResolveFullLineAvailWidth(config);
+
+        struct ScopedMeasureConfig {
+            const MarkdownConfig* prev;
+            explicit ScopedMeasureConfig(const MarkdownConfig* cur) : prev(GetActiveMarkdownConfig()) {
+                if (cur) GetActiveMarkdownConfig() = cur;
+            }
+            ~ScopedMeasureConfig() {
+                GetActiveMarkdownConfig() = prev;
+            }
+        } measure_cfg_scope(config);
 
         float total_w = 0.0f;
         std::string seg;
@@ -811,16 +846,36 @@ namespace ImGui {
             if (!seg.empty()) {
                 ImFont* f = seg_font ? seg_font : base_font;
                 if (!f) f = ImGui::GetFont();
-                ImVec2 sz = f->CalcTextSizeA(font_size, FLT_MAX, 0.0f, seg.c_str(), seg.c_str() + seg.size());
+                float seg_sz = font_size;
+                if (f != base_font) {
+                    const float f_native = MarkdownDetail::GetNativeFontPixelSize(f);
+                    if (f_native > 0.0f) seg_sz = f_native * zoom_ratio;
+                }
+                ImVec2 sz = f->CalcTextSizeA(seg_sz, FLT_MAX, 0.0f, seg.c_str(), seg.c_str() + seg.size());
                 total_w += sz.x;
                 seg.clear();
             }
         };
 
         ImFont* cur_font = base_font;
+        bool in_code_span = false;
 
         while (i < len) {
             char c = text[i];
+
+            if (c == '`') {
+                flush_seg(cur_font);
+                in_code_span = !in_code_span;
+                cur_font = (in_code_span && config && config->monoFont) ? config->monoFont : base_font;
+                ++i;
+                continue;
+            }
+
+            if (in_code_span) {
+                seg.push_back(c);
+                ++i;
+                continue;
+            }
 
             // Markdown bold/italic/strikethrough/underline delimiters
             if (c == '*' || c == '_' || c == '~' || c == '+') {
@@ -846,11 +901,97 @@ namespace ImGui {
                     continue;
                 }
             }
-            if (c == '`') {
-                flush_seg(cur_font);
-                cur_font = (cur_font == base_font && config && config->monoFont) ? config->monoFont : base_font;
-                ++i;
-                continue;
+
+            // Inline images ![alt](url){attrs} and links [label](url):
+            const bool is_img_start = (c == '!' && i + 1 < len &&
+#if defined(IMGUI_MARKDOWN_DELIMITER_CURLY_ONLY) || defined(CONTRIB_MARKDOWN_CURLY_ONLY)
+                                       text[i + 1] == '{'
+#else
+                                       (text[i + 1] == '[' || text[i + 1] == '{')
+#endif
+                                       );
+            const bool is_link_start = (!is_img_start && !heading_level &&
+#if defined(IMGUI_MARKDOWN_DELIMITER_CURLY_ONLY) || defined(CONTRIB_MARKDOWN_CURLY_ONLY)
+                                        c == '{'
+#else
+                                        (c == '[' || c == '{')
+#endif
+                                        );
+            if (is_img_start || is_link_start) {
+                const size_t open_brk = is_img_start ? (i + 1) : i;
+                const char brk_close = (text[open_brk] == '{') ? '}' : ']';
+                size_t close_brk = std::string::npos;
+                for (size_t k = open_brk + 1; k < len; ++k) {
+                    if (text[k] == '\n' || text[k] == '\r') break;
+                    if (text[k] == brk_close) { close_brk = k; break; }
+                }
+                if (close_brk != std::string::npos && close_brk + 1 < len && text[close_brk + 1] == '(') {
+                    int paren_depth = 1;
+                    size_t close_paren = std::string::npos;
+                    for (size_t k = close_brk + 2; k < len; ++k) {
+                        if (text[k] == '\n' || text[k] == '\r') break;
+                        if (text[k] == '(') ++paren_depth;
+                        else if (text[k] == ')') {
+                            --paren_depth;
+                            if (paren_depth == 0) { close_paren = k; break; }
+                        }
+                    }
+                    if (close_paren != std::string::npos) {
+                        flush_seg(cur_font);
+                        const char* label_ptr = text + open_brk + 1;
+                        const size_t label_len = close_brk - (open_brk + 1);
+                        const char* url_ptr = text + close_brk + 2;
+                        const size_t url_len = close_paren - (close_brk + 2);
+                        size_t next_idx = close_paren + 1;
+
+                        if (is_img_start) {
+                            size_t p_attr = next_idx;
+                            while (p_attr < len && (text[p_attr] == ' ' || text[p_attr] == '\t')) ++p_attr;
+                            std::string combined_url(url_ptr, url_len);
+                            if (p_attr < len && text[p_attr] == '{') {
+                                char aq = '\0';
+                                size_t close_brace = std::string::npos;
+                                for (size_t k = p_attr + 1; k < len; ++k) {
+                                    if (text[k] == '\n' || text[k] == '\r') break;
+                                    if (aq != '\0') {
+                                        if (text[k] == aq && text[k - 1] != '\\') aq = '\0';
+                                        continue;
+                                    }
+                                    if (text[k] == '"' || text[k] == '\'') { aq = text[k]; continue; }
+                                    if (text[k] == '}') { close_brace = k; break; }
+                                }
+                                if (close_brace != std::string::npos) {
+                                    combined_url += ' ';
+                                    combined_url.append(text + p_attr + 1, close_brace - (p_attr + 1));
+                                    next_idx = close_brace + 1;
+                                }
+                            }
+
+                            MarkdownImageCallback* imageCb = (config && config->imageCallback) ? config->imageCallback : GetDefaultMarkdownImageCallback();
+                            MarkdownImageData imgData;
+                            if (imageCb) {
+                                imgData = imageCb({ label_ptr, (int)label_len, combined_url.c_str(), (int)combined_url.size(), config ? config->userData : nullptr, true });
+                            }
+                            if (imgData.isValid) {
+                                float img_w = imgData.size.x;
+                                if (line_avail_w > 1.0f && img_w > line_avail_w) img_w = line_avail_w;
+                                total_w += img_w;
+                            } else {
+                                std::string disp = MarkdownDetail::CleanDisplayImageUrl(url_ptr, (int)url_len);
+                                std::string ph = imgData.isLoading
+                                                     ? ("( Loading " + disp + "... )")
+                                                     : ("( Image " + disp + " not loaded )");
+                                ImFont* pf = base_font ? base_font : ImGui::GetFont();
+                                total_w += pf->CalcTextSizeA(font_size, FLT_MAX, 0.0f, ph.c_str(), ph.c_str() + ph.size()).x;
+                            }
+                        } else {
+                            total_w += MeasureMarkdownLineWidth(label_ptr, label_len, config);
+                        }
+
+                        i = next_idx;
+                        continue;
+                    }
+                }
             }
 
             // Inline tags: <pill...>, <badge...>, <kbd...>, <backdrop...>, etc.
@@ -918,11 +1059,8 @@ namespace ImGui {
                         if (!tf) tf = ImGui::GetFont();
                         float tf_size = font_size;
                         if (tf != base_font) {
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
-                            if (tf->LegacySize > 0.0f) tf_size = tf->LegacySize;
-#else
-                            if (tf->FontSize > 0.0f) tf_size = tf->FontSize;
-#endif
+                            const float tf_native = MarkdownDetail::GetNativeFontPixelSize(tf);
+                            if (tf_native > 0.0f) tf_size = tf_native * zoom_ratio;
                         }
                         ImVec2 inner_sz = tf->CalcTextSizeA(tf_size, FLT_MAX, 0.0f, style.clean_text.c_str(), style.clean_text.c_str() + style.clean_text.size());
                         float icon_w = 0.0f;
@@ -967,6 +1105,20 @@ namespace ImGui {
                             }
                             size_t p_end = is_self_closing ? (tag_close - 1) : tag_close;
                             std::string params = (name_end < p_end) ? std::string(text + name_end, p_end - name_end) : "";
+                            if (tag_name == "img") {
+                                MarkdownImageCallback* imageCb = (config && config->imageCallback) ? config->imageCallback : GetDefaultMarkdownImageCallback();
+                                MarkdownImageData imgData;
+                                if (imageCb) {
+                                    imgData = imageCb({ "", 0, params.c_str(), (int)params.size(), config ? config->userData : nullptr, true });
+                                }
+                                if (imgData.isValid) {
+                                    float img_w = imgData.size.x;
+                                    if (line_avail_w > 1.0f && img_w > line_avail_w) img_w = line_avail_w;
+                                    total_w += img_w;
+                                }
+                                i = tag_close + 1;
+                                continue;
+                            }
                             MarkdownTagStyle style = ParseMarkdownTagStyle("", params);
                             float item_w = 0.0f;
                             if (!style.icon_name.empty()) {
@@ -1266,6 +1418,9 @@ namespace ImGui {
         bool quote_is_callout = false;
         std::string callout_type = "note";
         std::vector<std::string> quote_lines;
+        bool quote_in_fence = false;
+        char quote_fence_char = '\0';
+        int quote_fence_len = 0;
 
         auto flushQuoteOrCallout = [&]() {
             if (!in_quote) return;
@@ -1290,6 +1445,9 @@ namespace ImGui {
             quote_is_callout = false;
             callout_type = "note";
             quote_lines.clear();
+            quote_in_fence = false;
+            quote_fence_char = '\0';
+            quote_fence_len = 0;
         };
 
         auto matchRawContainerName = [](const char* p, size_t rem_len, std::string& out_name) -> bool {
@@ -1506,9 +1664,50 @@ namespace ImGui {
                 }
                 std::string stripped(lptr + content_p, line_len - content_p);
 
+                bool is_quote_fence_line = false;
+                {
+                    size_t q_lead_cols = 0;
+                    size_t q_lead_idx = 0;
+                    while (q_lead_idx < stripped.size() && (stripped[q_lead_idx] == ' ' || stripped[q_lead_idx] == '\t')) {
+                        q_lead_cols += (stripped[q_lead_idx] == '\t') ? 4 : 1;
+                        ++q_lead_idx;
+                    }
+                    if (q_lead_cols <= 3 && q_lead_idx < stripped.size() && (stripped[q_lead_idx] == '`' || stripped[q_lead_idx] == '~')) {
+                        char qfc = stripped[q_lead_idx];
+                        int qfl = 0;
+                        while (q_lead_idx + (size_t)qfl < stripped.size() && stripped[q_lead_idx + (size_t)qfl] == qfc) ++qfl;
+                        if (qfl >= 3) {
+                            if (!quote_in_fence) {
+                                bool valid_open = true;
+                                if (qfc == '`') {
+                                    for (size_t qk = q_lead_idx + (size_t)qfl; qk < stripped.size(); ++qk) {
+                                        if (stripped[qk] == '`') { valid_open = false; break; }
+                                    }
+                                }
+                                if (valid_open) {
+                                    quote_in_fence = true;
+                                    quote_fence_char = qfc;
+                                    quote_fence_len = qfl;
+                                    is_quote_fence_line = true;
+                                }
+                            } else if (qfc == quote_fence_char && qfl >= quote_fence_len) {
+                                size_t q_trail = q_lead_idx + (size_t)qfl;
+                                while (q_trail < stripped.size() && (stripped[q_trail] == ' ' || stripped[q_trail] == '\t')) ++q_trail;
+                                if (q_trail == stripped.size()) {
+                                    quote_in_fence = false;
+                                    quote_fence_char = '\0';
+                                    quote_fence_len = 0;
+                                    is_quote_fence_line = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 std::string detected_alert_type;
                 std::string inline_alert_body;
-                if (Detail::TryParseGfmAlertMarker(stripped, detected_alert_type, inline_alert_body)) {
+                if (!quote_in_fence && !is_quote_fence_line &&
+                    Detail::TryParseGfmAlertMarker(stripped, detected_alert_type, inline_alert_body)) {
                     flushQuoteOrCallout();
                     in_quote = true;
                     quote_is_callout = true;
@@ -2253,6 +2452,7 @@ namespace ImGui {
                         trimmed = trimmed.substr(0, last_non + 1);
                     }
 
+                    MarkdownDetail::ScopedFullLineWidth center_full_w_scope(avail_w, true);
                     float line_w = MeasureMarkdownLineWidth(trimmed.c_str(), trimmed.size(), config);
                     float offset_x = (avail_w - line_w) * 0.5f;
                     if (offset_x > 0.0f) {
@@ -2481,8 +2681,12 @@ namespace ImGui {
             // Built-in Tag 9: <img ... /> or <img ...>
             auto imgHandler = [](const std::string& inner_text, const std::string& param) {
                 (void)inner_text;
-                auto imageCb = GetActiveMarkdownConfig() && GetActiveMarkdownConfig()->imageCallback 
-                               ? GetActiveMarkdownConfig()->imageCallback 
+                const MarkdownConfig* active_cfg = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
+                MarkdownConfig fallback_cfg;
+                const MarkdownConfig& cfg_ref = active_cfg ? *active_cfg : fallback_cfg;
+
+                auto imageCb = cfg_ref.imageCallback
+                               ? cfg_ref.imageCallback
                                : GetDefaultMarkdownImageCallback();
                 if (!imageCb) {
                     ImGui::TextDisabled("( Image service disabled )");
@@ -2494,52 +2698,11 @@ namespace ImGui {
                 cbData.textLength = 0;
                 cbData.link = param.c_str();
                 cbData.linkLength = (int)param.length();
-                cbData.userData = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig()->userData : nullptr;
+                cbData.userData = cfg_ref.userData;
                 cbData.isImage = true;
 
                 MarkdownImageData imgData = imageCb(cbData);
-                if (imgData.isValid) {
-                    ImVec2 render_size = imgData.size;
-                    float avail_w = ImGui::GetContentRegionAvail().x;
-                    if (avail_w > 0.0f && render_size.x > avail_w) {
-                        float scale = avail_w / render_size.x;
-                        render_size.x = avail_w;
-                        render_size.y = std::round(render_size.y * scale);
-                    }
-                    ImGui::ImGeeCompat::Image(imgData.user_texture_id, render_size, imgData.uv0, imgData.uv1, imgData.tint_col, imgData.border_col);
-                } else if (imgData.isLoading) {
-                    std::string clean_src = param;
-                    size_t src_pos = clean_src.find("src=");
-                    if (src_pos != std::string::npos) {
-                        clean_src = clean_src.substr(src_pos + 4);
-                        if (!clean_src.empty() && (clean_src.front() == '"' || clean_src.front() == '\'')) {
-                            char q = clean_src.front();
-                            clean_src = clean_src.substr(1);
-                            size_t qend = clean_src.find(q);
-                            if (qend != std::string::npos) clean_src = clean_src.substr(0, qend);
-                        } else {
-                            size_t sp = clean_src.find_first_of(" \t/>");
-                            if (sp != std::string::npos) clean_src = clean_src.substr(0, sp);
-                        }
-                    }
-                    ImGui::TextDisabled("( Loading %s... )", clean_src.c_str());
-                } else {
-                    std::string clean_src = param;
-                    size_t src_pos = clean_src.find("src=");
-                    if (src_pos != std::string::npos) {
-                        clean_src = clean_src.substr(src_pos + 4);
-                        if (!clean_src.empty() && (clean_src.front() == '"' || clean_src.front() == '\'')) {
-                            char q = clean_src.front();
-                            clean_src = clean_src.substr(1);
-                            size_t qend = clean_src.find(q);
-                            if (qend != std::string::npos) clean_src = clean_src.substr(0, qend);
-                        } else {
-                            size_t sp = clean_src.find_first_of(" \t/>");
-                            if (sp != std::string::npos) clean_src = clean_src.substr(0, sp);
-                        }
-                    }
-                    ImGui::Text("( Image %s not loaded )", clean_src.c_str());
-                }
+                MarkdownDetail::RenderMarkdownImageElement(cfg_ref, imgData, "", 0, param.c_str(), (int)param.length(), false);
             };
             s_CustomTags["img"] = imgHandler;
 #if defined(CONTRIB_HAS_ICONS)
@@ -4050,6 +4213,18 @@ namespace ImGui {
         return Markdown::DelayedTooltipMD(id, markdown_text, wrap_width, delay_frames, is_allowed);
     }
 #endif
+
+    namespace MarkdownDetail {
+        struct InlineCaptionMarkdownBridgeRunner {
+            InlineCaptionMarkdownBridgeRunner() {
+                GetMeasureInlineWidthFn() = &MeasureMarkdownLineWidth;
+                GetRenderInlineCaptionFn() = [](const char* text, size_t len, const MarkdownConfig* cfg) {
+                    MarkdownExt(text, len, cfg);
+                };
+            }
+        };
+        static InlineCaptionMarkdownBridgeRunner s_InlineCaptionMarkdownBridgeRunner;
+    }
 
 } // namespace ImGui
 

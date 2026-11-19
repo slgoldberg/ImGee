@@ -62,6 +62,12 @@
 #include "Typography/imgui_styled_text.h"
 #endif
 
+#if !defined(IMGEE_DISABLE_ZOOMABLE_VIEWPORT) && \
+    !defined(CONTRIB_DISABLE_ZOOMABLE_VIEWPORT) && \
+    !defined(IMGUI_DISABLE_ZOOMABLE_VIEWPORT)
+#include "Viewport/imgui_zoomable_viewport.h"
+#endif
+
 #endif // !CONTRIB_DISABLE_EXTENSIONS
 
 #if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)

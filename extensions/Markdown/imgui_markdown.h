@@ -247,6 +247,14 @@ namespace ImGui
         const char*              linkIcon;
     };
     
+    enum class MarkdownImageAlign : unsigned char
+    {
+        None = 0,
+        Left,
+        Center,
+        Right
+    };
+
     struct MarkdownImageData
     {
         bool                    isValid = false;                    // if true, will draw the image
@@ -258,6 +266,12 @@ namespace ImGui
         ImVec2                  uv1 = ImVec2( 1, 1 );               // see ImGui::Image
         ImVec4                  tint_col = ImVec4( 1, 1, 1, 1 );    // see ImGui::Image
         ImVec4                  border_col = ImVec4( 0, 0, 0, 0 );  // see ImGui::Image
+        ImVec2                  native_size = ImVec2( 0.0f, 0.0f ); // Unscaled pixel dimensions (used by lightbox zoom)
+        MarkdownImageAlign      align = MarkdownImageAlign::None;   // Optional horizontal alignment (left, center, right)
+        int                     captionMode = 0;                    // 0 = follow MarkdownConfig::showImageCaptions, 1 = force show, -1 = force hide
+        std::string             customCaption;                      // Optional custom caption override (uses [alt] when empty)
+        std::string             altOverride;                        // Optional alt text extracted from HTML <img alt="...">
+        int                     lightboxMode = 0;                   // 0 = follow MarkdownConfig::enableImageLightbox, 1 = force enable, -1 = force disable
     };
 
     enum class MarkdownFormatType
@@ -559,6 +573,8 @@ namespace ImGui
         ImFont*                 monoFont = nullptr;                 // If nullptr, falls back to ambient window font
         ImFont*                 regularFont = nullptr;              // If nullptr, falls back to ambient window font
         const char*             baseDir = nullptr;                  // Optional base directory for resolving relative Markdown image paths
+        bool                    showImageCaptions = false;          // If true, renders [alt] text as a centered figure caption beneath images by default
+        bool                    enableImageLightbox = false;        // If true, clicking rendered images opens an in-context zoom lightbox overlay by default
     };
 
 #ifndef IMGUI_MARKDOWN_CONFIG_REGISTRY_DEFINED
@@ -1246,6 +1262,8 @@ namespace ImGui
         typedef void (*ClearTooltipFn)();
         typedef bool (*MarkdownTooltipFn)( ImGuiID id, bool hovered, const char* text, float wrap_width, int delay_frames, bool is_clicked );
         typedef void (*TableTooltipFn)( ImGuiID id, bool hovered, const char* markdownText, bool is_clicked );
+        typedef float (*MeasureInlineWidthFn)( const char* text, size_t len, const MarkdownConfig* config );
+        typedef void (*RenderInlineCaptionFn)( const char* text, size_t len, const MarkdownConfig* config );
 
         inline CodeBlockTooltipFn& GetCodeBlockTooltipFn() {
             static CodeBlockTooltipFn s_Fn = nullptr;
@@ -1270,6 +1288,109 @@ namespace ImGui
         inline TableTooltipFn& GetTableTooltipFn() {
             static TableTooltipFn s_Fn = nullptr;
             return s_Fn;
+        }
+
+        inline MeasureInlineWidthFn& GetMeasureInlineWidthFn() {
+            static MeasureInlineWidthFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
+        inline RenderInlineCaptionFn& GetRenderInlineCaptionFn() {
+            static RenderInlineCaptionFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
+        inline float GetNativeFontPixelSize( ImFont* font ) {
+            if( !font ) return 0.0f;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
+            return ( font->LegacySize > 0.0f ) ? font->LegacySize : 0.0f;
+#else
+            return ( font->FontSize > 0.0f ) ? font->FontSize : 0.0f;
+#endif
+        }
+
+        inline float GetActiveContentZoom() {
+            ImFont* f = ImGui::GetFont();
+            float cur_sz = ImGui::GetFontSize();
+            float nat_sz = GetNativeFontPixelSize( f );
+            if( cur_sz > 0.0f && nat_sz > 0.0f ) {
+                return cur_sz / nat_sz;
+            }
+            float win_scale = ImGui::GetFontScale( false );
+            return ( win_scale > 0.0f ) ? win_scale : 1.0f;
+        }
+
+        struct FullLineWidthContext {
+            float width = 0.0f;
+            bool  parentAligned = false;
+        };
+
+        inline FullLineWidthContext& GetActiveFullLineWidthContext() {
+            static FullLineWidthContext s_Ctx;
+            return s_Ctx;
+        }
+
+        struct ScopedFullLineWidth {
+            FullLineWidthContext prev;
+            ScopedFullLineWidth( float w, bool aligned ) : prev( GetActiveFullLineWidthContext() ) {
+                FullLineWidthContext next;
+                next.width = w;
+                next.parentAligned = aligned;
+                GetActiveFullLineWidthContext() = next;
+            }
+            ~ScopedFullLineWidth() {
+                GetActiveFullLineWidthContext() = prev;
+            }
+        };
+
+        inline float ResolveFullLineAvailWidth( const MarkdownConfig* cfg ) {
+            const FullLineWidthContext& ctx = GetActiveFullLineWidthContext();
+            if( ctx.width > 0.0f ) return ctx.width;
+            if( cfg && cfg->wrapWidth > 0.0f ) return cfg->wrapWidth;
+            return ImGui::GetContentRegionAvail().x;
+        }
+
+        struct LightboxTelemetryState {
+            int     openFrame = -1;
+            ImGuiID activePopupId = 0;
+            ImVec2  closeButtonMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  closeButtonMax = ImVec2( 0.0f, 0.0f );
+            ImVec2  lightboxImageMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  lightboxImageMax = ImVec2( 0.0f, 0.0f );
+            ImVec2  lastInlineImageMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  lastInlineImageMax = ImVec2( 0.0f, 0.0f );
+            ImVec2  lastCaptionMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  lastCaptionMax = ImVec2( 0.0f, 0.0f );
+        };
+
+        inline LightboxTelemetryState& GetLightboxTelemetryState() {
+            static LightboxTelemetryState s_State;
+            return s_State;
+        }
+
+        inline unsigned int NextWindowImageOrdinal( ImGuiWindow* cur_win ) {
+            if( !cur_win ) return 0u;
+            ImGuiWindow* root = cur_win->RootWindow ? cur_win->RootWindow : cur_win;
+            ImGuiStorage* st = &root->StateStorage;
+            const ImGuiID frame_key = root->GetID( "##imgee_md_img_ord_frame" );
+            const ImGuiID count_key = root->GetID( "##imgee_md_img_ord_count" );
+            const int cur_frame = ImGui::GetFrameCount();
+            if( st->GetInt( frame_key, -1 ) != cur_frame ) {
+                st->SetInt( frame_key, cur_frame );
+                st->SetInt( count_key, 0 );
+            }
+            const int idx = st->GetInt( count_key, 0 );
+            st->SetInt( count_key, idx + 1 );
+            return static_cast<unsigned int>( idx );
+        }
+
+        inline bool IsEscapePressedCompat() {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            return ImGui::IsKeyPressed( ImGuiKey_Escape, false );
+#else
+            const int esc_idx = ImGui::GetIO().KeyMap[ ImGuiKey_Escape ];
+            return ( esc_idx >= 0 ) ? ImGui::IsKeyPressed( esc_idx, false ) : false;
+#endif
         }
 
         inline void ShowCodeBlockTooltip( ImGuiID id, bool hovered, const char* text, bool toggle_on_click = false ) {
@@ -1298,6 +1419,20 @@ namespace ImGui
             // Intentional silent fallback when TimedTooltip is omitted and no custom callback is supplied (UX Rule #6).
         }
 
+        inline void ShowImageLightboxTooltip( const MarkdownConfig& mdConfig, ImGuiID id, bool hovered, const char* markdownText, bool is_clicked = false ) {
+            if( !markdownText || markdownText[0] == '\0' ) {
+                return;
+            }
+            if( mdConfig.tableTooltipCallback ) {
+                mdConfig.tableTooltipCallback( id, hovered && !is_clicked, markdownText, mdConfig.userData );
+                return;
+            }
+            if( GetTableTooltipFn() ) {
+                GetTableTooltipFn()( id, hovered, markdownText, is_clicked );
+            }
+            // Intentional silent fallback when TimedTooltip is omitted and no custom callback is supplied (UX Rule #6).
+        }
+
         inline bool ShowMarkdownTooltip( ImGuiID id, bool hovered, const char* text, float wrap_width = 400.0f, int delay_frames = -1, bool is_clicked = false ) {
             if( GetMarkdownTooltipFn() ) {
                 return GetMarkdownTooltipFn()( id, hovered, text, wrap_width, delay_frames, is_clicked );
@@ -1310,6 +1445,32 @@ namespace ImGui
             }
             return false;
         }
+    }
+
+    inline bool IsMarkdownLightboxOpen()
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        return ( st.openFrame == ImGui::GetFrameCount() ) && ( st.activePopupId != 0 );
+    }
+
+    inline ImGuiID GetActiveMarkdownLightboxID()
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        return ( st.openFrame == ImGui::GetFrameCount() ) ? st.activePopupId : 0;
+    }
+
+    inline void GetLastMarkdownImageRect( ImVec2* out_min, ImVec2* out_max )
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        if( out_min ) *out_min = st.lastInlineImageMin;
+        if( out_max ) *out_max = st.lastInlineImageMax;
+    }
+
+    inline void GetLastMarkdownCaptionRect( ImVec2* out_min, ImVec2* out_max )
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        if( out_min ) *out_min = st.lastCaptionMin;
+        if( out_max ) *out_max = st.lastCaptionMax;
     }
 
     inline bool IsMarkdownClipboardSupported( const MarkdownConfig& config )
@@ -3839,6 +4000,457 @@ namespace ImGui
         TableDetail::MarkdownTableMetadata dummy_meta;
         RenderTableBlock( headers, alignments, rows, dummy_meta, mdConfig_, table_idx );
     }
+
+    inline void GetActiveMarkdownLightboxCloseRect( ImVec2* out_min, ImVec2* out_max )
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        if( st.openFrame == ImGui::GetFrameCount() ) {
+            if( out_min ) *out_min = st.closeButtonMin;
+            if( out_max ) *out_max = st.closeButtonMax;
+        } else {
+            if( out_min ) *out_min = ImVec2( 0.0f, 0.0f );
+            if( out_max ) *out_max = ImVec2( 0.0f, 0.0f );
+        }
+    }
+
+    inline void GetActiveMarkdownLightboxImageRect( ImVec2* out_min, ImVec2* out_max )
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        if( st.openFrame == ImGui::GetFrameCount() ) {
+            if( out_min ) *out_min = st.lightboxImageMin;
+            if( out_max ) *out_max = st.lightboxImageMax;
+        } else {
+            if( out_min ) *out_min = ImVec2( 0.0f, 0.0f );
+            if( out_max ) *out_max = ImVec2( 0.0f, 0.0f );
+        }
+    }
+
+    namespace MarkdownDetail
+    {
+        inline float MeasureCaptionWidthFallback( const char* text, size_t len, const MarkdownConfig& cfg )
+        {
+            if( !text || len == 0 ) return 0.0f;
+            if( GetMeasureInlineWidthFn() ) {
+                return GetMeasureInlineWidthFn()( text, len, &cfg );
+            }
+            TableCell cell;
+            cell.start = text;
+            cell.end = text + len;
+            return TableDetail::CalcCellVisualWidth( cell, false, cfg );
+        }
+
+        inline void RenderCaptionInlineMarkdown( const char* text, size_t len, const MarkdownConfig& cfg )
+        {
+            if( !text || len == 0 ) return;
+            if( GetRenderInlineCaptionFn() ) {
+                GetRenderInlineCaptionFn()( text, len, &cfg );
+                return;
+            }
+            Markdown::Render( text, len, cfg );
+        }
+
+        inline std::string CleanDisplayImageUrl( const char* raw_url, int raw_len )
+        {
+            if( !raw_url || raw_len <= 0 ) return std::string();
+            std::string s( raw_url, (size_t)raw_len );
+            size_t src_pos = s.find( "src=" );
+            if( src_pos != std::string::npos && ( src_pos == 0 || s[src_pos - 1] == ' ' || s[src_pos - 1] == '\t' ) ) {
+                std::string sub = s.substr( src_pos + 4 );
+                if( !sub.empty() && ( sub.front() == '"' || sub.front() == '\'' ) ) {
+                    char q = sub.front();
+                    sub.erase( 0, 1 );
+                    size_t qe = sub.find( q );
+                    if( qe != std::string::npos ) sub.erase( qe );
+                } else {
+                    size_t sp = sub.find_first_of( " \t/>" );
+                    if( sp != std::string::npos ) sub.erase( sp );
+                }
+                return sub;
+            }
+            size_t st = 0;
+            while( st < s.size() && ( s[st] == ' ' || s[st] == '\t' ) ) ++st;
+            if( st < s.size() && s[st] == '<' ) ++st;
+            size_t en = st;
+            while( en < s.size() && s[en] != ' ' && s[en] != '\t' && s[en] != '>' && s[en] != '{' ) ++en;
+            return s.substr( st, en - st );
+        }
+
+        struct MarkdownImageRenderResult
+        {
+            bool   drawnImage = false;
+            bool   isBlockFigure = false;
+            ImVec2 imageRectMin = ImVec2( 0.0f, 0.0f );
+            ImVec2 imageRectMax = ImVec2( 0.0f, 0.0f );
+        };
+
+        inline MarkdownImageRenderResult RenderMarkdownImageElement(
+            const MarkdownConfig& mdConfig_,
+            const MarkdownImageData& imageData,
+            const char* alt_ptr,
+            int alt_len,
+            const char* raw_url_ptr,
+            int raw_url_len,
+            bool allow_link_callback )
+        {
+            MarkdownImageRenderResult res;
+
+            std::string effective_alt = ( alt_ptr && alt_len > 0 )
+                                            ? std::string( alt_ptr, (size_t)alt_len )
+                                            : imageData.altOverride;
+            std::string caption_text = !imageData.customCaption.empty()
+                                           ? imageData.customCaption
+                                           : effective_alt;
+
+            bool show_caption = false;
+            if( imageData.captionMode < 0 ) {
+                show_caption = false;
+            } else if( imageData.captionMode > 0 ) {
+                show_caption = !caption_text.empty();
+            } else if( mdConfig_.showImageCaptions ) {
+                show_caption = !caption_text.empty();
+            }
+
+            const bool explicit_lightbox = ( imageData.lightboxMode > 0 );
+            const bool suppressed_lightbox = ( imageData.lightboxMode < 0 );
+            MarkdownLinkCallback* linkCb = mdConfig_.linkCallback ? mdConfig_.linkCallback : GetDefaultMarkdownLinkCallback();
+            const bool has_link_cb = ( allow_link_callback && imageData.useLinkCallback && linkCb != nullptr );
+
+            bool use_lightbox = false;
+            if( !suppressed_lightbox ) {
+                if( explicit_lightbox ) {
+                    use_lightbox = true;
+                } else if( mdConfig_.enableImageLightbox && !imageData.useLinkCallback ) {
+                    use_lightbox = true;
+                }
+            }
+
+            ImGuiWindow* cur_win = ImGui::GetCurrentWindow();
+            const unsigned int img_ordinal = NextWindowImageOrdinal( cur_win );
+            ImGuiID content_hash = 0x811C9DC5u;
+            if( raw_url_ptr && raw_url_len > 0 ) {
+                content_hash = ImHashData( raw_url_ptr, (size_t)raw_url_len, content_hash );
+            }
+            if( !effective_alt.empty() ) {
+                content_hash = ImHashData( effective_alt.c_str(), effective_alt.size(), content_hash );
+            }
+
+            char popup_str_id[80];
+            std::snprintf( popup_str_id, sizeof(popup_str_id), "##imgee_md_lb_%u_%08x", img_ordinal, (unsigned int)content_hash );
+            char tip_str_id[80];
+            std::snprintf( tip_str_id, sizeof(tip_str_id), "##imgee_md_imgtip_%u_%08x", img_ordinal, (unsigned int)content_hash );
+            const ImGuiID popup_id = ImGui::GetID( popup_str_id );
+            const ImGuiID tip_id = ImGui::GetID( tip_str_id );
+
+            if( !imageData.isValid ) {
+                if( use_lightbox ) {
+                    ShowImageLightboxTooltip( mdConfig_, tip_id, false, "Click to enlarge", false );
+                }
+                std::string disp = CleanDisplayImageUrl( raw_url_ptr, raw_url_len );
+                if( imageData.isLoading ) {
+                    ImGui::TextDisabled( "( Loading %s... )", disp.c_str() );
+                } else {
+                    ImGui::Text( "( Image %s not loaded )", disp.c_str() );
+                }
+                return res;
+            }
+
+            const bool parent_aligned = GetActiveFullLineWidthContext().parentAligned;
+            const bool has_explicit_align = ( imageData.align != MarkdownImageAlign::None );
+            res.isBlockFigure = has_explicit_align || show_caption;
+
+            if( !parent_aligned && ( imageData.align == MarkdownImageAlign::Center || imageData.align == MarkdownImageAlign::Right ) ) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                if( cur_win && cur_win->DC.IsSameLine ) {
+                    ImGui::NewLine();
+                }
+#endif
+            }
+
+            const float full_avail_w = ResolveFullLineAvailWidth( &mdConfig_ );
+            ImVec2 render_size = imageData.size;
+            if( full_avail_w > 1.0f && render_size.x > full_avail_w ) {
+                const float clamp_s = full_avail_w / render_size.x;
+                render_size.x = full_avail_w;
+                render_size.y = std::round( render_size.y * clamp_s );
+            }
+            if( render_size.x < 1.0f ) render_size.x = 1.0f;
+            if( render_size.y < 1.0f ) render_size.y = 1.0f;
+
+            const float margin_left_screen_x = ImGui::GetCursorScreenPos().x;
+
+            if( !parent_aligned ) {
+                float offset_x = 0.0f;
+                if( imageData.align == MarkdownImageAlign::Center && full_avail_w > render_size.x ) {
+                    offset_x = std::round( ( full_avail_w - render_size.x ) * 0.5f );
+                } else if( imageData.align == MarkdownImageAlign::Right && full_avail_w > render_size.x ) {
+                    offset_x = std::round( full_avail_w - render_size.x );
+                }
+                if( offset_x > 0.0f ) {
+                    ImGui::SetCursorPosX( ImGui::GetCursorPosX() + offset_x );
+                }
+            }
+
+            if( show_caption ) {
+                ImGui::BeginGroup();
+            }
+
+            ImGui::ImGeeCompat::Image( imageData.user_texture_id, render_size, imageData.uv0, imageData.uv1, imageData.tint_col, imageData.border_col );
+            res.drawnImage = true;
+            res.imageRectMin = ImGui::GetItemRectMin();
+            res.imageRectMax = ImGui::GetItemRectMax();
+
+            LightboxTelemetryState& telem = GetLightboxTelemetryState();
+            telem.lastInlineImageMin = res.imageRectMin;
+            telem.lastInlineImageMax = res.imageRectMax;
+
+            const bool img_hovered = ImGui::IsItemHovered();
+            const bool img_released = img_hovered && ImGui::IsMouseReleased( 0 );
+            const bool img_clicked_down = img_hovered && ImGui::IsMouseClicked( 0 );
+
+            if( show_caption ) {
+                float scale = ImGui::GetVisualScale();
+                if( scale <= 0.0f ) scale = 1.0f;
+                const float cap_gap_y = std::round( 4.0f * scale );
+
+                MarkdownConfig cap_cfg = mdConfig_;
+                cap_cfg.showImageCaptions = false;
+                cap_cfg.enableImageLightbox = false;
+
+                const float cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), cap_cfg );
+                const float img_center_x = ( res.imageRectMin.x + res.imageRectMax.x ) * 0.5f;
+                const float min_readable_w = ImMin( cap_single_w, 180.0f * scale );
+                const float max_cap_w = ( full_avail_w > 10.0f )
+                                            ? ImMin( full_avail_w, ImMax( render_size.x, min_readable_w ) )
+                                            : ImMax( render_size.x, cap_single_w );
+
+                const ImVec4 base_txt = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                const ImVec4 cap_col( base_txt.x, base_txt.y, base_txt.z, base_txt.w * 0.75f );
+
+                if( cap_single_w <= max_cap_w + 0.5f ) {
+                    float cap_x = std::round( img_center_x - cap_single_w * 0.5f );
+                    if( full_avail_w > 10.0f && !parent_aligned ) {
+                        if( cap_x + cap_single_w > margin_left_screen_x + full_avail_w ) {
+                            cap_x = margin_left_screen_x + full_avail_w - cap_single_w;
+                        }
+                        if( cap_x < margin_left_screen_x ) {
+                            cap_x = margin_left_screen_x;
+                        }
+                    }
+                    const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
+                    ImGui::SetCursorScreenPos( cap_pos );
+                    cap_cfg.wrapWidth = -1.0f;
+                    ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
+                    ScopedFullLineWidth cap_w_scope( cap_single_w, true );
+                    RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
+                    ImGui::PopStyleColor();
+                    telem.lastCaptionMin = cap_pos;
+                    telem.lastCaptionMax = ImVec2( cap_pos.x + cap_single_w, ImMax( cap_pos.y + ImGui::GetTextLineHeight(), ImGui::GetItemRectMax().y ) );
+                } else {
+                    float cap_x = std::round( img_center_x - max_cap_w * 0.5f );
+                    if( full_avail_w > 10.0f && !parent_aligned ) {
+                        if( cap_x + max_cap_w > margin_left_screen_x + full_avail_w ) {
+                            cap_x = margin_left_screen_x + full_avail_w - max_cap_w;
+                        }
+                        if( cap_x < margin_left_screen_x ) {
+                            cap_x = margin_left_screen_x;
+                        }
+                    }
+                    const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
+                    ImGui::SetCursorScreenPos( cap_pos );
+                    cap_cfg.wrapWidth = max_cap_w;
+                    ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
+                    ImGui::BeginGroup();
+                    ScopedFullLineWidth cap_w_scope( max_cap_w, true );
+                    RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
+                    ImGui::EndGroup();
+                    ImGui::PopStyleColor();
+                    telem.lastCaptionMin = ImGui::GetItemRectMin();
+                    telem.lastCaptionMax = ImGui::GetItemRectMax();
+                }
+
+                ImGui::EndGroup();
+            }
+
+            if( use_lightbox || has_link_cb ) {
+                if( img_hovered ) {
+                    ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                }
+            }
+
+            if( use_lightbox ) {
+                const bool popup_was_open = ImGui::IsPopupOpen( popup_id, ImGuiPopupFlags_None );
+                const std::string tip_md = ( !show_caption && !effective_alt.empty() )
+                                               ? ( "**" + effective_alt + "**\nClick to enlarge" )
+                                               : std::string( "Click to enlarge" );
+                ShowImageLightboxTooltip( mdConfig_, tip_id, img_hovered && !popup_was_open, tip_md.c_str(), img_clicked_down || img_released );
+
+                if( img_released && !popup_was_open ) {
+                    ClearActiveTooltip();
+                    ImGui::OpenPopup( popup_str_id );
+                }
+
+                if( ImGui::IsPopupOpen( popup_id, ImGuiPopupFlags_None ) ) {
+                    ImGuiWindow* root_win = cur_win ? ( cur_win->RootWindow ? cur_win->RootWindow : cur_win ) : nullptr;
+                    ImVec2 host_min = root_win ? root_win->InnerRect.Min : ImVec2( 0.0f, 0.0f );
+                    ImVec2 host_max = root_win ? root_win->InnerRect.Max : ImGui::GetIO().DisplaySize;
+                    if( host_max.x - host_min.x < 32.0f || host_max.y - host_min.y < 32.0f ) {
+                        if( root_win && root_win->Size.x >= 32.0f && root_win->Size.y >= 32.0f ) {
+                            host_min = root_win->Pos;
+                            host_max = ImVec2( root_win->Pos.x + root_win->Size.x, root_win->Pos.y + root_win->Size.y );
+                        } else {
+                            host_min = ImVec2( 0.0f, 0.0f );
+                            host_max = ImGui::GetIO().DisplaySize;
+                        }
+                    }
+                    const ImVec2 host_size( ImMax( 32.0f, host_max.x - host_min.x ), ImMax( 32.0f, host_max.y - host_min.y ) );
+
+                    ImGui::SetNextWindowPos( host_min, ImGuiCond_Always );
+                    ImGui::SetNextWindowSize( host_size, ImGuiCond_Always );
+                    ImGui::PushStyleColor( ImGuiCol_PopupBg, ImVec4( 0.04f, 0.05f, 0.08f, 0.88f ) );
+                    ImGui::PushStyleColor( ImGuiCol_Border, ImVec4( 0.35f, 0.42f, 0.52f, 0.55f ) );
+                    ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
+                    ImGui::PushStyleVar( ImGuiStyleVar_WindowRounding, 0.0f );
+                    ImGui::PushStyleVar( ImGuiStyleVar_WindowBorderSize, 1.0f );
+
+                    const ImGuiWindowFlags lb_flags =
+                        ImGuiWindowFlags_NoTitleBar |
+                        ImGuiWindowFlags_NoResize |
+                        ImGuiWindowFlags_NoMove |
+                        ImGuiWindowFlags_NoSavedSettings |
+                        ImGuiWindowFlags_NoScrollbar |
+                        ImGuiWindowFlags_NoScrollWithMouse |
+                        ImGuiWindowFlags_NoCollapse;
+
+                    if( ImGui::BeginPopupEx( popup_id, lb_flags ) ) {
+                        if( ImGuiWindow* lb_win = ImGui::GetCurrentWindow() ) {
+                            // Size and position are explicitly supplied upfront via SetNextWindowPos/Size,
+                            // so prevent Dear ImGui's auto-resize 1-frame popup hide flash on first open:
+                            lb_win->HiddenFramesCanSkipItems = 0;
+                            lb_win->Hidden = false;
+                        }
+                        ImGui::ImGeeCompat::SetWindowFontScale( 1.0f );
+                        const bool is_appearing = ImGui::IsWindowAppearing();
+                        bool should_close = false;
+
+                        const float pad = 10.0f;
+                        const float close_sz = 28.0f;
+                        const ImVec2 close_min( host_min.x + host_size.x - pad - close_sz, host_min.y + pad );
+                        const ImVec2 close_max( close_min.x + close_sz, close_min.y + close_sz );
+
+                        ImGui::SetCursorScreenPos( close_min );
+                        const bool close_pressed = ImGui::InvisibleButton( "##imgee_lb_close", ImVec2( close_sz, close_sz ) );
+                        const bool close_hovered = ImGui::IsItemHovered();
+                        const bool close_active = ImGui::IsItemActive();
+                        if( close_hovered ) {
+                            ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                        }
+                        if( close_pressed ) {
+                            should_close = true;
+                        }
+
+                        ImDrawList* lb_dl = ImGui::GetWindowDrawList();
+                        const ImU32 close_bg = close_active
+                                                   ? IM_COL32( 220, 62, 62, 235 )
+                                                   : ( close_hovered ? IM_COL32( 195, 58, 58, 220 ) : IM_COL32( 36, 42, 54, 210 ) );
+                        const ImU32 close_fg = IM_COL32( 242, 245, 250, 255 );
+                        lb_dl->AddRectFilled( close_min, close_max, close_bg, 5.0f );
+                        AddRectCompat( lb_dl, close_min, close_max, IM_COL32( 140, 155, 180, 110 ), 5.0f, 0, 1.0f );
+                        const float x_ins = 8.5f;
+                        lb_dl->AddLine( ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+                        lb_dl->AddLine( ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+
+                        const bool has_lb_caption = !caption_text.empty();
+                        const float side_margin = 20.0f;
+                        const float top_margin = pad + close_sz + 8.0f;
+                        const float cap_reserve = has_lb_caption ? 34.0f : 0.0f;
+                        const float bot_margin = 14.0f + cap_reserve;
+
+                        const float avail_lb_w = ImMax( 24.0f, host_size.x - side_margin * 2.0f );
+                        const float avail_lb_h = ImMax( 24.0f, host_size.y - top_margin - bot_margin );
+
+                        const ImVec2 nat = ( imageData.native_size.x > 0.0f && imageData.native_size.y > 0.0f )
+                                               ? imageData.native_size
+                                               : render_size;
+                        float fit_scale = ( std::min )( avail_lb_w / ImMax( 1.0f, nat.x ), avail_lb_h / ImMax( 1.0f, nat.y ) );
+                        const float thumb_ratio = ( std::max )( render_size.x / ImMax( 1.0f, nat.x ), render_size.y / ImMax( 1.0f, nat.y ) );
+                        const float max_upscale = ( std::max )( 3.0f, thumb_ratio * 1.5f );
+                        if( fit_scale > max_upscale ) {
+                            fit_scale = max_upscale;
+                        }
+                        ImVec2 lb_img_sz( std::round( nat.x * fit_scale ), std::round( nat.y * fit_scale ) );
+                        if( lb_img_sz.x < 1.0f ) lb_img_sz.x = 1.0f;
+                        if( lb_img_sz.y < 1.0f ) lb_img_sz.y = 1.0f;
+
+                        const ImVec2 lb_img_min(
+                            std::round( host_min.x + ( host_size.x - lb_img_sz.x ) * 0.5f ),
+                            std::round( host_min.y + top_margin + ( avail_lb_h - lb_img_sz.y ) * 0.5f ) );
+                        const ImVec2 lb_img_max( lb_img_min.x + lb_img_sz.x, lb_img_min.y + lb_img_sz.y );
+
+                        ImGui::SetCursorScreenPos( lb_img_min );
+                        ImGui::ImGeeCompat::Image(
+                            imageData.user_texture_id,
+                            lb_img_sz,
+                            imageData.uv0,
+                            imageData.uv1,
+                            imageData.tint_col,
+                            ImVec4( 0.72f, 0.78f, 0.88f, 0.50f ) );
+
+                        if( has_lb_caption ) {
+                            MarkdownConfig lb_cap_cfg = mdConfig_;
+                            lb_cap_cfg.showImageCaptions = false;
+                            lb_cap_cfg.enableImageLightbox = false;
+                            const float lb_cap_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
+                            const float clamped_cap_w = ImMin( avail_lb_w, lb_cap_w );
+                            const float lb_cap_x = std::round( host_min.x + ( host_size.x - clamped_cap_w ) * 0.5f );
+                            const float lb_cap_y = ImMin( host_max.y - 24.0f, lb_img_max.y + 8.0f );
+                            ImGui::SetCursorScreenPos( ImVec2( lb_cap_x, lb_cap_y ) );
+                            lb_cap_cfg.wrapWidth = ( lb_cap_w <= avail_lb_w + 0.5f ) ? -1.0f : avail_lb_w;
+                            ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.88f, 0.91f, 0.96f, 0.92f ) );
+                            ScopedFullLineWidth lb_cap_scope( clamped_cap_w, true );
+                            RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
+                            ImGui::PopStyleColor();
+                        }
+
+                        if( IsEscapePressedCompat() ) {
+                            should_close = true;
+                        }
+                        if( !is_appearing && ImGui::IsMouseClicked( 0 ) && !close_hovered ) {
+                            const ImVec2 mp = ImGui::GetIO().MousePos;
+                            const bool inside_img = ( mp.x >= lb_img_min.x && mp.x <= lb_img_max.x && mp.y >= lb_img_min.y && mp.y <= lb_img_max.y );
+                            if( !inside_img ) {
+                                should_close = true;
+                            }
+                        }
+
+                        if( should_close ) {
+                            ImGui::CloseCurrentPopup();
+                        } else {
+                            telem.openFrame = ImGui::GetFrameCount();
+                            telem.activePopupId = popup_id;
+                            telem.closeButtonMin = close_min;
+                            telem.closeButtonMax = close_max;
+                            telem.lightboxImageMin = lb_img_min;
+                            telem.lightboxImageMax = lb_img_max;
+                        }
+
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::PopStyleVar( 3 );
+                    ImGui::PopStyleColor( 2 );
+                }
+            } else if( img_hovered ) {
+                if( img_released && has_link_cb ) {
+                    linkCb( { alt_ptr ? alt_ptr : "", alt_len, raw_url_ptr ? raw_url_ptr : "", raw_url_len, mdConfig_.userData, true } );
+                }
+                if( alt_len > 0 && mdConfig_.tooltipCallback ) {
+                    mdConfig_.tooltipCallback( { { alt_ptr, alt_len, raw_url_ptr ? raw_url_ptr : "", raw_url_len, mdConfig_.userData, true }, mdConfig_.linkIcon } );
+                }
+            }
+
+            return res;
+        }
+    } // namespace MarkdownDetail
     
     // render markdown (low-level rendering pipeline)
     namespace Markdown
@@ -4564,22 +5176,12 @@ namespace ImGui
                         else if( isImgTag )
                         {
                             MarkdownImageCallback* imageCb = mdConfig_.imageCallback ? mdConfig_.imageCallback : GetDefaultMarkdownImageCallback();
+                            MarkdownImageData imgData;
                             if( imageCb )
                             {
-                                MarkdownImageData imgData = imageCb( { "", 0, tagData.tagParam, (int)tagData.tagParamLength, mdConfig_.userData, true } );
-                                if( imgData.isValid )
-                                {
-                                    ImVec2 render_size = imgData.size;
-                                    float avail_w = ImGui::GetContentRegionAvail().x;
-                                    if( avail_w > 0.0f && render_size.x > avail_w )
-                                    {
-                                        float scale = avail_w / render_size.x;
-                                        render_size.x = avail_w;
-                                        render_size.y = std::round( render_size.y * scale );
-                                    }
-                                    ImGui::ImGeeCompat::Image( imgData.user_texture_id, render_size, imgData.uv0, imgData.uv1, imgData.tint_col, imgData.border_col );
-                                }
+                                imgData = imageCb( { "", 0, tagData.tagParam, (int)tagData.tagParamLength, mdConfig_.userData, true } );
                             }
+                            MarkdownDetail::RenderMarkdownImageElement( mdConfig_, imgData, "", 0, tagData.tagParam, (int)tagData.tagParamLength, false );
                         }
 
                         int peek = closeEnd;
@@ -4738,10 +5340,18 @@ namespace ImGui
                         if( p_attr < (int)markdownLength_ && markdown_[p_attr] == '{' )
                         {
                             int closeBrace = -1;
+                            char attrQuote = '\0';
                             for( int k = p_attr + 1; k < (int)markdownLength_; ++k )
                             {
-                                if( markdown_[k] == '}' ) { closeBrace = k; break; }
-                                if( markdown_[k] == '\n' || markdown_[k] == '\r' ) break;
+                                char kc = markdown_[k];
+                                if( kc == '\n' || kc == '\r' ) break;
+                                if( attrQuote != '\0' )
+                                {
+                                    if( kc == attrQuote && markdown_[k - 1] != '\\' ) attrQuote = '\0';
+                                    continue;
+                                }
+                                if( kc == '"' || kc == '\'' ) { attrQuote = kc; continue; }
+                                if( kc == '}' ) { closeBrace = k; break; }
                             }
                             if( closeBrace != -1 )
                             {
@@ -4751,75 +5361,77 @@ namespace ImGui
                             }
                         }
 
-                        bool drawnImage = false;
-                        bool useLinkCallback = false;
                         MarkdownImageData imageData;
                         MarkdownImageCallback* imageCb = mdConfig_.imageCallback ? mdConfig_.imageCallback : GetDefaultMarkdownImageCallback();
+                        std::string combinedUrl;
+                        if( attrStart != -1 && attrEnd > attrStart )
+                        {
+                            combinedUrl.assign( markdown_ + link.url.start, (size_t)link.url.size() );
+                            combinedUrl += ' ';
+                            combinedUrl.append( markdown_ + attrStart, (size_t)( attrEnd - attrStart ) );
+                        }
                         if( imageCb )
                         {
-                            if( attrStart != -1 && attrEnd > attrStart )
+                            if( !combinedUrl.empty() )
                             {
-                                std::string combinedUrl( markdown_ + link.url.start, link.url.size() );
-                                combinedUrl += ' ';
-                                combinedUrl.append( markdown_ + attrStart, attrEnd - attrStart );
                                 imageData = imageCb( { markdown_ + link.text.start, link.text.size(), combinedUrl.c_str(), (int)combinedUrl.length(), mdConfig_.userData, true } );
                             }
                             else
                             {
                                 imageData = imageCb( { markdown_ + link.text.start, link.text.size(), markdown_ + link.url.start, link.url.size(), mdConfig_.userData, true } );
                             }
-                            useLinkCallback = imageData.useLinkCallback;
-                            if( imageData.isValid )
-                            {
-                                ImVec2 render_size = imageData.size;
-                                float avail_w = ImGui::GetContentRegionAvail().x;
-                                if( avail_w > 0.0f && render_size.x > avail_w )
-                                {
-                                    float scale = avail_w / render_size.x;
-                                    render_size.x = avail_w;
-                                    render_size.y = std::round( render_size.y * scale );
-                                }
-                                ImGui::ImGeeCompat::Image( imageData.user_texture_id, render_size, imageData.uv0, imageData.uv1, imageData.tint_col, imageData.border_col );
-                                drawnImage = true;
-                            }
                         }
-                        if( !drawnImage )
+
+                        const MarkdownDetail::MarkdownImageRenderResult imgRes = MarkdownDetail::RenderMarkdownImageElement(
+                            mdConfig_,
+                            imageData,
+                            markdown_ + link.text.start,
+                            link.text.size(),
+                            markdown_ + link.url.start,
+                            link.url.size(),
+                            true );
+
+                        if( imgRes.isBlockFigure )
                         {
-                            // Strip modifiers and angle brackets from display if present (e.g. "<url =200x150>")
-                            int display_url_len = link.url.size();
-                            const char* url_ptr = markdown_ + link.url.start;
-                            if( display_url_len > 0 && *url_ptr == '<' )
+                            int peek = i + 1;
+                            while( peek < (int)markdownLength_ && ( markdown_[peek] == ' ' || markdown_[peek] == '\t' ) )
                             {
-                                ++url_ptr;
-                                --display_url_len;
+                                ++peek;
                             }
-                            for( int ui = 0; ui < display_url_len; ++ui )
+                            if( peek >= (int)markdownLength_ || markdown_[peek] == '\n' || markdown_[peek] == '\r' )
                             {
-                                if( url_ptr[ui] == ' ' || url_ptr[ui] == '\t' || url_ptr[ui] == '>' )
+                                if( peek < (int)markdownLength_ && markdown_[peek] == '\r' ) ++peek;
+                                if( peek < (int)markdownLength_ && markdown_[peek] == '\n' ) ++peek;
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18900
+                                if( ImGui::GetCurrentWindow()->DC.IsSameLine )
                                 {
-                                    display_url_len = ui;
-                                    break;
+                                    ImGui::NewLine();
                                 }
-                            }
-                            if( imageData.isLoading )
-                            {
-                                ImGui::TextDisabled( "( Loading %.*s... )", display_url_len, url_ptr );
+#endif
+                                textRegion.ResetIndent();
+                                line = Line();
+                                em = Emphasis();
+                                link = Link();
+                                line.lineStart = peek;
+                                line.lastRenderPosition = peek - 1;
+                                i = peek - 1;
+                                continue;
                             }
                             else
                             {
-                                ImGui::Text( "( Image %.*s not loaded )", display_url_len, url_ptr );
-                            }
-                        }
-                        if( ImGui::IsItemHovered() )
-                        {
-                            MarkdownLinkCallback* linkCb = mdConfig_.linkCallback ? mdConfig_.linkCallback : GetDefaultMarkdownLinkCallback();
-                            if( ImGui::IsMouseReleased( 0 ) && linkCb && useLinkCallback )
-                            {
-                                linkCb( { markdown_ + link.text.start, link.text.size(), markdown_ + link.url.start, link.url.size(), mdConfig_.userData, true } );
-                            }
-                            if( link.text.size() > 0 && mdConfig_.tooltipCallback )
-                            {
-                                mdConfig_.tooltipCallback( { { markdown_ + link.text.start, link.text.size(), markdown_ + link.url.start, link.url.size(), mdConfig_.userData, true }, mdConfig_.linkIcon } );
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM >= 18900
+                                if( ImGui::GetCurrentWindow()->DC.IsSameLine )
+                                {
+                                    ImGui::NewLine();
+                                }
+#endif
+                                textRegion.ResetIndent();
+                                line = Line();
+                                em = Emphasis();
+                                link = Link();
+                                line.lineStart = i + 1;
+                                line.lastRenderPosition = i;
+                                continue;
                             }
                         }
                     }

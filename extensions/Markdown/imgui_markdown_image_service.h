@@ -634,6 +634,12 @@ struct MarkdownImageModifiers {
     float height_percent = 0.0f;
     bool has_border = false;
     ImVec4 border_col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
+    ImGui::MarkdownImageAlign align = ImGui::MarkdownImageAlign::None;
+    bool disable_zoom_scale = false;
+    int caption_mode = 0;         // 0 = default, 1 = force show, -1 = force hide (nocaption)
+    std::string custom_caption;
+    std::string alt_text;
+    int lightbox_mode = 0;        // 0 = default, 1 = force enable, -1 = force disable (nolightbox)
 };
 
 inline std::string TrimMarkdownModifierWhitespace(const std::string& str) {
@@ -648,6 +654,225 @@ inline std::string TrimMarkdownModifierWhitespace(const std::string& str) {
     return str.substr(start, end - start);
 }
 
+inline std::string LowerAsciiCopy(const std::string& in) {
+    std::string out = in;
+    for (char& c : out) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+inline bool ApplySingleMarkdownImageModifier(MarkdownImageModifiers& mods, const std::string& raw_key, const std::string& val, bool has_eq) {
+    const std::string key = LowerAsciiCopy(raw_key);
+    const std::string vlow = LowerAsciiCopy(val);
+
+    if (key.empty() && has_eq) {
+        // Shorthand dimension token: =68%, =200x100, =200, =x100
+        if (!val.empty() && val.back() == '%') {
+            mods.width_is_percent = true;
+            mods.width_percent = static_cast<float>(std::atof(val.c_str()));
+        } else {
+            size_t x_pos = val.find_first_of("xX");
+            if (x_pos != std::string::npos) {
+                std::string sw = val.substr(0, x_pos);
+                std::string sh = val.substr(x_pos + 1);
+                if (!sw.empty()) mods.width = static_cast<float>(std::atof(sw.c_str()));
+                if (!sh.empty()) mods.height = static_cast<float>(std::atof(sh.c_str()));
+            } else if (!val.empty()) {
+                mods.width = static_cast<float>(std::atof(val.c_str()));
+            }
+        }
+        return true;
+    }
+
+    if (key == "src") {
+        mods.clean_url = val;
+        return true;
+    }
+    if (key == "alt" || key == "title") {
+        if (has_eq && mods.alt_text.empty()) {
+            mods.alt_text = val;
+        }
+        return true;
+    }
+    if (key == "width" || key == "w") {
+        if (!val.empty() && val.back() == '%') {
+            mods.width_is_percent = true;
+            mods.width_percent = static_cast<float>(std::atof(val.c_str()));
+        } else if (!val.empty()) {
+            mods.width = static_cast<float>(std::atof(val.c_str()));
+        }
+        return true;
+    }
+    if (key == "height" || key == "h") {
+        if (!val.empty() && val.back() == '%') {
+            mods.height_is_percent = true;
+            mods.height_percent = static_cast<float>(std::atof(val.c_str()));
+        } else if (!val.empty()) {
+            mods.height = static_cast<float>(std::atof(val.c_str()));
+        }
+        return true;
+    }
+    if (key == "border") {
+        if (!has_eq || val.empty() || vlow == "1" || vlow == "true" || vlow == "on") {
+            mods.has_border = true;
+            mods.border_col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
+        } else if (vlow == "0" || vlow == "false" || vlow == "none" || vlow == "off") {
+            mods.has_border = false;
+        } else {
+            mods.has_border = true;
+            ImGui::ParseMarkdownColor(val, mods.border_col);
+        }
+        return true;
+    }
+
+    // Horizontal alignment: left, center/centered/centre, right, align=...
+    if (!has_eq && key == "left") {
+        mods.align = ImGui::MarkdownImageAlign::Left;
+        return true;
+    }
+    if (!has_eq && (key == "center" || key == "centered" || key == "centre")) {
+        mods.align = ImGui::MarkdownImageAlign::Center;
+        return true;
+    }
+    if (!has_eq && key == "right") {
+        mods.align = ImGui::MarkdownImageAlign::Right;
+        return true;
+    }
+    if (key == "align") {
+        if (vlow == "left") mods.align = ImGui::MarkdownImageAlign::Left;
+        else if (vlow == "center" || vlow == "centered" || vlow == "centre" || vlow == "middle") mods.align = ImGui::MarkdownImageAlign::Center;
+        else if (vlow == "right") mods.align = ImGui::MarkdownImageAlign::Right;
+        else if (vlow == "none" || vlow == "inline") mods.align = ImGui::MarkdownImageAlign::None;
+        return true;
+    }
+
+    // Zoom scaling opt-out: nozoom, no-zoom, scale=fixed, scale=1:1
+    if (!has_eq && (key == "nozoom" || key == "no-zoom" || key == "no_zoom" || key == "fixed")) {
+        mods.disable_zoom_scale = true;
+        return true;
+    }
+    if (key == "scale") {
+        if (vlow == "fixed" || vlow == "1:1" || vlow == "1" || vlow == "none" || vlow == "off") {
+            mods.disable_zoom_scale = true;
+        } else if (vlow == "auto" || vlow == "zoom" || vlow == "on") {
+            mods.disable_zoom_scale = false;
+        }
+        return true;
+    }
+
+    // Figure captions: caption, figcaption, caption="...", nocaption
+    if (!has_eq && (key == "caption" || key == "figcaption")) {
+        mods.caption_mode = 1;
+        return true;
+    }
+    if (!has_eq && (key == "nocaption" || key == "no-caption" || key == "no_caption")) {
+        mods.caption_mode = -1;
+        mods.custom_caption.clear();
+        return true;
+    }
+    if (key == "caption" || key == "figcaption") {
+        if (!has_eq || val.empty() || vlow == "1" || vlow == "true" || vlow == "on" || vlow == "auto") {
+            mods.caption_mode = 1;
+        } else if (vlow == "0" || vlow == "false" || vlow == "none" || vlow == "off") {
+            mods.caption_mode = -1;
+            mods.custom_caption.clear();
+        } else {
+            mods.caption_mode = 1;
+            mods.custom_caption = val;
+        }
+        return true;
+    }
+
+    // In-context lightbox: lightbox, zoom, expand, nolightbox
+    if (!has_eq && (key == "lightbox" || key == "zoom" || key == "expand" || key == "enlarge")) {
+        mods.lightbox_mode = 1;
+        return true;
+    }
+    if (!has_eq && (key == "nolightbox" || key == "no-lightbox" || key == "no_lightbox" || key == "noexpand" || key == "no-expand")) {
+        mods.lightbox_mode = -1;
+        return true;
+    }
+    if (key == "lightbox" || key == "expand") {
+        if (!has_eq || val.empty() || vlow == "1" || vlow == "true" || vlow == "on" || vlow == "auto") {
+            mods.lightbox_mode = 1;
+        } else if (vlow == "0" || vlow == "false" || vlow == "none" || vlow == "off") {
+            mods.lightbox_mode = -1;
+        }
+        return true;
+    }
+    if (key == "zoom" && has_eq) {
+        if (vlow == "0" || vlow == "false" || vlow == "none" || vlow == "off") {
+            mods.lightbox_mode = -1;
+        } else if (vlow == "1" || vlow == "true" || vlow == "on" || vlow == "lightbox") {
+            mods.lightbox_mode = 1;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+inline void ParseMarkdownImageModifierList(const std::string& attr_str, MarkdownImageModifiers& mods, bool stop_on_html_close) {
+    size_t p = 0;
+    const size_t n = attr_str.size();
+    while (p < n) {
+        while (p < n && (attr_str[p] == ' ' || attr_str[p] == '\t' || attr_str[p] == '\r' || attr_str[p] == '\n' || attr_str[p] == '{' || attr_str[p] == '}')) {
+            ++p;
+        }
+        if (p >= n) break;
+        if (stop_on_html_close && (attr_str[p] == '/' || attr_str[p] == '>')) {
+            ++p;
+            continue;
+        }
+
+        // Ignore standalone quoted title strings (e.g. ![alt](url "Tooltip title"))
+        if (attr_str[p] == '"' || attr_str[p] == '\'') {
+            char q = attr_str[p++];
+            while (p < n && attr_str[p] != q) {
+                if (attr_str[p] == '\\' && p + 1 < n) ++p;
+                ++p;
+            }
+            if (p < n) ++p;
+            continue;
+        }
+
+        size_t key_start = p;
+        while (p < n && attr_str[p] != '=' && attr_str[p] != ' ' && attr_str[p] != '\t' && attr_str[p] != '\r' && attr_str[p] != '\n' && attr_str[p] != '}') {
+            if (stop_on_html_close && (attr_str[p] == '/' || attr_str[p] == '>')) break;
+            ++p;
+        }
+        std::string key = attr_str.substr(key_start, p - key_start);
+
+        bool has_eq = false;
+        std::string val;
+        if (p < n && attr_str[p] == '=') {
+            has_eq = true;
+            ++p;
+            while (p < n && (attr_str[p] == ' ' || attr_str[p] == '\t')) ++p;
+            if (p < n && (attr_str[p] == '"' || attr_str[p] == '\'')) {
+                char q = attr_str[p++];
+                while (p < n && attr_str[p] != q) {
+                    if (attr_str[p] == '\\' && p + 1 < n && (attr_str[p + 1] == q || attr_str[p + 1] == '\\')) {
+                        ++p;
+                    }
+                    val.push_back(attr_str[p++]);
+                }
+                if (p < n && attr_str[p] == q) ++p;
+            } else {
+                size_t vstart = p;
+                while (p < n && attr_str[p] != ' ' && attr_str[p] != '\t' && attr_str[p] != '\r' && attr_str[p] != '\n' && attr_str[p] != '}') {
+                    if (stop_on_html_close && (attr_str[p] == '/' || attr_str[p] == '>')) break;
+                    ++p;
+                }
+                val = attr_str.substr(vstart, p - vstart);
+            }
+        }
+
+        ApplySingleMarkdownImageModifier(mods, key, val, has_eq);
+    }
+}
+
 inline MarkdownImageModifiers ParseMarkdownImageModifiers(const std::string& raw_input) {
     MarkdownImageModifiers mods;
     std::string s = TrimMarkdownModifierWhitespace(raw_input);
@@ -656,84 +881,86 @@ inline MarkdownImageModifiers ParseMarkdownImageModifiers(const std::string& raw
     // 1. HTML <img ... /> attribute string containing "src=" (synthesized by imgui_markdown_ext.h)
     size_t src_pos = s.find("src=");
     if (src_pos != std::string::npos && (src_pos == 0 || s[src_pos - 1] == ' ' || s[src_pos - 1] == '\t')) {
-        size_t p = 0;
-        while (p < s.size()) {
-            while (p < s.size() && (s[p] == ' ' || s[p] == '\t' || s[p] == '\r' || s[p] == '\n')) ++p;
-            if (p >= s.size()) break;
-
-            size_t key_start = p;
-            while (p < s.size() && s[p] != '=' && s[p] != ' ' && s[p] != '\t' && s[p] != '/' && s[p] != '>') ++p;
-            std::string key = s.substr(key_start, p - key_start);
-            for (char& c : key) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-
-            std::string val;
-            if (p < s.size() && s[p] == '=') {
-                ++p;
-                while (p < s.size() && (s[p] == ' ' || s[p] == '\t')) ++p;
-                if (p < s.size()) {
-                    if (s[p] == '"' || s[p] == '\'') {
-                        char quote = s[p++];
-                        size_t vstart = p;
-                        while (p < s.size() && s[p] != quote) ++p;
-                        val = s.substr(vstart, p - vstart);
-                        if (p < s.size()) ++p;
-                    } else {
-                        size_t vstart = p;
-                        while (p < s.size() && s[p] != ' ' && s[p] != '\t' && s[p] != '/' && s[p] != '>') ++p;
-                        val = s.substr(vstart, p - vstart);
-                    }
-                }
-            } else if (p < s.size() && (s[p] == '/' || s[p] == '>')) {
-                if (key.empty()) { ++p; continue; }
-            }
-
-            if (key == "src") {
-                mods.clean_url = val;
-            } else if (key == "width" || key == "w") {
-                if (!val.empty() && val.back() == '%') {
-                    mods.width_is_percent = true;
-                    mods.width_percent = static_cast<float>(std::atof(val.c_str()));
-                } else {
-                    mods.width = static_cast<float>(std::atof(val.c_str()));
-                }
-            } else if (key == "height" || key == "h") {
-                if (!val.empty() && val.back() == '%') {
-                    mods.height_is_percent = true;
-                    mods.height_percent = static_cast<float>(std::atof(val.c_str()));
-                } else {
-                    mods.height = static_cast<float>(std::atof(val.c_str()));
-                }
-            } else if (key == "border") {
-                if (val.empty() || val == "1" || val == "true") {
-                    mods.has_border = true;
-                    mods.border_col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
-                } else if (val == "0" || val == "false" || val == "none") {
-                    mods.has_border = false;
-                } else {
-                    mods.has_border = true;
-                    ImGui::ParseMarkdownColor(val, mods.border_col);
-                }
-            }
-        }
+        ParseMarkdownImageModifierList(s, mods, true);
         return mods;
     }
 
     // 2. CommonMark / Extended URL & Pandoc attribute block syntax
-    if (s.front() == '<' && s.back() == '>') {
-        s = TrimMarkdownModifierWhitespace(s.substr(1, s.size() - 2));
-        if (s.empty()) return mods;
-    }
-
     std::string url;
     std::string remainder;
 
     if (s.front() == '<') {
-        size_t end_angle = s.find('>');
-        if (end_angle != std::string::npos) {
-            url = s.substr(1, end_angle - 1);
-            remainder = s.substr(end_angle + 1);
+        char q = '\0';
+        size_t end_angle = std::string::npos;
+        for (size_t k = 1; k < s.size(); ++k) {
+            if (q != '\0') {
+                if (s[k] == q && s[k - 1] != '\\') q = '\0';
+                continue;
+            }
+            if (s[k] == '"' || s[k] == '\'') { q = s[k]; continue; }
+            if (s[k] == '>') { end_angle = k; break; }
+        }
+
+        std::string inside = (end_angle != std::string::npos) ? s.substr(1, end_angle - 1) : s.substr(1);
+        std::string after = (end_angle != std::string::npos) ? s.substr(end_angle + 1) : std::string();
+        inside = TrimMarkdownModifierWhitespace(inside);
+
+        // Tokenize inside <...> (quote-aware) and peel trailing recognized modifiers from the right
+        // so both <pic.png =68% center> and <folder with spaces/pic.png =68% center> preserve URLs cleanly!
+        struct SpanTok { size_t start; size_t end; std::string key; std::string val; bool has_eq; };
+        std::vector<SpanTok> toks;
+        size_t tp = 0;
+        while (tp < inside.size()) {
+            while (tp < inside.size() && (inside[tp] == ' ' || inside[tp] == '\t')) ++tp;
+            if (tp >= inside.size()) break;
+            size_t t_start = tp;
+            size_t k_start = tp;
+            while (tp < inside.size() && inside[tp] != '=' && inside[tp] != ' ' && inside[tp] != '\t') ++tp;
+            std::string t_key = inside.substr(k_start, tp - k_start);
+            bool t_eq = false;
+            std::string t_val;
+            if (tp < inside.size() && inside[tp] == '=') {
+                t_eq = true;
+                ++tp;
+                if (tp < inside.size() && (inside[tp] == '"' || inside[tp] == '\'')) {
+                    char tq = inside[tp++];
+                    size_t vs = tp;
+                    while (tp < inside.size() && inside[tp] != tq) {
+                        if (inside[tp] == '\\' && tp + 1 < inside.size()) ++tp;
+                        ++tp;
+                    }
+                    t_val = inside.substr(vs, tp - vs);
+                    if (tp < inside.size() && inside[tp] == tq) ++tp;
+                } else {
+                    size_t vs = tp;
+                    while (tp < inside.size() && inside[tp] != ' ' && inside[tp] != '\t') ++tp;
+                    t_val = inside.substr(vs, tp - vs);
+                }
+            }
+            toks.push_back({ t_start, tp, t_key, t_val, t_eq });
+        }
+
+        size_t mod_first_tok = toks.size();
+        while (mod_first_tok > 1) {
+            MarkdownImageModifiers probe;
+            const SpanTok& cand = toks[mod_first_tok - 1];
+            if (ApplySingleMarkdownImageModifier(probe, cand.key, cand.val, cand.has_eq)) {
+                --mod_first_tok;
+            } else {
+                break;
+            }
+        }
+
+        if (mod_first_tok < toks.size()) {
+            url = TrimMarkdownModifierWhitespace(inside.substr(0, toks[mod_first_tok].start));
+            remainder = inside.substr(toks[mod_first_tok].start);
+            if (!after.empty()) {
+                remainder += ' ';
+                remainder += after;
+            }
         } else {
-            url = s.substr(1);
+            url = inside;
+            remainder = after;
         }
     } else if (s.front() == '"' || s.front() == '\'') {
         char quote = s.front();
@@ -756,93 +983,14 @@ inline MarkdownImageModifiers ParseMarkdownImageModifiers(const std::string& raw
 
     mods.clean_url = url;
     remainder = TrimMarkdownModifierWhitespace(remainder);
-    if (remainder.empty()) return mods;
-
-    if (remainder.front() == '{' && remainder.back() == '}') {
-        remainder = TrimMarkdownModifierWhitespace(remainder.substr(1, remainder.size() - 2));
-    }
-
-    size_t p = 0;
-    while (p < remainder.size()) {
-        while (p < remainder.size() && (remainder[p] == ' ' || remainder[p] == '\t' || remainder[p] == '{' || remainder[p] == '}')) ++p;
-        if (p >= remainder.size()) break;
-
-        if (remainder[p] == '"' || remainder[p] == '\'') {
-            char quote = remainder[p++];
-            while (p < remainder.size() && remainder[p] != quote) ++p;
-            if (p < remainder.size()) ++p;
-            continue;
-        }
-
-        size_t tok_start = p;
-        while (p < remainder.size() && remainder[p] != ' ' && remainder[p] != '\t' && remainder[p] != '}') ++p;
-        std::string tok = remainder.substr(tok_start, p - tok_start);
-        if (tok.empty()) continue;
-
-        if (tok.front() == '=') {
-            std::string dim = tok.substr(1);
-            if (!dim.empty() && dim.back() == '%') {
-                mods.width_is_percent = true;
-                mods.width_percent = static_cast<float>(std::atof(dim.c_str()));
-            } else {
-                size_t x_pos = dim.find_first_of("xX");
-                if (x_pos != std::string::npos) {
-                    std::string sw = dim.substr(0, x_pos);
-                    std::string sh = dim.substr(x_pos + 1);
-                    if (!sw.empty()) mods.width = static_cast<float>(std::atof(sw.c_str()));
-                    if (!sh.empty()) mods.height = static_cast<float>(std::atof(sh.c_str()));
-                } else {
-                    mods.width = static_cast<float>(std::atof(dim.c_str()));
-                }
-            }
-        } else if (tok.rfind("width=", 0) == 0 || tok.rfind("w=", 0) == 0) {
-            size_t eq = tok.find('=');
-            std::string val = tok.substr(eq + 1);
-            if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
-                val = val.substr(1, val.size() - 2);
-            }
-            if (!val.empty() && val.back() == '%') {
-                mods.width_is_percent = true;
-                mods.width_percent = static_cast<float>(std::atof(val.c_str()));
-            } else {
-                mods.width = static_cast<float>(std::atof(val.c_str()));
-            }
-        } else if (tok.rfind("height=", 0) == 0 || tok.rfind("h=", 0) == 0) {
-            size_t eq = tok.find('=');
-            std::string val = tok.substr(eq + 1);
-            if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
-                val = val.substr(1, val.size() - 2);
-            }
-            if (!val.empty() && val.back() == '%') {
-                mods.height_is_percent = true;
-                mods.height_percent = static_cast<float>(std::atof(val.c_str()));
-            } else {
-                mods.height = static_cast<float>(std::atof(val.c_str()));
-            }
-        } else if (tok == "border") {
-            mods.has_border = true;
-            mods.border_col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
-        } else if (tok.rfind("border=", 0) == 0) {
-            std::string val = tok.substr(7);
-            if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
-                val = val.substr(1, val.size() - 2);
-            }
-            if (val == "0" || val == "none" || val == "false") {
-                mods.has_border = false;
-            } else if (val == "1" || val == "true") {
-                mods.has_border = true;
-                mods.border_col = ImVec4(0.85f, 0.85f, 0.85f, 1.0f);
-            } else {
-                mods.has_border = true;
-                ImGui::ParseMarkdownColor(val, mods.border_col);
-            }
-        }
+    if (!remainder.empty()) {
+        ParseMarkdownImageModifierList(remainder, mods, false);
     }
     return mods;
 }
 
 inline void ApplyMarkdownImageModifiers(ImGui::MarkdownImageData& img, const MarkdownImageModifiers& mods, const ImVec2& native_size, bool preserve_existing_border = false) {
-    float avail_w = ImGui::GetContentRegionAvail().x;
+    const float avail_w = ImGui::MarkdownDetail::ResolveFullLineAvailWidth(ImGui::GetActiveMarkdownConfig());
 
     if (mods.has_border) {
         img.border_col = mods.border_col;
@@ -850,36 +998,53 @@ inline void ApplyMarkdownImageModifiers(ImGui::MarkdownImageData& img, const Mar
         img.border_col = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
     }
 
-    float base_w = (native_size.x > 0.0f) ? native_size.x : 64.0f;
-    float base_h = (native_size.y > 0.0f) ? native_size.y : 64.0f;
+    const float base_w = (native_size.x > 0.0f) ? native_size.x : 64.0f;
+    const float base_h = (native_size.y > 0.0f) ? native_size.y : 64.0f;
+    img.native_size = ImVec2(base_w, base_h);
+    img.align = mods.align;
+    img.captionMode = mods.caption_mode;
+    img.customCaption = mods.custom_caption;
+    img.altOverride = mods.alt_text;
+    img.lightboxMode = mods.lightbox_mode;
+
     float target_w = base_w;
     float target_h = base_h;
-    float aspect = (base_w > 0.0f) ? (base_h / base_w) : 1.0f;
+    const float aspect = (base_w > 0.0f) ? (base_h / base_w) : 1.0f;
 
     if (mods.width_is_percent) {
-        float ref_w = (avail_w > 10.0f) ? avail_w : (base_w > 0.0f ? base_w : 100.0f);
-        target_w = ref_w * (mods.width_percent / 100.0f);
+        const float ref_w = (avail_w > 10.0f) ? avail_w : (base_w > 0.0f ? base_w : 100.0f);
+        target_w = std::round(ref_w * (mods.width_percent / 100.0f));
         if (mods.height > 0.0f) {
             target_h = mods.height;
         } else if (mods.height_is_percent) {
-            target_h = ref_w * (mods.height_percent / 100.0f);
+            target_h = std::round(ref_w * (mods.height_percent / 100.0f));
         } else {
             target_h = std::round(target_w * aspect);
         }
-    } else if (mods.width > 0.0f && mods.height > 0.0f) {
-        target_w = mods.width;
-        target_h = mods.height;
-    } else if (mods.width > 0.0f) {
-        target_w = mods.width;
-        target_h = std::round(target_w * aspect);
-    } else if (mods.height > 0.0f) {
-        target_h = mods.height;
-        target_w = (aspect > 0.0f) ? std::round(target_h / aspect) : base_w;
+    } else {
+        if (mods.width > 0.0f && mods.height > 0.0f) {
+            target_w = mods.width;
+            target_h = mods.height;
+        } else if (mods.width > 0.0f) {
+            target_w = mods.width;
+            target_h = std::round(target_w * aspect);
+        } else if (mods.height > 0.0f) {
+            target_h = mods.height;
+            target_w = (aspect > 0.0f) ? std::round(target_h / aspect) : base_w;
+        }
+
+        if (!mods.disable_zoom_scale) {
+            const float zoom = ImGui::MarkdownDetail::GetActiveContentZoom();
+            if (zoom > 0.0f && std::fabs(zoom - 1.0f) > 0.001f) {
+                target_w = std::round(target_w * zoom);
+                target_h = std::round(target_h * zoom);
+            }
+        }
     }
 
     // Auto-constraint to available viewport width (max-width: 100%; height: auto)
     if (avail_w > 10.0f && target_w > avail_w && target_w > 0.0f) {
-        float scale = avail_w / target_w;
+        const float scale = avail_w / target_w;
         target_w = avail_w;
         target_h = std::round(target_h * scale);
     }
@@ -1065,12 +1230,44 @@ inline ImGui::MarkdownImageData DefaultMarkdownImageCallback(ImGui::MarkdownLink
     (void)isAbsoluteOsPath;
 #endif
 
-    // (a) Resolve relative to MarkdownConfig::baseDir (when configured)
+    // (a) Resolve relative to MarkdownConfig::baseDir (when configured), including common
+    //     documentation subfolder/parent layouts (baseDir/images/<file>, baseDir/../<url>, baseDir/../images/<file>)
+    //     when cleanUrl contains no '..' parent-traversal segments:
     if (!fileFound && !activeBaseDir.empty() && !cleanUrl.empty()) {
+        auto hasParentTraversalSegment = [](const std::string& p) -> bool {
+            size_t pos = 0;
+            while (pos < p.size()) {
+                size_t next_sep = p.find_first_of("/\\", pos);
+                std::string seg = (next_sep == std::string::npos) ? p.substr(pos) : p.substr(pos, next_sep - pos);
+                if (seg == "..") return true;
+                if (next_sep == std::string::npos) break;
+                pos = next_sep + 1;
+            }
+            return false;
+        };
+
         std::string candidate = activeBaseDir + "/" + cleanUrl;
         if (checkCandidate(candidate, st)) {
             resolvedPath = candidate;
             fileFound = true;
+        } else if (!hasParentTraversalSegment(cleanUrl)) {
+            size_t slash_pos = cleanUrl.find_last_of("/\\");
+            std::string baseName = (slash_pos == std::string::npos) ? cleanUrl : cleanUrl.substr(slash_pos + 1);
+
+            const std::string fallbacks[] = {
+                !baseName.empty() ? (activeBaseDir + "/images/" + baseName) : std::string(),
+                (cleanUrl != baseName) ? (activeBaseDir + "/images/" + cleanUrl) : std::string(),
+                activeBaseDir + "/../" + cleanUrl,
+                !baseName.empty() ? (activeBaseDir + "/../images/" + baseName) : std::string()
+            };
+
+            for (size_t fi = 0; fi < sizeof(fallbacks) / sizeof(fallbacks[0]); ++fi) {
+                if (!fallbacks[fi].empty() && checkCandidate(fallbacks[fi], st)) {
+                    resolvedPath = fallbacks[fi];
+                    fileFound = true;
+                    break;
+                }
+            }
         }
     }
 
