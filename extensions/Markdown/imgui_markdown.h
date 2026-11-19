@@ -1613,13 +1613,97 @@ namespace ImGui
             return ImGui::GetContentRegionAvail().x;
         }
 
+        // Nesting-safe background underlay helper: records draw command & index offsets before
+        // rendering foreground content, then draws background primitives and rotates those
+        // commands behind the foreground without opening an ImDrawListSplitter.
+        struct ImDrawListUnderlayScope {
+            ImDrawList* dl;
+            bool        enabled;
+            int         fg_cmd_start;
+            int         fg_idx_start;
+            int         bg_cmd_start;
+            int         bg_idx_start;
+
+            explicit ImDrawListUnderlayScope( ImDrawList* draw_list, bool enable = true )
+                : dl( draw_list ), enabled( enable ), fg_cmd_start( 0 ), fg_idx_start( 0 ), bg_cmd_start( 0 ), bg_idx_start( 0 ) {
+                if( !dl || !enabled ) return;
+                if( dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr ) {
+                    dl->AddDrawCmd();
+                }
+                fg_cmd_start = dl->CmdBuffer.Size - 1;
+                fg_idx_start = dl->IdxBuffer.Size;
+            }
+
+            void BeginBackground() {
+                if( !dl || !enabled ) return;
+                while( dl->CmdBuffer.Size > fg_cmd_start &&
+                       dl->CmdBuffer.back().ElemCount == 0 &&
+                       dl->CmdBuffer.back().UserCallback == nullptr ) {
+                    dl->CmdBuffer.pop_back();
+                }
+                dl->AddDrawCmd();
+                bg_cmd_start = dl->CmdBuffer.Size - 1;
+                bg_idx_start = dl->IdxBuffer.Size;
+            }
+
+            void EndUnderlay() {
+                if( !dl || !enabled ) return;
+                while( dl->CmdBuffer.Size > bg_cmd_start &&
+                       dl->CmdBuffer.back().ElemCount == 0 &&
+                       dl->CmdBuffer.back().UserCallback == nullptr ) {
+                    dl->CmdBuffer.pop_back();
+                }
+                const int total_cmds = dl->CmdBuffer.Size;
+                const int total_idxs = dl->IdxBuffer.Size;
+                if( bg_cmd_start > fg_cmd_start && total_cmds > bg_cmd_start &&
+                    bg_idx_start > fg_idx_start && total_idxs > bg_idx_start ) {
+                    unsigned int running_idx_offset = dl->CmdBuffer.Data[fg_cmd_start].IdxOffset;
+                    std::rotate( dl->IdxBuffer.Data + fg_idx_start,
+                                 dl->IdxBuffer.Data + bg_idx_start,
+                                 dl->IdxBuffer.Data + total_idxs );
+                    std::rotate( dl->CmdBuffer.Data + fg_cmd_start,
+                                 dl->CmdBuffer.Data + bg_cmd_start,
+                                 dl->CmdBuffer.Data + total_cmds );
+                    for( int c = fg_cmd_start; c < total_cmds; ++c ) {
+                        dl->CmdBuffer.Data[c].IdxOffset = running_idx_offset;
+                        running_idx_offset += dl->CmdBuffer.Data[c].ElemCount;
+                    }
+                    dl->_IdxWritePtr = dl->IdxBuffer.Data + dl->IdxBuffer.Size;
+                }
+                if( dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr ) {
+                    dl->AddDrawCmd();
+                }
+            }
+        };
+
+        struct LightboxCaptionCacheEntry {
+            ImGuiID popupId = 0;
+            ImGuiID textHash = 0;
+            int     maxWidthPx = 0;
+            ImVec2  finalTextPos = ImVec2( 0.0f, 0.0f );
+            bool    valid = false;
+        };
+
+        struct LightboxCaptionCache {
+            LightboxCaptionCacheEntry entries[8];
+            int                       nextSlot = 0;
+        };
+
+        inline LightboxCaptionCache& GetLightboxCaptionCache() {
+            static LightboxCaptionCache s_Cache;
+            return s_Cache;
+        }
+
         struct LightboxTelemetryState {
             int     openFrame = -1;
             ImGuiID activePopupId = 0;
+            bool    hasLightboxCaption = false;
             ImVec2  closeButtonMin = ImVec2( 0.0f, 0.0f );
             ImVec2  closeButtonMax = ImVec2( 0.0f, 0.0f );
             ImVec2  lightboxImageMin = ImVec2( 0.0f, 0.0f );
             ImVec2  lightboxImageMax = ImVec2( 0.0f, 0.0f );
+            ImVec2  lightboxCaptionPlateMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  lightboxCaptionPlateMax = ImVec2( 0.0f, 0.0f );
             ImVec2  lastInlineImageMin = ImVec2( 0.0f, 0.0f );
             ImVec2  lastInlineImageMax = ImVec2( 0.0f, 0.0f );
             ImVec2  lastCaptionMin = ImVec2( 0.0f, 0.0f );
@@ -4288,6 +4372,19 @@ namespace ImGui
         }
     }
 
+    inline bool GetActiveMarkdownLightboxCaptionPlateRect( ImVec2* out_min, ImVec2* out_max )
+    {
+        const MarkdownDetail::LightboxTelemetryState& st = MarkdownDetail::GetLightboxTelemetryState();
+        if( st.openFrame == ImGui::GetFrameCount() && st.hasLightboxCaption ) {
+            if( out_min ) *out_min = st.lightboxCaptionPlateMin;
+            if( out_max ) *out_max = st.lightboxCaptionPlateMax;
+            return true;
+        }
+        if( out_min ) *out_min = ImVec2( 0.0f, 0.0f );
+        if( out_max ) *out_max = ImVec2( 0.0f, 0.0f );
+        return false;
+    }
+
     namespace MarkdownDetail
     {
         inline float MeasureCaptionWidthFallback( const char* text, size_t len, const MarkdownConfig& cfg )
@@ -4401,8 +4498,11 @@ namespace ImGui
             std::snprintf( popup_str_id, sizeof(popup_str_id), "##imgee_md_lb_%u_%08x", img_ordinal, (unsigned int)content_hash );
             char tip_str_id[80];
             std::snprintf( tip_str_id, sizeof(tip_str_id), "##imgee_md_imgtip_%u_%08x", img_ordinal, (unsigned int)content_hash );
+            char thumb_btn_str_id[80];
+            std::snprintf( thumb_btn_str_id, sizeof(thumb_btn_str_id), "##imgee_md_imgbtn_%u_%08x", img_ordinal, (unsigned int)content_hash );
             const ImGuiID popup_id = ImGui::GetID( popup_str_id );
             const ImGuiID tip_id = ImGui::GetID( tip_str_id );
+            const ImGuiID thumb_btn_id = ImGui::GetID( thumb_btn_str_id );
 
             if( !imageData.isValid ) {
                 if( use_lightbox ) {
@@ -4518,9 +4618,22 @@ namespace ImGui
             telem.lastInlineImageMin = res.imageRectMin;
             telem.lastInlineImageMax = res.imageRectMax;
 
-            const bool img_hovered = ImGui::IsItemHovered();
-            const bool img_released = img_hovered && ImGui::IsMouseReleased( 0 );
-            const bool img_clicked_down = img_hovered && ImGui::IsMouseClicked( 0 );
+            bool img_hovered = false;
+            bool img_released = false;
+            bool img_clicked_down = false;
+            if( use_lightbox || has_link_cb ) {
+                const ImRect thumb_r( res.imageRectMin, res.imageRectMax );
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
+                ImGui::ItemAdd( thumb_r, thumb_btn_id, NULL );
+#else
+                ImGui::ItemAdd( thumb_r, thumb_btn_id, NULL, ImGuiItemFlags_NoNav );
+#endif
+                bool thumb_held = false;
+                img_released = ImGui::ButtonBehavior( thumb_r, thumb_btn_id, &img_hovered, &thumb_held );
+                img_clicked_down = thumb_held;
+            } else {
+                img_hovered = ImGui::IsItemHovered();
+            }
 
             if( show_caption ) {
                 float scale = vis_scale;
@@ -4651,7 +4764,7 @@ namespace ImGui
 
                     ImGui::SetNextWindowPos( host_min, ImGuiCond_Always );
                     ImGui::SetNextWindowSize( host_size, ImGuiCond_Always );
-                    ImGui::PushStyleColor( ImGuiCol_PopupBg, ImVec4( 0.04f, 0.05f, 0.08f, 0.88f ) );
+                    ImGui::PushStyleColor( ImGuiCol_PopupBg, ImVec4( 0.02f, 0.03f, 0.05f, 0.94f ) );
                     ImGui::PushStyleColor( ImGuiCol_Border, ImVec4( 0.35f, 0.42f, 0.52f, 0.55f ) );
                     ImGui::PushStyleVar( ImGuiStyleVar_WindowPadding, ImVec2( 0.0f, 0.0f ) );
                     ImGui::PushStyleVar( ImGuiStyleVar_WindowRounding, 0.0f );
@@ -4682,6 +4795,7 @@ namespace ImGui
                         const ImVec2 close_min( host_min.x + host_size.x - pad - close_sz, host_min.y + pad );
                         const ImVec2 close_max( close_min.x + close_sz, close_min.y + close_sz );
 
+                        // 1. Register [X] close button first so it always has top hit-test priority:
                         ImGui::SetCursorScreenPos( close_min );
                         const bool close_pressed = ImGui::InvisibleButton( "##imgee_lb_close", ImVec2( close_sz, close_sz ) );
                         const bool close_hovered = ImGui::IsItemHovered();
@@ -4694,24 +4808,79 @@ namespace ImGui
                         }
 
                         ImDrawList* lb_dl = ImGui::GetWindowDrawList();
-                        const ImU32 close_bg = close_active
-                                                   ? IM_COL32( 220, 62, 62, 235 )
-                                                   : ( close_hovered ? IM_COL32( 195, 58, 58, 220 ) : IM_COL32( 36, 42, 54, 210 ) );
-                        const ImU32 close_fg = IM_COL32( 242, 245, 250, 255 );
-                        lb_dl->AddRectFilled( close_min, close_max, close_bg, 5.0f );
-                        AddRectCompat( lb_dl, close_min, close_max, IM_COL32( 140, 155, 180, 110 ), 5.0f, 0, 1.0f );
-                        const float x_ins = 8.5f;
-                        lb_dl->AddLine( ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
-                        lb_dl->AddLine( ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
 
                         const bool has_lb_caption = !caption_text.empty();
                         const float side_margin = 20.0f;
                         const float top_margin = pad + close_sz + 8.0f;
-                        const float cap_reserve = has_lb_caption ? 34.0f : 0.0f;
-                        const float bot_margin = 14.0f + cap_reserve;
-
+                        const float cap_pad_x = 12.0f;
+                        const float cap_pad_y = 6.0f;
+                        const float cap_rounding = 6.0f;
+                        const float cap_img_gap = has_lb_caption ? 8.0f : 0.0f;
+                        const float bot_outer_margin = has_lb_caption ? 10.0f : 14.0f;
                         const float avail_lb_w = ImMax( 24.0f, host_size.x - side_margin * 2.0f );
-                        const float avail_lb_h = ImMax( 24.0f, host_size.y - top_margin - bot_margin );
+                        const float max_cap_text_w = ImMax( 16.0f, avail_lb_w - cap_pad_x * 2.0f );
+
+                        ImDrawListUnderlayScope img_underlay( lb_dl, has_lb_caption );
+                        ImDrawListUnderlayScope cap_underlay( lb_dl, has_lb_caption );
+
+                        ImVec2 raw_cap_min( 0.0f, 0.0f );
+                        ImVec2 raw_cap_max( 0.0f, 0.0f );
+                        float cap_actual_w = 0.0f;
+                        float cap_actual_h = 0.0f;
+                        float plate_w = 0.0f;
+                        float plate_h = 0.0f;
+                        int cap_vtx_start = 0;
+                        int cap_vtx_end = 0;
+                        ImGuiID cap_hash = 0;
+                        int max_cap_w_px = 0;
+
+                        if( has_lb_caption ) {
+                            MarkdownConfig lb_cap_cfg = mdConfig_;
+                            lb_cap_cfg.showImageCaptions = false;
+                            lb_cap_cfg.enableImageLightbox = false;
+                            const float lb_cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
+                            const float clamped_cap_w = ImMin( max_cap_text_w, lb_cap_single_w );
+                            lb_cap_cfg.wrapWidth = ( lb_cap_single_w <= max_cap_text_w + 0.5f ) ? -1.0f : max_cap_text_w;
+
+                            cap_hash = ImHashData( caption_text.c_str(), caption_text.size(), 0x9E3779B9u );
+                            max_cap_w_px = static_cast<int>( std::round( max_cap_text_w ) );
+
+                            ImVec2 initial_cap_pos(
+                                std::round( host_min.x + ( host_size.x - clamped_cap_w ) * 0.5f ),
+                                host_min.y + top_margin );
+                            LightboxCaptionCache& cap_cache = GetLightboxCaptionCache();
+                            for( int ci = 0; ci < 8; ++ci ) {
+                                const LightboxCaptionCacheEntry& ce = cap_cache.entries[ci];
+                                if( ce.valid && ce.popupId == popup_id && ce.textHash == cap_hash && ce.maxWidthPx == max_cap_w_px ) {
+                                    initial_cap_pos = ce.finalTextPos;
+                                    break;
+                                }
+                            }
+
+                            cap_vtx_start = lb_dl->VtxBuffer.Size;
+                            ImGui::SetCursorScreenPos( initial_cap_pos );
+                            ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.92f, 0.95f, 0.99f, 0.96f ) );
+                            ImGui::BeginGroup();
+                            {
+                                ScopedFullLineWidth lb_cap_scope( clamped_cap_w, true );
+                                RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
+                            }
+                            ImGui::EndGroup();
+                            ImGui::PopStyleColor();
+                            cap_vtx_end = lb_dl->VtxBuffer.Size;
+
+                            raw_cap_min = ImGui::GetItemRectMin();
+                            raw_cap_max = ImGui::GetItemRectMax();
+                            cap_actual_w = ImMax( 1.0f, raw_cap_max.x - raw_cap_min.x );
+                            cap_actual_h = ImMax( ImGui::GetTextLineHeight(), raw_cap_max.y - raw_cap_min.y );
+                            plate_w = ImMin( avail_lb_w, cap_actual_w + cap_pad_x * 2.0f );
+                            plate_h = cap_actual_h + cap_pad_y * 2.0f;
+                        }
+
+                        const float total_avail_h = ImMax( 24.0f, host_size.y - top_margin - bot_outer_margin );
+                        const float avail_lb_h = has_lb_caption
+                                                     ? ImMax( 24.0f, total_avail_h - ( cap_img_gap + plate_h ) )
+                                                     : total_avail_h;
 
                         const ImVec2 nat = ( imageData.native_size.x > 0.0f && imageData.native_size.y > 0.0f )
                                                ? imageData.native_size
@@ -4726,11 +4895,71 @@ namespace ImGui
                         if( lb_img_sz.x < 1.0f ) lb_img_sz.x = 1.0f;
                         if( lb_img_sz.y < 1.0f ) lb_img_sz.y = 1.0f;
 
+                        const float combo_h = lb_img_sz.y + ( has_lb_caption ? ( cap_img_gap + plate_h ) : 0.0f );
                         const ImVec2 lb_img_min(
                             std::round( host_min.x + ( host_size.x - lb_img_sz.x ) * 0.5f ),
-                            std::round( host_min.y + top_margin + ( avail_lb_h - lb_img_sz.y ) * 0.5f ) );
+                            std::round( host_min.y + top_margin + ImMax( 0.0f, ( total_avail_h - combo_h ) * 0.5f ) ) );
                         const ImVec2 lb_img_max( lb_img_min.x + lb_img_sz.x, lb_img_min.y + lb_img_sz.y );
 
+                        ImVec2 plate_min( 0.0f, 0.0f );
+                        ImVec2 plate_max( 0.0f, 0.0f );
+                        if( has_lb_caption ) {
+                            plate_min.x = std::round( host_min.x + ( host_size.x - plate_w ) * 0.5f );
+                            plate_max.x = plate_min.x + std::round( plate_w );
+                            plate_min.y = std::round( lb_img_max.y + cap_img_gap );
+                            plate_max.y = plate_min.y + std::round( plate_h );
+
+                            if( plate_max.y > host_max.y - 2.0f ) {
+                                const float shift_up = plate_max.y - ( host_max.y - 2.0f );
+                                plate_min.y -= shift_up;
+                                plate_max.y -= shift_up;
+                            }
+                            if( plate_min.y < host_min.y + 2.0f ) {
+                                plate_min.y = host_min.y + 2.0f;
+                            }
+                            if( plate_min.x < host_min.x + 2.0f ) plate_min.x = host_min.x + 2.0f;
+                            if( plate_max.x > host_max.x - 2.0f ) plate_max.x = host_max.x - 2.0f;
+
+                            const ImVec2 final_cap_pos(
+                                std::round( plate_min.x + ( ( plate_max.x - plate_min.x ) - cap_actual_w ) * 0.5f ),
+                                std::round( plate_min.y + cap_pad_y ) );
+                            const float dx = final_cap_pos.x - raw_cap_min.x;
+                            const float dy = final_cap_pos.y - raw_cap_min.y;
+                            if( std::fabs( dx ) > 0.01f || std::fabs( dy ) > 0.01f ) {
+                                for( int vi = cap_vtx_start; vi < cap_vtx_end && vi < lb_dl->VtxBuffer.Size; ++vi ) {
+                                    lb_dl->VtxBuffer.Data[vi].pos.x += dx;
+                                    lb_dl->VtxBuffer.Data[vi].pos.y += dy;
+                                }
+                            }
+
+                            LightboxCaptionCache& cap_cache = GetLightboxCaptionCache();
+                            int slot = -1;
+                            for( int ci = 0; ci < 8; ++ci ) {
+                                const LightboxCaptionCacheEntry& ce = cap_cache.entries[ci];
+                                if( ce.valid && ce.popupId == popup_id && ce.textHash == cap_hash && ce.maxWidthPx == max_cap_w_px ) {
+                                    slot = ci;
+                                    break;
+                                }
+                            }
+                            if( slot < 0 ) {
+                                slot = cap_cache.nextSlot & 7;
+                                cap_cache.nextSlot = ( cap_cache.nextSlot + 1 ) & 7;
+                            }
+                            cap_cache.entries[slot].popupId = popup_id;
+                            cap_cache.entries[slot].textHash = cap_hash;
+                            cap_cache.entries[slot].maxWidthPx = max_cap_w_px;
+                            cap_cache.entries[slot].finalTextPos = final_cap_pos;
+                            cap_cache.entries[slot].valid = true;
+
+                            cap_underlay.BeginBackground();
+                            lb_dl->AddRectFilled( plate_min, plate_max, IM_COL32( 10, 14, 22, 245 ), cap_rounding );
+                            AddRectCompat( lb_dl, plate_min, plate_max, IM_COL32( 255, 255, 255, 34 ), cap_rounding, 0, 1.0f );
+                            cap_underlay.EndUnderlay();
+                        }
+
+                        if( has_lb_caption ) {
+                            img_underlay.BeginBackground();
+                        }
                         ImGui::SetCursorScreenPos( lb_img_min );
                         ImGui::ImGeeCompat::Image(
                             imageData.user_texture_id,
@@ -4739,32 +4968,56 @@ namespace ImGui
                             imageData.uv1,
                             imageData.tint_col,
                             ImVec4( 0.72f, 0.78f, 0.88f, 0.50f ) );
-
                         if( has_lb_caption ) {
-                            MarkdownConfig lb_cap_cfg = mdConfig_;
-                            lb_cap_cfg.showImageCaptions = false;
-                            lb_cap_cfg.enableImageLightbox = false;
-                            const float lb_cap_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
-                            const float clamped_cap_w = ImMin( avail_lb_w, lb_cap_w );
-                            const float lb_cap_x = std::round( host_min.x + ( host_size.x - clamped_cap_w ) * 0.5f );
-                            const float lb_cap_y = ImMin( host_max.y - 24.0f, lb_img_max.y + 8.0f );
-                            ImGui::SetCursorScreenPos( ImVec2( lb_cap_x, lb_cap_y ) );
-                            lb_cap_cfg.wrapWidth = ( lb_cap_w <= avail_lb_w + 0.5f ) ? -1.0f : avail_lb_w;
-                            ImGui::PushStyleColor( ImGuiCol_Text, ImVec4( 0.88f, 0.91f, 0.96f, 0.92f ) );
-                            ScopedFullLineWidth lb_cap_scope( clamped_cap_w, true );
-                            RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
-                            ImGui::PopStyleColor();
+                            img_underlay.EndUnderlay();
+                        }
+
+                        // 2. Hit-shield over the enlarged image so clicks inside the image never dismiss:
+                        {
+                            const ImRect lb_img_r( lb_img_min, lb_img_max );
+                            const ImGuiID lb_img_id = ImGui::GetID( "##imgee_lb_image" );
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
+                            ImGui::ItemAdd( lb_img_r, lb_img_id, NULL );
+#else
+                            ImGui::ItemAdd( lb_img_r, lb_img_id, NULL, ImGuiItemFlags_NoNav );
+#endif
+                            bool lb_img_hov = false, lb_img_held = false;
+                            (void)ImGui::ButtonBehavior( lb_img_r, lb_img_id, &lb_img_hov, &lb_img_held );
+                        }
+
+                        // Draw [X] close button foreground glyph:
+                        const ImU32 close_bg = close_active
+                                                   ? IM_COL32( 220, 62, 62, 235 )
+                                                   : ( close_hovered ? IM_COL32( 195, 58, 58, 220 ) : IM_COL32( 36, 42, 54, 210 ) );
+                        const ImU32 close_fg = IM_COL32( 242, 245, 250, 255 );
+                        lb_dl->AddRectFilled( close_min, close_max, close_bg, 5.0f );
+                        AddRectCompat( lb_dl, close_min, close_max, IM_COL32( 140, 155, 180, 110 ), 5.0f, 0, 1.0f );
+                        const float x_ins = 8.5f;
+                        lb_dl->AddLine( ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+                        lb_dl->AddLine( ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+
+                        // 3. Release-triggered backdrop button covering the popup outside [X] and the enlarged image.
+                        //    Keeps the popup alive and owning ActiveId across multi-frame press-and-release gestures,
+                        //    preventing orphan mouse-releases from bleeding into underlying thumbnails, links, or scrollbars.
+                        {
+                            const ImRect lb_backdrop_r( host_min, host_max );
+                            const ImGuiID lb_backdrop_id = ImGui::GetID( "##imgee_lb_backdrop" );
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
+                            ImGui::ItemAdd( lb_backdrop_r, lb_backdrop_id, NULL );
+#else
+                            ImGui::ItemAdd( lb_backdrop_r, lb_backdrop_id, NULL, ImGuiItemFlags_NoNav );
+#endif
+                            bool backdrop_hovered = false, backdrop_held = false;
+                            const bool backdrop_pressed = ImGui::ButtonBehavior( lb_backdrop_r, lb_backdrop_id, &backdrop_hovered, &backdrop_held );
+                            const ImVec2 mp = ImGui::GetIO().MousePos;
+                            const bool inside_img = ( mp.x >= lb_img_min.x && mp.x <= lb_img_max.x && mp.y >= lb_img_min.y && mp.y <= lb_img_max.y );
+                            if( !is_appearing && backdrop_pressed && !inside_img && !close_hovered ) {
+                                should_close = true;
+                            }
                         }
 
                         if( IsEscapePressedCompat() ) {
                             should_close = true;
-                        }
-                        if( !is_appearing && ImGui::IsMouseClicked( 0 ) && !close_hovered ) {
-                            const ImVec2 mp = ImGui::GetIO().MousePos;
-                            const bool inside_img = ( mp.x >= lb_img_min.x && mp.x <= lb_img_max.x && mp.y >= lb_img_min.y && mp.y <= lb_img_max.y );
-                            if( !inside_img ) {
-                                should_close = true;
-                            }
                         }
 
                         if( should_close ) {
@@ -4772,10 +5025,13 @@ namespace ImGui
                         } else {
                             telem.openFrame = ImGui::GetFrameCount();
                             telem.activePopupId = popup_id;
+                            telem.hasLightboxCaption = has_lb_caption;
                             telem.closeButtonMin = close_min;
                             telem.closeButtonMax = close_max;
                             telem.lightboxImageMin = lb_img_min;
                             telem.lightboxImageMax = lb_img_max;
+                            telem.lightboxCaptionPlateMin = plate_min;
+                            telem.lightboxCaptionPlateMax = plate_max;
                         }
 
                         ImGui::EndPopup();

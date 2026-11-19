@@ -1172,69 +1172,8 @@ namespace ImGui {
             Caution
         };
 
-        // Nesting-safe background underlay helper: records draw command & index offsets before
-        // rendering foreground content, then draws the card background + accent bar and rotates
-        // those commands behind the foreground without ever opening an ImDrawListSplitter!
-        // This allows inner Markdown to freely open its own ImDrawListSplitter (e.g. fenced
-        // code blocks and BeginTable) or nest blockquotes/callouts to arbitrary depth.
-        struct ImDrawListUnderlayScope {
-            ImDrawList* dl;
-            int fg_cmd_start;
-            int fg_idx_start;
-            int bg_cmd_start;
-            int bg_idx_start;
-
-            explicit ImDrawListUnderlayScope(ImDrawList* draw_list)
-                : dl(draw_list), fg_cmd_start(0), fg_idx_start(0), bg_cmd_start(0), bg_idx_start(0) {
-                if (!dl) return;
-                if (dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr) {
-                    dl->AddDrawCmd();
-                }
-                fg_cmd_start = dl->CmdBuffer.Size - 1;
-                fg_idx_start = dl->IdxBuffer.Size;
-            }
-
-            void BeginBackground() {
-                if (!dl) return;
-                while (dl->CmdBuffer.Size > fg_cmd_start &&
-                       dl->CmdBuffer.back().ElemCount == 0 &&
-                       dl->CmdBuffer.back().UserCallback == nullptr) {
-                    dl->CmdBuffer.pop_back();
-                }
-                dl->AddDrawCmd();
-                bg_cmd_start = dl->CmdBuffer.Size - 1;
-                bg_idx_start = dl->IdxBuffer.Size;
-            }
-
-            void EndUnderlay() {
-                if (!dl) return;
-                while (dl->CmdBuffer.Size > bg_cmd_start &&
-                       dl->CmdBuffer.back().ElemCount == 0 &&
-                       dl->CmdBuffer.back().UserCallback == nullptr) {
-                    dl->CmdBuffer.pop_back();
-                }
-                const int total_cmds = dl->CmdBuffer.Size;
-                const int total_idxs = dl->IdxBuffer.Size;
-                if (bg_cmd_start > fg_cmd_start && total_cmds > bg_cmd_start &&
-                    bg_idx_start > fg_idx_start && total_idxs > bg_idx_start) {
-                    unsigned int running_idx_offset = dl->CmdBuffer.Data[fg_cmd_start].IdxOffset;
-                    std::rotate(dl->IdxBuffer.Data + fg_idx_start,
-                                dl->IdxBuffer.Data + bg_idx_start,
-                                dl->IdxBuffer.Data + total_idxs);
-                    std::rotate(dl->CmdBuffer.Data + fg_cmd_start,
-                                dl->CmdBuffer.Data + bg_cmd_start,
-                                dl->CmdBuffer.Data + total_cmds);
-                    for (int c = fg_cmd_start; c < total_cmds; ++c) {
-                        dl->CmdBuffer.Data[c].IdxOffset = running_idx_offset;
-                        running_idx_offset += dl->CmdBuffer.Data[c].ElemCount;
-                    }
-                    dl->_IdxWritePtr = dl->IdxBuffer.Data + dl->IdxBuffer.Size;
-                }
-                if (dl->CmdBuffer.Size == 0 || dl->CmdBuffer.back().ElemCount > 0 || dl->CmdBuffer.back().UserCallback != nullptr) {
-                    dl->AddDrawCmd();
-                }
-            }
-        };
+        // Reuse canonical nesting-safe underlay helper from ImGui::MarkdownDetail:
+        using ImDrawListUnderlayScope = ImGui::MarkdownDetail::ImDrawListUnderlayScope;
 
         // Standalone procedural glyph fallback when widgets/imgui_icons.h is disabled or absent:
         inline void DrawMinimalCalloutGlyph(ImDrawList* dl, const ImVec2& pos, float size, ImU32 col, CalloutKind kind) {

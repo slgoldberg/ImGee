@@ -1145,7 +1145,7 @@ int main(int argc, char** argv) {
         renderLightboxHostFrame();
         IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
 
-        // Pass D: Re-open Lightbox #1 and dismiss by clicking dimmed backdrop outside enlarged image:
+        // Pass D: Re-open Lightbox #1 and dismiss by clicking + releasing dimmed backdrop outside enlarged image:
         setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
         renderLightboxHostFrame();
         setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
@@ -1154,12 +1154,205 @@ int main(int argc, char** argv) {
         renderLightboxHostFrame();
         IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
 
-        // Click top-left corner of host backdrop (well outside centered enlarged image & top-right [X]):
+        // Press top-left corner of host backdrop: stays open while held, closes cleanly on mouse-release:
         setMouseAndButton(45.0f, 80.0f, true);
         renderLightboxHostFrame();
-        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
         setMouseAndButton(45.0f, 80.0f, false);
         renderLightboxHostFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+
+        // Pass E: Multi-frame held backdrop click-and-release directly over thumb1Center (and over an
+        // underlying button/link) closes cleanly on release and NEVER re-opens or bleeds through!
+        bool underlyingBtnTriggered = false;
+        int underlyingLinkHits = 0;
+        ImGui::MarkdownConfig bleedTestCfg = mdCfg;
+        bleedTestCfg.userData = &underlyingLinkHits;
+        bleedTestCfg.linkCallback = [](ImGui::MarkdownLinkCallbackData d) {
+            if (d.userData) {
+                *static_cast<int*>(d.userData) += 1;
+            }
+        };
+
+        ImVec2 bleedBtnCenter(0.0f, 0.0f);
+        ImVec2 bleedLinkCenter(0.0f, 0.0f);
+        auto renderBleedTestFrame = [&]() {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(760.0f, 520.0f), ImGuiCond_Always);
+            ImGui::Begin("Wave2LightboxHostWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            MD::Text(twoLightboxDoc, &bleedTestCfg);
+            ImGui::SetCursorScreenPos(ImVec2(48.0f, 220.0f));
+            if (ImGui::Button("UnderlyingCockpitAction", ImVec2(150.0f, 28.0f))) {
+                underlyingBtnTriggered = true;
+            }
+            const ImVec2 bMin = ImGui::GetItemRectMin();
+            const ImVec2 bMax = ImGui::GetItemRectMax();
+            bleedBtnCenter = ImVec2((bMin.x + bMax.x) * 0.5f, (bMin.y + bMax.y) * 0.5f);
+
+            ImGui::SetCursorScreenPos(ImVec2(48.0f, 265.0f));
+            MD::Text("[UnderlyingChecklistLink](https://example.invalid/checklist)", &bleedTestCfg);
+            const ImVec2 lMin = ImGui::GetItemRectMin();
+            const ImVec2 lMax = ImGui::GetItemRectMax();
+            bleedLinkCenter = ImVec2((lMin.x + lMax.x) * 0.5f, (lMin.y + lMax.y) * 0.5f);
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        // 1. Orphan mouse-release over thumb1Center (mouse pressed elsewhere, released over thumb1Center)
+        //    must NOT open Lightbox #1 because clickable thumbnails require matched ButtonBehavior ActiveId:
+        setMouseAndButton(45.0f, 480.0f, true);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+
+        // 2. Open Lightbox #1 properly with matched press + release on thumb1Center:
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+        renderBleedTestFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        ImGui::GetActiveMarkdownLightboxImageRect(&lbImgMin, &lbImgMax);
+        // Confirm thumb1Center lies in the dimmed backdrop outside the centered enlarged image:
+        IMGEE_TEST_CHECK(thumb1Center.x < lbImgMin.x - 10.0f);
+
+        // 3. Press down on backdrop directly at thumb1Center, hold across 4 frames, then release:
+        for (int holdFrame = 0; holdFrame < 4; ++holdFrame) {
+            setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+            renderBleedTestFrame();
+            IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        }
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderBleedTestFrame();
+        // Must close cleanly on the release frame and stay closed on subsequent hover frames!
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+
+        // 4. Re-open Lightbox #1, hold & release over underlying button AND over underlying Markdown link:
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+        renderBleedTestFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        IMGEE_TEST_CHECK(bleedBtnCenter.x < lbImgMin.x - 10.0f);
+
+        setMouseAndButton(bleedBtnCenter.x, bleedBtnCenter.y, true);
+        renderBleedTestFrame();
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        setMouseAndButton(bleedBtnCenter.x, bleedBtnCenter.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        IMGEE_TEST_CHECK(!underlyingBtnTriggered);
+
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, true);
+        renderBleedTestFrame();
+        setMouseAndButton(thumb1Center.x, thumb1Center.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+        IMGEE_TEST_CHECK(bleedLinkCenter.x < lbImgMin.x - 10.0f);
+
+        setMouseAndButton(bleedLinkCenter.x, bleedLinkCenter.y, true);
+        renderBleedTestFrame();
+        renderBleedTestFrame();
+        setMouseAndButton(bleedLinkCenter.x, bleedLinkCenter.y, false);
+        renderBleedTestFrame();
+        IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+        IMGEE_TEST_CHECK(underlyingLinkHits == 0);
+
+        // Pass F: Multi-line lightbox caption renders with high-contrast backing plate strictly inside
+        // host_min..host_max and strictly below the enlarged image (zero overlap):
+        {
+            const std::string multiLineCaptionDoc =
+                "![Overhead Bus Schematic](test_logo){width=120 height=90 lightbox caption=\""
+                "**Electrical Bus Tie Overview:** Essential AC Bus 1 and Essential DC Bus 2 automatically "
+                "transfer to the standby inverter and emergency ram air turbine generator whenever dual "
+                "integrated drive generators drop offline during flight deck abnormal procedures, maintaining "
+                "continuous attitude heading reference and flight director instrumentation across all phases.\"}";
+
+            ImVec2 mlThumbCenter(0.0f, 0.0f);
+            auto renderMultiLineCaptionLightbox = [&](bool captureThumb = false) {
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(460.0f, 360.0f), ImGuiCond_Always);
+                ImGui::Begin("Wave2MultiLineCaptionLbWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                MD::TextWrapped(multiLineCaptionDoc, &mdCfg);
+                if (captureThumb) {
+                    ImVec2 mMin, mMax;
+                    ImGui::GetLastMarkdownImageRect(&mMin, &mMax);
+                    mlThumbCenter = ImVec2((mMin.x + mMax.x) * 0.5f, (mMin.y + mMax.y) * 0.5f);
+                }
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            };
+
+            setMouseAndButton(5.0f, 5.0f, false);
+            renderMultiLineCaptionLightbox(true);
+
+            setMouseAndButton(mlThumbCenter.x, mlThumbCenter.y, false);
+            renderMultiLineCaptionLightbox();
+            setMouseAndButton(mlThumbCenter.x, mlThumbCenter.y, true);
+            renderMultiLineCaptionLightbox();
+            setMouseAndButton(mlThumbCenter.x, mlThumbCenter.y, false);
+            renderMultiLineCaptionLightbox();
+            IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+
+            auto verifyPlateAndVertices = [&]() {
+                ImVec2 mlImgMin, mlImgMax, mlPlateMin, mlPlateMax;
+                ImGui::GetActiveMarkdownLightboxImageRect(&mlImgMin, &mlImgMax);
+                const bool hasPlate = ImGui::GetActiveMarkdownLightboxCaptionPlateRect(&mlPlateMin, &mlPlateMax);
+                IMGEE_TEST_CHECK(hasPlate);
+
+                // Backing plate must sit strictly inside host window [40..500, 40..400] and strictly below image:
+                IMGEE_TEST_CHECK(mlPlateMin.x >= 40.0f && mlPlateMax.x <= 500.0f);
+                IMGEE_TEST_CHECK(mlPlateMin.y >= 40.0f && mlPlateMax.y <= 400.0f);
+                IMGEE_TEST_CHECK(mlPlateMin.y >= mlImgMax.y + 4.0f);
+                // Multi-line caption must measure >= 3 text lines + vertical plate padding:
+                IMGEE_TEST_CHECK((mlPlateMax.y - mlPlateMin.y) >= ImGui::GetTextLineHeight() * 3.0f + 8.0f);
+
+                // Verify backing plate fill vertices exist in DrawData and match mlPlateMin..mlPlateMax:
+                const ImDrawData* dd = ImGui::GetDrawData();
+                IMGEE_TEST_CHECK(dd != nullptr);
+                const ImU32 expectedPlateFill = IM_COL32(10, 14, 22, 245);
+                bool foundPlateVerts = false;
+                ImVec2 vPlateMin(1e9f, 1e9f), vPlateMax(-1e9f, -1e9f);
+                for (int n = 0; n < dd->CmdListsCount; ++n) {
+                    const ImDrawList* cl = dd->CmdLists[n];
+                    for (int vi = 0; vi < cl->VtxBuffer.Size; ++vi) {
+                        const ImDrawVert& v = cl->VtxBuffer[vi];
+                        if (v.col == expectedPlateFill) {
+                            foundPlateVerts = true;
+                            if (v.pos.x < vPlateMin.x) vPlateMin.x = v.pos.x;
+                            if (v.pos.y < vPlateMin.y) vPlateMin.y = v.pos.y;
+                            if (v.pos.x > vPlateMax.x) vPlateMax.x = v.pos.x;
+                            if (v.pos.y > vPlateMax.y) vPlateMax.y = v.pos.y;
+                        }
+                    }
+                }
+                IMGEE_TEST_CHECK(foundPlateVerts);
+                IMGEE_TEST_CHECK(std::fabs(vPlateMin.x - mlPlateMin.x) <= 1.5f);
+                IMGEE_TEST_CHECK(std::fabs(vPlateMin.y - mlPlateMin.y) <= 1.5f);
+                IMGEE_TEST_CHECK(std::fabs(vPlateMax.x - mlPlateMax.x) <= 1.5f);
+                IMGEE_TEST_CHECK(std::fabs(vPlateMax.y - mlPlateMax.y) <= 1.5f);
+            };
+
+            // Verify both Frame 1 (cache miss / VtxBuffer placement) AND Frame 2 (cache hit / direct placement):
+            verifyPlateAndVertices();
+            renderMultiLineCaptionLightbox();
+            verifyPlateAndVertices();
+
+            // Cleanly close via Escape:
+            setEscapeKey(true);
+            renderMultiLineCaptionLightbox();
+            IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
+            setEscapeKey(false);
+            renderMultiLineCaptionLightbox();
+        }
 
         // 4. MarkdownConfig::baseDir subfolder (images/) & parent (../, ../images/) lookup + '..' guard:
         auto makeDir = [](const char* path) {
