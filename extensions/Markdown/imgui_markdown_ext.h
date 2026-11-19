@@ -1308,6 +1308,83 @@ namespace ImGui {
             return false;
         };
 
+        auto scanRawContainerLine = [&matchRawContainerName](const char* lptr, size_t start_k, size_t line_len,
+                                                             const std::string& tag_name, int& io_depth) {
+            const std::string close_pat = "</" + tag_name + ">";
+            int inline_backticks = 0;
+            size_t k = start_k;
+            while (k < line_len) {
+                if (lptr[k] == '`') {
+                    int bc = 0;
+                    while (k + (size_t)bc < line_len && lptr[k + (size_t)bc] == '`') ++bc;
+                    if (inline_backticks == 0) {
+                        // CommonMark: only enter an inline code span if a matching run of 'bc' backticks closes on this line
+                        size_t probe = k + (size_t)bc;
+                        bool has_closing_run = false;
+                        while (probe < line_len) {
+                            if (lptr[probe] == '`') {
+                                int pbc = 0;
+                                while (probe + (size_t)pbc < line_len && lptr[probe + (size_t)pbc] == '`') ++pbc;
+                                if (pbc == bc) {
+                                    has_closing_run = true;
+                                    break;
+                                }
+                                probe += (size_t)pbc;
+                            } else {
+                                ++probe;
+                            }
+                        }
+                        if (has_closing_run) {
+                            inline_backticks = bc;
+                        }
+                    } else if (bc == inline_backticks) {
+                        inline_backticks = 0;
+                    }
+                    k += (size_t)bc;
+                    continue;
+                }
+
+                if (inline_backticks > 0) {
+                    ++k;
+                    continue;
+                }
+
+                if (lptr[k] == '<') {
+                    if (k + close_pat.size() <= line_len &&
+                        TableDetail::StrCaseEqualN(lptr + k, close_pat.c_str(), close_pat.size())) {
+                        --io_depth;
+                        if (io_depth <= 0) {
+                            io_depth = 0;
+                            return;
+                        }
+                        k += close_pat.size();
+                        continue;
+                    }
+
+                    std::string nested_nm;
+                    if (matchRawContainerName(lptr + k + 1, line_len - (k + 1), nested_nm) && nested_nm == tag_name) {
+                        size_t nk = k + 1 + nested_nm.size();
+                        size_t nested_gt = std::string::npos;
+                        while (nk < line_len) {
+                            if (lptr[nk] == '>') { nested_gt = nk; break; }
+                            if (lptr[nk] == '<') break;
+                            ++nk;
+                        }
+                        if (nested_gt != std::string::npos) {
+                            size_t ns = nested_gt;
+                            while (ns > k + 1 && (lptr[ns - 1] == ' ' || lptr[ns - 1] == '\t')) --ns;
+                            if (lptr[ns - 1] != '/') {
+                                ++io_depth;
+                            }
+                            k = nested_gt + 1;
+                            continue;
+                        }
+                    }
+                }
+                ++k;
+            }
+        };
+
         size_t i = 0;
         while (i < len) {
             size_t line_start = i;
@@ -1328,35 +1405,9 @@ namespace ImGui {
             }
             bool is_blank_line = (lead_idx >= line_len);
 
-            // 1. Track explicit raw <blockquote/callout/alert/notice> blocks so their inner '>'
-            //    lines are handled on the tag's own recursive MarkdownExt pass rather than prematurely split:
-            if (!in_fence && in_raw_container) {
-                std::string close_pat = "</" + raw_container_tag + ">";
-                for (size_t k = 0; k < line_len; ++k) {
-                    if (lptr[k] == '<') {
-                        if (k + close_pat.size() <= line_len &&
-                            TableDetail::StrCaseEqualN(lptr + k, close_pat.c_str(), close_pat.size())) {
-                            --raw_container_depth;
-                            if (raw_container_depth <= 0) {
-                                in_raw_container = false;
-                                raw_container_depth = 0;
-                                break;
-                            }
-                        } else {
-                            std::string nested_nm;
-                            if (matchRawContainerName(lptr + k + 1, line_len - (k + 1), nested_nm) && nested_nm == raw_container_tag) {
-                                const char* gt = static_cast<const char*>(memchr(lptr + k + 1, '>', line_len - (k + 1)));
-                                if (gt && gt[-1] != '/') ++raw_container_depth;
-                            }
-                        }
-                    }
-                }
-                out.append(lptr, next_line - line_start);
-                prev_blank_or_doc_start = false;
-                continue;
-            }
-
-            // 2. Track fenced code blocks (``` or ~~~ with 0..3 leading spaces):
+            // 1. Track fenced code blocks (``` or ~~~ with 0..3 leading spaces), even inside
+            //    explicit raw <blockquote/callout/alert/notice> containers so literal closing
+            //    tags or '>' lines inside code fences never close the container or turn into quotes:
             if (!in_indented_code_block && lead_cols <= 3 && lead_idx < line_len &&
                 (lptr[lead_idx] == '`' || lptr[lead_idx] == '~')) {
                 char fc = lptr[lead_idx];
@@ -1364,7 +1415,9 @@ namespace ImGui {
                 while (lead_idx + (size_t)fl < line_len && lptr[lead_idx + (size_t)fl] == fc) ++fl;
                 if (fl >= 3) {
                     if (!in_fence) {
-                        flushQuoteOrCallout();
+                        if (!in_raw_container) {
+                            flushQuoteOrCallout();
+                        }
                         in_fence = true;
                         fence_char = fc;
                         fence_len = fl;
@@ -1381,6 +1434,20 @@ namespace ImGui {
 
             if (in_fence) {
                 out.append(lptr, next_line - line_start);
+                continue;
+            }
+
+            // 2. Track explicit raw <blockquote/callout/alert/notice> blocks (skipping inline
+            //    backtick spans) so their inner '>' lines are handled on the tag's own recursive
+            //    MarkdownExt pass rather than prematurely split:
+            if (in_raw_container) {
+                scanRawContainerLine(lptr, 0, line_len, raw_container_tag, raw_container_depth);
+                if (raw_container_depth <= 0) {
+                    in_raw_container = false;
+                    raw_container_depth = 0;
+                }
+                out.append(lptr, next_line - line_start);
+                prev_blank_or_doc_start = false;
                 continue;
             }
 
@@ -1405,24 +1472,24 @@ namespace ImGui {
                 std::string matched_tag;
                 if (matchRawContainerName(lptr + lead_idx + 1, line_len - (lead_idx + 1), matched_tag)) {
                     flushQuoteOrCallout();
-                    const char* gt = static_cast<const char*>(memchr(lptr + lead_idx + 1, '>', line_len - (lead_idx + 1)));
-                    if (gt && gt[-1] != '/') {
-                        int depth = 1;
-                        std::string close_pat = "</" + matched_tag + ">";
-                        size_t after_open = (size_t)(gt - lptr) + 1;
-                        for (size_t k = after_open; k < line_len; ++k) {
-                            if (lptr[k] == '<') {
-                                if (k + close_pat.size() <= line_len &&
-                                    TableDetail::StrCaseEqualN(lptr + k, close_pat.c_str(), close_pat.size())) {
-                                    --depth;
-                                    if (depth == 0) break;
-                                }
+                    size_t nk = lead_idx + 1 + matched_tag.size();
+                    size_t open_gt = std::string::npos;
+                    while (nk < line_len) {
+                        if (lptr[nk] == '>') { open_gt = nk; break; }
+                        if (lptr[nk] == '<') break;
+                        ++nk;
+                    }
+                    if (open_gt != std::string::npos) {
+                        size_t ns = open_gt;
+                        while (ns > lead_idx + 1 && (lptr[ns - 1] == ' ' || lptr[ns - 1] == '\t')) --ns;
+                        if (lptr[ns - 1] != '/') {
+                            int depth = 1;
+                            scanRawContainerLine(lptr, open_gt + 1, line_len, matched_tag, depth);
+                            if (depth > 0) {
+                                in_raw_container = true;
+                                raw_container_tag = matched_tag;
+                                raw_container_depth = depth;
                             }
-                        }
-                        if (depth > 0) {
-                            in_raw_container = true;
-                            raw_container_tag = matched_tag;
-                            raw_container_depth = depth;
                         }
                     }
                     out.append(lptr, next_line - line_start);
@@ -4098,7 +4165,8 @@ namespace TimedTooltip {
         if (config->bullet_spacing > 0.0f) local_md.bulletSpacing = config->bullet_spacing * scale;
         if (no_wrap) local_md.wrapWidth = -1.0f;
 
-        if (std::abs(scale - state.last_scale) > 0.001f) {
+        const bool scale_changed = (std::abs(scale - state.last_scale) > 0.001f);
+        if (scale_changed) {
             state.perfect_size = ImVec2(0.0f, 0.0f);
             state.last_size = ImVec2(0.0f, 0.0f);
             state.last_scale = scale;
@@ -4107,7 +4175,7 @@ namespace TimedTooltip {
         const bool active_or_hovered = (is_hovered || state.is_displayed || state.hover_cycles > 0);
         if (active_or_hovered) {
             ImGuiID cur_text_hash = ImHashStr(buffer);
-            if (cur_text_hash != state.last_text_hash) {
+            if (cur_text_hash != state.last_text_hash || scale_changed) {
                 state.last_text_hash = cur_text_hash;
                 state.perfect_size = ImVec2(0.0f, 0.0f);
                 state.last_size = ImVec2(0.0f, 0.0f);

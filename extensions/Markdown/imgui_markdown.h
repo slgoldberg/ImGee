@@ -3669,7 +3669,9 @@ namespace ImGui
                 const float hit_half_w = 4.0f * scale;
 
                 ImRect grip_r( right_x - hit_half_w, top_y, right_x + hit_half_w, bot_y );
-                ImGuiID grip_id = ImGui::GetID( "##md_table_right_resize_grip" );
+                char grip_id_str[80];
+                snprintf( grip_id_str, sizeof(grip_id_str), "##md_table_right_resize_grip_%08x_%d", (unsigned int)header_hash, (int)table_idx );
+                ImGuiID grip_id = ImGui::GetID( grip_id_str );
 
 #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
                 ImGui::ItemAdd( grip_r, grip_id, NULL );

@@ -269,7 +269,6 @@ namespace TimedTooltip {
 
     // Resolves the active font scale using the v2.4 Open-Sky Damped Curve & Two-Channel Override system:
     inline float GetActiveFontScale(const TooltipConfig* config = nullptr) {
-        float window_scale = 1.0f;
         float base_font_size = ImGui::GetFontSize();
         if (GImGui && GImGui->Font) {
             ImFont* isolated_base = Detail::ResolveBaseTooltipFont(nullptr);
@@ -283,16 +282,10 @@ namespace TimedTooltip {
                 base_font_size = isolated_native * (base_font_size / ambient_native);
             }
         }
-        float font_scale = (base_font_size > 0.0f) ? (base_font_size / 14.0f) : 1.0f;
-
-        if (GImGui && GImGui->CurrentWindow) {
-            float zoom = GImGui->CurrentWindow->FontWindowScale;
-            if (zoom <= 0.0f) zoom = 1.0f;
-            // Both channels active: font size ratio * window font zoom!
-            window_scale = font_scale * zoom;
-        } else {
-            window_scale = font_scale;
-        }
+        // Note: ImGui::GetFontSize() (via UpdateCurrentFontSize) already incorporates
+        // window->FontWindowScale as well as global DPI/font scale, so we do NOT multiply
+        // by FontWindowScale a second time here (which would erroneously produce zoom^2).
+        float window_scale = (base_font_size > 0.0f) ? (base_font_size / 14.0f) : 1.0f;
         if (window_scale <= 0.0f) window_scale = 1.0f;
 
         TooltipFontScaleConfig cfg;
@@ -389,6 +382,7 @@ namespace TimedTooltip {
         }
 
         TooltipState& state = GetTooltipStateMap()[hash_id];
+        const int prev_frame_updated = state.last_frame_updated;
         state.last_frame_updated = cur_frame; // Mark as alive this frame!
         state.last_context_updated = cur_ctx;
         
@@ -461,7 +455,7 @@ namespace TimedTooltip {
         if (std::abs(scale - state.last_scale) > 0.001f) {
             state.last_scale = scale;
             // Only invalidate if this was cached from an earlier frame, NEVER if perfect_size was calculated this frame!
-            if (state.last_frame_updated < cur_frame) {
+            if (prev_frame_updated < cur_frame) {
                 state.perfect_size = ImVec2(0.0f, 0.0f);
                 state.last_size = ImVec2(0.0f, 0.0f);
             }
@@ -870,7 +864,8 @@ namespace TimedTooltip {
         if (scale <= 0.0f) scale = 1.0f;
 
         TooltipState& state = GetTooltipStateMap()[id];
-        if (std::abs(scale - state.last_scale) > 0.001f) {
+        const bool scale_changed = (std::abs(scale - state.last_scale) > 0.001f);
+        if (scale_changed) {
             state.perfect_size = ImVec2(0.0f, 0.0f);
             state.last_size = ImVec2(0.0f, 0.0f);
             state.last_scale = scale;
@@ -887,7 +882,7 @@ namespace TimedTooltip {
         float target_w = (config->default_wrap_width > 0.0f) ? (config->default_wrap_width * scale) : (360.0f * scale);
         float wrap_limit = (target_w < min_w) ? min_w : (target_w > max_w) ? max_w : target_w;
         if (wrap_limit > max_screen_w) wrap_limit = max_screen_w;
-        if (fmt && (state.perfect_size.x <= 0.0f || is_hovered || state.is_displayed || state.hover_cycles > 0)) {
+        if (fmt && (state.perfect_size.x <= 0.0f || scale_changed || is_hovered || state.is_displayed || state.hover_cycles > 0)) {
             va_list args_sz;
             va_copy(args_sz, args);
             char sz_buf[4096];
@@ -895,7 +890,7 @@ namespace TimedTooltip {
             va_end(args_sz);
 
             ImGuiID cur_text_hash = ImHashStr(sz_buf);
-            if (cur_text_hash != state.last_text_hash) {
+            if (cur_text_hash != state.last_text_hash || scale_changed) {
                 state.last_text_hash = cur_text_hash;
                 state.perfect_size = ImVec2(0.0f, 0.0f);
                 state.last_size = ImVec2(0.0f, 0.0f);
@@ -935,6 +930,7 @@ namespace TimedTooltip {
         }
 
         bool displayed = false;
+        state.last_frame_updated = ImGui::GetFrameCount();
         if (BeginStationaryTooltipProxy(id, is_hovered, config_override)) {
             displayed = true;
 

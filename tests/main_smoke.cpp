@@ -82,9 +82,11 @@ struct StackSnapshot {
 };
 
 struct AtlasFonts {
-    ImFont* regular16 = nullptr;
-    ImFont* bold16    = nullptr;
-    ImFont* small9    = nullptr;
+    ImFont* regular16  = nullptr;
+    ImFont* bold16     = nullptr;
+    ImFont* small9     = nullptr;
+    ImFont* baseline14 = nullptr;
+    ImFont* compact12  = nullptr;
 };
 
 static AtlasFonts PrepareHeadlessFontAtlas(ImGuiIO& io) {
@@ -100,6 +102,14 @@ static AtlasFonts PrepareHeadlessFontAtlas(ImGuiIO& io) {
     ImFontConfig smallCfg;
     smallCfg.SizePixels = 9.0f;
     fonts.small9 = io.Fonts->AddFontDefault(&smallCfg);
+
+    ImFontConfig base14Cfg;
+    base14Cfg.SizePixels = 14.0f;
+    fonts.baseline14 = io.Fonts->AddFontDefault(&base14Cfg);
+
+    ImFontConfig comp12Cfg;
+    comp12Cfg.SizePixels = 12.0f;
+    fonts.compact12 = io.Fonts->AddFontDefault(&comp12Cfg);
 
     // Intentionally leave io.FontDefault == nullptr to verify X-Plane / ImgWindow fallback behavior
     io.FontDefault = nullptr;
@@ -647,6 +657,203 @@ int main(int argc, char** argv) {
         }
         IMGEE_TEST_CHECK(expectedIdxOffset == static_cast<unsigned int>(dl->IdxBuffer.Size));
 
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+    }
+
+    // -------------------------------------------------------------------------
+    // Wave 1 Peer-Review Regression Suite (Multi-Table grip_id Isolation,
+    // FontWindowScale 1.5x Zoom Parity & Cache Invalidation, and Fence/Backtick-
+    // Aware Raw Container Scanning)
+    // -------------------------------------------------------------------------
+    {
+        // 1. Multi-table right-edge grip_id isolation in the same window:
+        //    Hovering Table 1's right-edge resize grip across hover_delay_cycles
+        //    must display Table 1's tooltip without Table 2 resetting hover_cycles!
+        const std::string twoTablesMd =
+            "| Sys A | Val A |\n"
+            "| :--- | ---: |\n"
+            "| N1 | 94% |\n"
+            "<!-- table-preset: width=200 -->\n\n"
+            "| Sys B | Val B |\n"
+            "| :--- | ---: |\n"
+            "| EGT | 680C |\n"
+            "<!-- table-preset: width=280 -->\n";
+
+        TimedTooltip::ClearActiveTooltip();
+        ImVec2 table1GripPos(0.0f, 0.0f);
+
+        // Warm-up layout pass to resolve exact OuterRect.Max.x of Table 1:
+        std::vector<ImGuiID> gripIdsSeen;
+        {
+            ImGui::MarkdownConfig idProbeCfg;
+            idProbeCfg.userData = &gripIdsSeen;
+            idProbeCfg.tableTooltipCallback = [](ImGuiID id, bool, const char* txt, void* ud) {
+                if (txt && std::string(txt).find("Drag to resize table width") == 0) {
+                    static_cast<std::vector<ImGuiID>*>(ud)->push_back(id);
+                }
+            };
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+            ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f));
+            ImGui::Begin("TwoTableGripWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+            ImVec2 startCursor = ImGui::GetCursorScreenPos();
+            table1GripPos = ImVec2(startCursor.x + 200.0f * ImGui::GetVisualScale(), startCursor.y + 14.0f);
+            MD::Text(twoTablesMd, &idProbeCfg);
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        }
+        IMGEE_TEST_CHECK(gripIdsSeen.size() == 2 && gripIdsSeen[0] != gripIdsSeen[1]);
+
+        const ImGuiID table1GripId = gripIdsSeen[0];
+        const ImGuiID table2GripId = gripIdsSeen[1];
+        const int delayFrames = TimedTooltip::GetCurrentTooltipConfig().hover_delay_cycles;
+
+        ImGuiID activeIdInsideWin = 0;
+        for (int f = 0; f < delayFrames + 3; ++f) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddMousePosEvent(table1GripPos.x, table1GripPos.y);
+            io.AddMouseButtonEvent(0, false);
+#else
+            io.MousePos = table1GripPos;
+            io.MouseDown[0] = false;
+#endif
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+            ImGui::SetNextWindowSize(ImVec2(640.0f, 480.0f));
+            ImGui::Begin("TwoTableGripWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+            MD::Text(twoTablesMd); // Uses live TimedTooltip bridge
+            activeIdInsideWin = TimedTooltip::GetActiveTooltipID();
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        }
+
+        const auto& ttMapAfterTables = TimedTooltip::GetTooltipStateMap();
+        IMGEE_TEST_CHECK(activeIdInsideWin == table1GripId);
+        IMGEE_TEST_CHECK(ttMapAfterTables.at(table1GripId).is_displayed);
+        IMGEE_TEST_CHECK(ttMapAfterTables.at(table1GripId).hover_cycles >= delayFrames);
+        IMGEE_TEST_CHECK(!ttMapAfterTables.at(table2GripId).is_displayed);
+        TimedTooltip::ClearActiveTooltip();
+
+        // 2. FontWindowScale 1.5x zoom check (no zoom^2!) & perfect_size zoom invalidation:
+        ImGui::SetFontRole(ImGui::ImFontRole::Regular, atlasFonts.baseline14);
+        ImGui::SetFontRole(ImGui::ImFontRole::Bold, atlasFonts.baseline14);
+
+        TimedTooltip::TooltipConfig linearZoomCfg = TimedTooltip::GetConfig();
+        linearZoomCfg.font_scale_policy = TimedTooltip::TooltipFontScale_LinearInherit;
+        linearZoomCfg.hover_delay_cycles = 1;
+
+        const ImGuiID idZoomTxt = 0x77110001u;
+        const ImGuiID idZoomMd  = 0x77110002u;
+        const ImGuiID idZoomRaw = 0x77110003u;
+
+        // Pass A: Measure at 1.0x window zoom
+        ImGui::NewFrame();
+        ImGui::Begin("ZoomScaleRegressionWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::ImGeeCompat::PushFont(atlasFonts.baseline14);
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        IMGEE_TEST_CHECK(std::abs(TimedTooltip::GetActiveFontScale(&linearZoomCfg) - 1.0f) < 0.001f);
+
+        (void)TimedTooltip::TextProxy(idZoomTxt, true, &linearZoomCfg, "%s", "Zoomed stationary tooltip measurement.");
+        TimedTooltip::ClearActiveTooltip();
+        ImGui::PopFont();
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        ImGui::NewFrame();
+        ImGui::Begin("ZoomScaleRegressionWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::ImGeeCompat::PushFont(atlasFonts.baseline14);
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        (void)TimedTooltip::TextMDProxy(idZoomMd, true, &linearZoomCfg, "%s", "Zoomed **Markdown** stationary tooltip.");
+        TimedTooltip::ClearActiveTooltip();
+        (void)TimedTooltip::BeginStationaryTooltipProxy(idZoomRaw, false, &linearZoomCfg);
+        TimedTooltip::GetTooltipStateMap()[idZoomRaw].perfect_size = ImVec2(120.0f, 24.0f);
+        ImGui::PopFont();
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        const ImVec2 szTxt1x = TimedTooltip::GetTooltipStateMap().at(idZoomTxt).perfect_size;
+        const ImVec2 szMd1x  = TimedTooltip::GetTooltipStateMap().at(idZoomMd).perfect_size;
+        IMGEE_TEST_CHECK(szTxt1x.x > 0.0f && szMd1x.x > 0.0f);
+
+        // Pass B: Zoom window to 1.5x -- verify scale is 1.5f (NOT 2.25f!) both with baseline14
+        //         and inside a caller PushFont(compact12) scope, and verify perfect_size re-measures!
+        ImGui::NewFrame();
+        ImGui::Begin("ZoomScaleRegressionWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::ImGeeCompat::PushFont(atlasFonts.baseline14);
+        ImGui::ImGeeCompat::SetWindowFontScale(1.5f);
+
+        const float scaleAt15x = TimedTooltip::GetActiveFontScale(&linearZoomCfg);
+        IMGEE_TEST_CHECK(std::abs(scaleAt15x - 1.5f) < 0.001f);
+
+        ImGui::ImGeeCompat::PushFont(atlasFonts.compact12);
+        const float scaleAt15xInCompact12 = TimedTooltip::GetActiveFontScale(&linearZoomCfg);
+        IMGEE_TEST_CHECK(std::abs(scaleAt15xInCompact12 - 1.5f) < 0.001f);
+        (void)TimedTooltip::TextProxy(idZoomTxt, true, &linearZoomCfg, "%s", "Zoomed stationary tooltip measurement.");
+        TimedTooltip::ClearActiveTooltip();
+        ImGui::PopFont();
+
+        // Direct BeginStationaryTooltipProxy call must also invalidate stale perfect_size via prev_frame_updated < cur_frame:
+        (void)TimedTooltip::BeginStationaryTooltipProxy(idZoomRaw, false, &linearZoomCfg);
+        IMGEE_TEST_CHECK(TimedTooltip::GetTooltipStateMap().at(idZoomRaw).perfect_size.x == 0.0f);
+
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        ImGui::PopFont();
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        ImGui::NewFrame();
+        ImGui::Begin("ZoomScaleRegressionWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImGui::ImGeeCompat::PushFont(atlasFonts.baseline14);
+        ImGui::ImGeeCompat::SetWindowFontScale(1.5f);
+        (void)TimedTooltip::TextMDProxy(idZoomMd, true, &linearZoomCfg, "%s", "Zoomed **Markdown** stationary tooltip.");
+        TimedTooltip::ClearActiveTooltip();
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        ImGui::PopFont();
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        const ImVec2 szTxt15x = TimedTooltip::GetTooltipStateMap().at(idZoomTxt).perfect_size;
+        const ImVec2 szMd15x  = TimedTooltip::GetTooltipStateMap().at(idZoomMd).perfect_size;
+        IMGEE_TEST_CHECK(szTxt15x.x > szTxt1x.x * 1.35f && szTxt15x.y > szTxt1x.y * 1.30f);
+        IMGEE_TEST_CHECK(szMd15x.x  > szMd1x.x  * 1.35f && szMd15x.y  > szMd1x.y  * 1.30f);
+
+        ImGui::ClearFontRoles();
+
+        // 3. Explicit <callout> containing inline `</callout>` and fenced `</callout>` + `> code`:
+        const std::string rawContainerEdgeDoc =
+            "<callout type=note>Opening line with inline `</callout>` code span\n"
+            "Body line mentioning `` `</callout>` `` inline.\n"
+            "```html\n"
+            "</callout>\n"
+            "> literal code line starting with gt inside fence\n"
+            "```\n"
+            "> Inner quote still inside explicit callout\n"
+            "</callout>\n\n"
+            "> Top-level quote after explicit callout\n";
+
+        std::string rawContainerOut;
+        bool rawContainerChanged = ImGui::PreprocessMarkdownBlockquotesAndAlerts(
+            rawContainerEdgeDoc.c_str(), rawContainerEdgeDoc.size(), rawContainerOut);
+        IMGEE_TEST_CHECK(rawContainerChanged);
+        // The fenced '> literal code line...' and '> Inner quote...' inside <callout> must NOT be rewritten on outer pass!
+        IMGEE_TEST_CHECK(rawContainerOut.find("```html\n</callout>\n> literal code line starting with gt inside fence\n```") != std::string::npos);
+        IMGEE_TEST_CHECK(rawContainerOut.find("> Inner quote still inside explicit callout\n</callout>") != std::string::npos);
+        // Meanwhile, the trailing top-level quote after </callout> MUST be rewritten into <blockquote>!
+        IMGEE_TEST_CHECK(rawContainerOut.find("<blockquote>\nTop-level quote after explicit callout\n</blockquote>") != std::string::npos);
+
+        ImGui::NewFrame();
+        ImGui::Begin("RawContainerEdgeWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        StackSnapshot edgeSnap = StackSnapshot::Capture();
+        MD::TextWrapped(rawContainerEdgeDoc);
+        edgeSnap.VerifyBalanced("RawContainerEdgeWin");
         ImGui::End();
         ImGui::Render();
         CompleteHeadlessRenderTextures();
