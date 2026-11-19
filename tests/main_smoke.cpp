@@ -1909,6 +1909,104 @@ int main(int argc, char** argv) {
         CompleteHeadlessRenderTextures();
     }
 
+    // ========================================================================
+    // Zero-Bias Vector Icon & Fallback Glyph Symmetry Regression Tests:
+    //  Verifies that symmetric procedural icons (info, important, warning,
+    //  caution, lightbulb, plus, cross, plane) and standalone fallback callout
+    //  glyphs emit horizontally symmetric VtxBuffer extents AND per-vertex
+    //  mirror geometry around center.x within < 0.05f px (catching any +0.5f
+    //  ImDrawList::AddLine bias immediately, even on inner stems!).
+    // ========================================================================
+    {
+        io.DeltaTime = 1.0f / 60.0f;
+        ImGui::NewFrame();
+
+        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_Always);
+        ImGui::Begin("ZeroBiasVectorSymmetryWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+
+        auto verifySymmetricVertices = [&](int vStart, int vEnd, float centerX, const char* label) {
+            IMGEE_TEST_CHECK(vEnd > vStart);
+            float minX = 1e9f;
+            float maxX = -1e9f;
+            double sumDx = 0.0;
+            for (int vi = vStart; vi < vEnd; ++vi) {
+                const float vx = dl->VtxBuffer[vi].pos.x;
+                if (vx < minX) minX = vx;
+                if (vx > maxX) maxX = vx;
+                sumDx += static_cast<double>(vx - centerX);
+            }
+            const float leftExtent = centerX - minX;
+            const float rightExtent = maxX - centerX;
+            const float extentAsym = std::fabs(leftExtent - rightExtent);
+            const float meanDx = static_cast<float>(sumDx / static_cast<double>(vEnd - vStart));
+            if (extentAsym >= 0.05f || std::fabs(meanDx) >= 0.05f) {
+                std::fprintf(stderr,
+                    "[FAIL] Asymmetric icon '%s': left=%.4f right=%.4f extentAsym=%.4f meanDx=%.4f\n",
+                    label, leftExtent, rightExtent, extentAsym, meanDx);
+            }
+            IMGEE_TEST_CHECK(extentAsym < 0.05f);
+            IMGEE_TEST_CHECK(std::fabs(meanDx) < 0.05f);
+
+            // Also verify every vertex (including inner 'i' / '!' stems) has a horizontal mirror partner:
+            for (int vi = vStart; vi < vEnd; ++vi) {
+                const ImVec2 p = dl->VtxBuffer[vi].pos;
+                const float targetX = 2.0f * centerX - p.x;
+                bool foundMirror = false;
+                for (int vj = vStart; vj < vEnd; ++vj) {
+                    const ImVec2 q = dl->VtxBuffer[vj].pos;
+                    if (std::fabs(q.x - targetX) < 0.05f && std::fabs(q.y - p.y) < 0.05f) {
+                        foundMirror = true;
+                        break;
+                    }
+                }
+                if (!foundMirror) {
+                    std::fprintf(stderr,
+                        "[FAIL] Missing mirror vertex in '%s' for (%.4f, %.4f) around centerX=%.4f\n",
+                        label, p.x, p.y, centerX);
+                }
+                IMGEE_TEST_CHECK(foundMirror);
+            }
+        };
+
+        const char* kSymmetricIcons[] = {
+            "info", "important", "warning", "caution", "lightbulb", "plus", "cross", "plane"
+        };
+        const float iconSz = 16.0f;
+        const ImU32 iconCol = IM_COL32(240, 245, 255, 255);
+        for (size_t idx = 0; idx < sizeof(kSymmetricIcons) / sizeof(kSymmetricIcons[0]); ++idx) {
+            const ImVec2 iconPos(40.0f + static_cast<float>(idx) * 28.0f, 50.0f);
+            const float cx = iconPos.x + iconSz * 0.5f;
+            const int v0 = dl->VtxBuffer.Size;
+            const bool drew = ImGui::DrawVectorIcon(dl, iconPos, iconSz, iconCol, kSymmetricIcons[idx]);
+            IMGEE_TEST_CHECK(drew);
+            verifySymmetricVertices(v0, dl->VtxBuffer.Size, cx, kSymmetricIcons[idx]);
+        }
+
+        // Also verify standalone fallback callout glyphs (Note, Important, Warning, Caution):
+        const ImGui::Detail::CalloutKind kSymmetricFallbacks[] = {
+            ImGui::Detail::CalloutKind::Note,
+            ImGui::Detail::CalloutKind::Important,
+            ImGui::Detail::CalloutKind::Warning,
+            ImGui::Detail::CalloutKind::Caution
+        };
+        const char* kFallbackLabels[] = {
+            "fallback:note", "fallback:important", "fallback:warning", "fallback:caution"
+        };
+        for (size_t idx = 0; idx < 4; ++idx) {
+            const ImVec2 gPos(40.0f + static_cast<float>(idx) * 28.0f, 90.0f);
+            const float cx = gPos.x + iconSz * 0.5f;
+            const int v0 = dl->VtxBuffer.Size;
+            ImGui::Detail::DrawMinimalCalloutGlyph(dl, gPos, iconSz, iconCol, kSymmetricFallbacks[idx]);
+            verifySymmetricVertices(v0, dl->VtxBuffer.Size, cx, kFallbackLabels[idx]);
+        }
+
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+    }
+
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
     IMGEE_TEST_CHECK(gpuState.createdCount == 4);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);

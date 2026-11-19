@@ -73,6 +73,27 @@ namespace ImGui {
         inline T IconMax(T a, T b) { return (a > b) ? a : b; }
         template <typename T>
         inline T IconMin(T a, T b) { return (a < b) ? a : b; }
+
+        // Zero-bias vector stroke helpers: ImDrawList::AddLine adds +0.5f to endpoints for 1px UI borders,
+        // which shifts strokes relative to unshifted AddCircle / AddTriangle / PathArcTo geometry.
+        inline void StrokeIconLine(ImDrawList* dl, const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness) {
+            dl->PathClear();
+            dl->PathLineTo(p1);
+            dl->PathLineTo(p2);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            dl->PathStroke(col, thickness, 0);
+#else
+            dl->PathStroke(col, 0, thickness);
+#endif
+        }
+
+        inline void StrokeIconPolyline(ImDrawList* dl, const ImVec2* pts, int count, ImU32 col, float thickness, ImDrawFlags flags = 0) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            dl->AddPolyline(pts, count, col, thickness, flags);
+#else
+            dl->AddPolyline(pts, count, col, flags, thickness);
+#endif
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -298,34 +319,35 @@ namespace ImGui {
         if (id == "check") {
             float thickness = Detail::IconMax(1.5f, size * 0.12f);
             float s = size * 0.70f;
-            ImVec2 p0(center.x - s * 0.38f, center.y + s * 0.05f);
-            ImVec2 p1(center.x - s * 0.08f, center.y + s * 0.38f);
-            ImVec2 p2(center.x + s * 0.42f, center.y - s * 0.38f);
-            draw_list->AddLine(p0, p1, col, thickness);
-            draw_list->AddLine(p1, p2, col, thickness);
+            const ImVec2 pts[3] = {
+                ImVec2(center.x - s * 0.38f, center.y + s * 0.05f),
+                ImVec2(center.x - s * 0.08f, center.y + s * 0.38f),
+                ImVec2(center.x + s * 0.42f, center.y - s * 0.38f)
+            };
+            Detail::StrokeIconPolyline(draw_list, pts, 3, col, thickness, 0);
             return true;
         }
 
         if (id == "cross") {
             float thickness = Detail::IconMax(1.5f, size * 0.12f);
             float r = size * 0.28f;
-            draw_list->AddLine(ImVec2(center.x - r, center.y - r), ImVec2(center.x + r, center.y + r), col, thickness);
-            draw_list->AddLine(ImVec2(center.x + r, center.y - r), ImVec2(center.x - r, center.y + r), col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x - r, center.y - r), ImVec2(center.x + r, center.y + r), col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x + r, center.y - r), ImVec2(center.x - r, center.y + r), col, thickness);
             return true;
         }
 
         if (id == "plus") {
             float thickness = Detail::IconMax(1.5f, size * 0.12f);
             float r = size * 0.32f;
-            draw_list->AddLine(ImVec2(center.x - r, center.y), ImVec2(center.x + r, center.y), col, thickness);
-            draw_list->AddLine(ImVec2(center.x, center.y - r), ImVec2(center.x, center.y + r), col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x - r, center.y), ImVec2(center.x + r, center.y), col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x, center.y - r), ImVec2(center.x, center.y + r), col, thickness);
             return true;
         }
 
         if (id == "minus") {
             float thickness = Detail::IconMax(1.5f, size * 0.12f);
             float r = size * 0.32f;
-            draw_list->AddLine(ImVec2(center.x - r, center.y), ImVec2(center.x + r, center.y), col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x - r, center.y), ImVec2(center.x + r, center.y), col, thickness);
             return true;
         }
 
@@ -353,28 +375,38 @@ namespace ImGui {
             float thickness = Detail::IconMax(1.2f, size * 0.09f);
             draw_list->AddCircle(center, r, col, 16, thickness);
             draw_list->AddCircleFilled(ImVec2(center.x, center.y - r * 0.42f), thickness * 0.95f, col, 8);
-            draw_list->AddLine(ImVec2(center.x, center.y - r * 0.12f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.3f);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x, center.y - r * 0.12f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.3f);
             return true;
         }
 
         if (id == "lightbulb") {
             float thickness = Detail::IconMax(1.2f, size * 0.09f);
-            ImVec2 bulb_c(center.x, center.y - size * 0.08f);
-            float r = size * 0.27f;
-            draw_list->PathArcTo(bulb_c, r, 0.72f * kPI, 2.28f * kPI, 14);
+            ImVec2 bulb_c(center.x, center.y - size * 0.11f);
+            float r = size * 0.29f;
+            float neck_half_w = r * 0.56f;
+            float neck_bot_y = center.y + size * 0.23f;
+
+            // Single continuous closed symmetric silhouette: bulb dome + tapered neck + flat base
+            draw_list->PathClear();
+            const int arc_segs = 16;
+            const float half_sweep = 0.74f * kPI;
+            for (int i = 0; i <= arc_segs; ++i) {
+                float frac = (static_cast<float>(i) / static_cast<float>(arc_segs)) - 0.5f;
+                float a = 1.5f * kPI + frac * (2.0f * half_sweep);
+                draw_list->PathLineTo(ImVec2(bulb_c.x + r * std::cos(a), bulb_c.y + r * std::sin(a)));
+            }
+            draw_list->PathLineTo(ImVec2(center.x + neck_half_w, neck_bot_y));
+            draw_list->PathLineTo(ImVec2(center.x - neck_half_w, neck_bot_y));
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
-            draw_list->PathStroke(col, thickness, 0);
+            draw_list->PathStroke(col, thickness, ImDrawFlags_Closed);
 #else
-            draw_list->PathStroke(col, 0, thickness);
+            draw_list->PathStroke(col, ImDrawFlags_Closed, thickness);
 #endif
-            float neck_w = r * 0.58f;
-            float neck_top = bulb_c.y + r * 0.68f;
-            float neck_bot = center.y + size * 0.30f;
-            draw_list->AddLine(ImVec2(center.x - neck_w, neck_top), ImVec2(center.x - neck_w * 0.78f, neck_bot), col, thickness);
-            draw_list->AddLine(ImVec2(center.x + neck_w, neck_top), ImVec2(center.x + neck_w * 0.78f, neck_bot), col, thickness);
-            draw_list->AddLine(ImVec2(center.x - neck_w * 0.80f, neck_bot), ImVec2(center.x + neck_w * 0.80f, neck_bot), col, thickness);
-            draw_list->AddLine(ImVec2(center.x - neck_w * 0.50f, neck_bot + thickness * 1.35f),
-                               ImVec2(center.x + neck_w * 0.50f, neck_bot + thickness * 1.35f), col, thickness);
+
+            // Crisp zero-bias screw-cap bar beneath the flat base:
+            float cap_half_w = neck_half_w * 0.72f;
+            float cap_y = neck_bot_y + Detail::IconMax(1.8f, size * 0.135f);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x - cap_half_w, cap_y), ImVec2(center.x + cap_half_w, cap_y), col, thickness);
             return true;
         }
 
@@ -382,7 +414,7 @@ namespace ImGui {
             float r = size * 0.38f;
             float thickness = Detail::IconMax(1.2f, size * 0.09f);
             draw_list->AddCircle(center, r, col, 16, thickness);
-            draw_list->AddLine(ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.35f);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.35f);
             draw_list->AddCircleFilled(ImVec2(center.x, center.y + r * 0.46f), Detail::IconMax(1.0f, size * 0.065f), col, 8);
             return true;
         }
@@ -395,24 +427,21 @@ namespace ImGui {
                 float a = (i * kPI * 0.25f) + (kPI * 0.125f);
                 pts[i] = ImVec2(center.x + r * std::cos(a), center.y + r * std::sin(a));
             }
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
-            draw_list->AddPolyline(pts, 8, col, thickness, ImDrawFlags_Closed);
-#else
-            draw_list->AddPolyline(pts, 8, col, ImDrawFlags_Closed, thickness);
-#endif
-            draw_list->AddLine(ImVec2(center.x, center.y - r * 0.46f), ImVec2(center.x, center.y + r * 0.10f), col, thickness * 1.35f);
+            Detail::StrokeIconPolyline(draw_list, pts, 8, col, thickness, ImDrawFlags_Closed);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x, center.y - r * 0.46f), ImVec2(center.x, center.y + r * 0.10f), col, thickness * 1.35f);
             draw_list->AddCircleFilled(ImVec2(center.x, center.y + r * 0.44f), Detail::IconMax(1.0f, size * 0.065f), col, 8);
             return true;
         }
 
         if (id == "warning") {
             float h = size * 0.40f;
+            float thickness = Detail::IconMax(1.3f, size * 0.09f);
             ImVec2 a(center.x, center.y - h);
             ImVec2 b(center.x - h * 1.05f, center.y + h * 0.85f);
             ImVec2 c(center.x + h * 1.05f, center.y + h * 0.85f);
-            draw_list->AddTriangle(a, b, c, col, Detail::IconMax(1.3f, size * 0.09f));
-            draw_list->AddLine(ImVec2(center.x, center.y - h * 0.30f), ImVec2(center.x, center.y + h * 0.25f), col, Detail::IconMax(1.3f, size * 0.09f));
-            draw_list->AddCircleFilled(ImVec2(center.x, center.y + h * 0.55f), Detail::IconMax(1.0f, size * 0.065f), col, 6);
+            draw_list->AddTriangle(a, b, c, col, thickness);
+            Detail::StrokeIconLine(draw_list, ImVec2(center.x, center.y - h * 0.30f), ImVec2(center.x, center.y + h * 0.25f), col, thickness);
+            draw_list->AddCircleFilled(ImVec2(center.x, center.y + h * 0.55f), Detail::IconMax(1.0f, size * 0.065f), col, 8);
             return true;
         }
 
@@ -437,7 +466,7 @@ namespace ImGui {
             draw_list->AddCircle(ring_center, r, col, 16, thickness);
             ImVec2 h_start(ring_center.x + r * 0.707f, ring_center.y + r * 0.707f);
             ImVec2 h_end(center.x + size * 0.38f, center.y + size * 0.38f);
-            draw_list->AddLine(h_start, h_end, col, thickness * 1.4f);
+            Detail::StrokeIconLine(draw_list, h_start, h_end, col, thickness * 1.4f);
             return true;
         }
 
@@ -446,18 +475,21 @@ namespace ImGui {
             float s = size * 0.42f;
             ImVec2 nose(center.x, center.y - s * 0.90f);
             ImVec2 tail(center.x, center.y + s * 0.90f);
-            draw_list->AddLine(nose, tail, col, Detail::IconMax(1.5f, size * 0.12f));
+            Detail::StrokeIconLine(draw_list, nose, tail, col, Detail::IconMax(1.5f, size * 0.12f));
             // Main wings
-            ImVec2 w_left(center.x - s * 0.95f, center.y + s * 0.10f);
-            ImVec2 w_right(center.x + s * 0.95f, center.y + s * 0.10f);
-            ImVec2 w_root(center.x, center.y - s * 0.20f);
-            draw_list->AddLine(w_left, w_root, col, Detail::IconMax(1.3f, size * 0.10f));
-            draw_list->AddLine(w_root, w_right, col, Detail::IconMax(1.3f, size * 0.10f));
+            const ImVec2 wing_pts[3] = {
+                ImVec2(center.x - s * 0.95f, center.y + s * 0.10f),
+                ImVec2(center.x, center.y - s * 0.20f),
+                ImVec2(center.x + s * 0.95f, center.y + s * 0.10f)
+            };
+            Detail::StrokeIconPolyline(draw_list, wing_pts, 3, col, Detail::IconMax(1.3f, size * 0.10f), 0);
             // Tail stabilizer
-            ImVec2 t_left(center.x - s * 0.45f, center.y + s * 0.75f);
-            ImVec2 t_right(center.x + s * 0.45f, center.y + s * 0.75f);
-            draw_list->AddLine(t_left, tail, col, Detail::IconMax(1.1f, size * 0.08f));
-            draw_list->AddLine(tail, t_right, col, Detail::IconMax(1.1f, size * 0.08f));
+            const ImVec2 tail_pts[3] = {
+                ImVec2(center.x - s * 0.45f, center.y + s * 0.75f),
+                tail,
+                ImVec2(center.x + s * 0.45f, center.y + s * 0.75f)
+            };
+            Detail::StrokeIconPolyline(draw_list, tail_pts, 3, col, Detail::IconMax(1.1f, size * 0.08f), 0);
             return true;
         }
 
@@ -474,26 +506,28 @@ namespace ImGui {
 
         if (id == "external-link") {
             float thickness = Detail::IconMax(1.2f, size * 0.095f);
-            // Box with open top-right corner
-            ImVec2 b_tl(pos.x + size * 0.12f, pos.y + size * 0.32f);
-            ImVec2 b_bl(pos.x + size * 0.12f, pos.y + size * 0.88f);
-            ImVec2 b_br(pos.x + size * 0.68f, pos.y + size * 0.88f);
-            ImVec2 b_tr(pos.x + size * 0.68f, pos.y + size * 0.52f);
-            ImVec2 b_top_left(pos.x + size * 0.40f, pos.y + size * 0.32f);
+            // Box with open top-right corner (single mitered polyline)
+            const ImVec2 box_pts[5] = {
+                ImVec2(pos.x + size * 0.40f, pos.y + size * 0.32f),
+                ImVec2(pos.x + size * 0.12f, pos.y + size * 0.32f),
+                ImVec2(pos.x + size * 0.12f, pos.y + size * 0.88f),
+                ImVec2(pos.x + size * 0.68f, pos.y + size * 0.88f),
+                ImVec2(pos.x + size * 0.68f, pos.y + size * 0.52f)
+            };
+            Detail::StrokeIconPolyline(draw_list, box_pts, 5, col, thickness, 0);
 
-            draw_list->AddLine(b_top_left, b_tl, col, thickness);
-            draw_list->AddLine(b_tl, b_bl, col, thickness);
-            draw_list->AddLine(b_bl, b_br, col, thickness);
-            draw_list->AddLine(b_br, b_tr, col, thickness);
-
-            // 45-degree breakout arrow
+            // 45-degree breakout arrow + mitered arrowhead
             ImVec2 a_tail(pos.x + size * 0.42f, pos.y + size * 0.58f);
             ImVec2 a_tip(pos.x + size * 0.88f, pos.y + size * 0.12f);
-            draw_list->AddLine(a_tail, a_tip, col, thickness);
+            Detail::StrokeIconLine(draw_list, a_tail, a_tip, col, thickness);
 
             float fin = size * 0.28f;
-            draw_list->AddLine(a_tip, ImVec2(a_tip.x - fin, a_tip.y), col, thickness);
-            draw_list->AddLine(a_tip, ImVec2(a_tip.x, a_tip.y + fin), col, thickness);
+            const ImVec2 head_pts[3] = {
+                ImVec2(a_tip.x - fin, a_tip.y),
+                a_tip,
+                ImVec2(a_tip.x, a_tip.y + fin)
+            };
+            Detail::StrokeIconPolyline(draw_list, head_pts, 3, col, thickness, 0);
             return true;
         }
 

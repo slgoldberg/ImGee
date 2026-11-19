@@ -1188,7 +1188,7 @@ namespace ImGui {
                 ImVec2 b(center.x - h * 1.05f, center.y + h * 0.85f);
                 ImVec2 c(center.x + h * 1.05f, center.y + h * 0.85f);
                 dl->AddTriangle(a, b, c, col, thickness);
-                dl->AddLine(ImVec2(center.x, center.y - h * 0.28f), ImVec2(center.x, center.y + h * 0.24f), col, thickness);
+                ImGui::MarkdownDetail::StrokeLineCompat(dl, ImVec2(center.x, center.y - h * 0.28f), ImVec2(center.x, center.y + h * 0.24f), col, thickness);
                 dl->AddCircleFilled(ImVec2(center.x, center.y + h * 0.54f), ImMax(1.0f, size * 0.065f), col, 8);
                 return;
             }
@@ -1196,21 +1196,22 @@ namespace ImGui {
             dl->AddCircle(center, r, col, 16, thickness);
             if (kind == CalloutKind::Note) {
                 dl->AddCircleFilled(ImVec2(center.x, center.y - r * 0.42f), thickness * 0.95f, col, 8);
-                dl->AddLine(ImVec2(center.x, center.y - r * 0.10f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.25f);
+                ImGui::MarkdownDetail::StrokeLineCompat(dl, ImVec2(center.x, center.y - r * 0.10f), ImVec2(center.x, center.y + r * 0.50f), col, thickness * 1.25f);
             } else if (kind == CalloutKind::Tip) {
                 float s = size * 0.46f;
-                ImVec2 p0(center.x - s * 0.38f, center.y + s * 0.04f);
-                ImVec2 p1(center.x - s * 0.06f, center.y + s * 0.36f);
-                ImVec2 p2(center.x + s * 0.42f, center.y - s * 0.32f);
-                dl->AddLine(p0, p1, col, thickness);
-                dl->AddLine(p1, p2, col, thickness);
+                const ImVec2 pts[3] = {
+                    ImVec2(center.x - s * 0.38f, center.y + s * 0.04f),
+                    ImVec2(center.x - s * 0.06f, center.y + s * 0.36f),
+                    ImVec2(center.x + s * 0.42f, center.y - s * 0.32f)
+                };
+                ImGui::MarkdownDetail::StrokePolylineCompat(dl, pts, 3, col, thickness, 0);
             } else if (kind == CalloutKind::Caution) {
                 float x_r = r * 0.46f;
-                dl->AddLine(ImVec2(center.x - x_r, center.y - x_r), ImVec2(center.x + x_r, center.y + x_r), col, thickness);
-                dl->AddLine(ImVec2(center.x + x_r, center.y - x_r), ImVec2(center.x - x_r, center.y + x_r), col, thickness);
+                ImGui::MarkdownDetail::StrokeLineCompat(dl, ImVec2(center.x - x_r, center.y - x_r), ImVec2(center.x + x_r, center.y + x_r), col, thickness);
+                ImGui::MarkdownDetail::StrokeLineCompat(dl, ImVec2(center.x + x_r, center.y - x_r), ImVec2(center.x - x_r, center.y + x_r), col, thickness);
             } else {
                 // Important: circle with exclamation mark
-                dl->AddLine(ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.25f);
+                ImGui::MarkdownDetail::StrokeLineCompat(dl, ImVec2(center.x, center.y - r * 0.48f), ImVec2(center.x, center.y + r * 0.12f), col, thickness * 1.25f);
                 dl->AddCircleFilled(ImVec2(center.x, center.y + r * 0.46f), ImMax(1.0f, size * 0.065f), col, 8);
             }
         }

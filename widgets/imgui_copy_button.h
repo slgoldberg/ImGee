@@ -251,12 +251,17 @@ namespace ImGui {
         // Draw Icon:
         if (is_recently_copied)
         {
-            // Checkmark vector icon
-            ImVec2 p1(icon_x, icon_y + 5.5f * scale);
-            ImVec2 p2(icon_x + 3.2f * scale, icon_y + 8.5f * scale);
-            ImVec2 p3(icon_x + 9.0f * scale, icon_y + 1.5f * scale);
-            dl->AddLine(p1, p2, icon_col, 1.5f * scale);
-            dl->AddLine(p2, p3, icon_col, 1.5f * scale);
+            // Checkmark vector icon (zero-bias mitered 3-point polyline)
+            const ImVec2 chk_pts[3] = {
+                ImVec2(icon_x, icon_y + 5.5f * scale),
+                ImVec2(icon_x + 3.2f * scale, icon_y + 8.5f * scale),
+                ImVec2(icon_x + 9.0f * scale, icon_y + 1.5f * scale)
+            };
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            dl->AddPolyline(chk_pts, 3, icon_col, 1.5f * scale, 0);
+#else
+            dl->AddPolyline(chk_pts, 3, icon_col, 0, 1.5f * scale);
+#endif
         }
         else
         {

@@ -160,6 +160,25 @@ namespace MarkdownDetail {
 #endif
     }
 
+    inline void StrokeLineCompat(ImDrawList* dl, const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness) {
+        dl->PathClear();
+        dl->PathLineTo(p1);
+        dl->PathLineTo(p2);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+        dl->PathStroke(col, thickness, 0);
+#else
+        dl->PathStroke(col, 0, thickness);
+#endif
+    }
+
+    inline void StrokePolylineCompat(ImDrawList* dl, const ImVec2* pts, int count, ImU32 col, float thickness, ImDrawFlags flags = 0) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+        dl->AddPolyline(pts, count, col, thickness, flags);
+#else
+        dl->AddPolyline(pts, count, col, flags, thickness);
+#endif
+    }
+
     inline const char* CalcWordWrapPositionCompat(ImFont* font, float scale, const char* text, const char* text_end, float wrap_width) {
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
         float font_size = (font && font->LegacySize > 0.0f) ? font->LegacySize : ImGui::GetFontSize();
@@ -2316,12 +2335,13 @@ namespace ImGui
                 // Draw Icon:
                 if( is_recently_copied )
                 {
-                    // Checkmark vector icon
-                    ImVec2 p1( icon_x, icon_y + 5.5f * scale );
-                    ImVec2 p2( icon_x + 3.2f * scale, icon_y + 8.5f * scale );
-                    ImVec2 p3( icon_x + 9.0f * scale, icon_y + 1.5f * scale );
-                    dl->AddLine( p1, p2, icon_col, 1.5f * scale );
-                    dl->AddLine( p2, p3, icon_col, 1.5f * scale );
+                    // Checkmark vector icon (zero-bias mitered 3-point polyline)
+                    const ImVec2 chk_pts[3] = {
+                        ImVec2( icon_x, icon_y + 5.5f * scale ),
+                        ImVec2( icon_x + 3.2f * scale, icon_y + 8.5f * scale ),
+                        ImVec2( icon_x + 9.0f * scale, icon_y + 1.5f * scale )
+                    };
+                    ImGui::MarkdownDetail::StrokePolylineCompat( dl, chk_pts, 3, icon_col, 1.5f * scale, 0 );
                 }
                 else
                 {
@@ -4993,8 +5013,8 @@ namespace ImGui
                         lb_dl->AddRectFilled( close_min, close_max, close_bg, 5.0f );
                         AddRectCompat( lb_dl, close_min, close_max, IM_COL32( 140, 155, 180, 110 ), 5.0f, 0, 1.0f );
                         const float x_ins = 8.5f;
-                        lb_dl->AddLine( ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
-                        lb_dl->AddLine( ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+                        StrokeLineCompat( lb_dl, ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
+                        StrokeLineCompat( lb_dl, ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
 
                         // 3. Release-triggered backdrop button covering the popup outside [X] and the enlarged image.
                         //    Keeps the popup alive and owning ActiveId across multi-frame press-and-release gestures,

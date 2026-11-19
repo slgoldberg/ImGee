@@ -456,13 +456,24 @@ namespace Detail {
         }
 
         // 3. Detente Station Markings (OFF Notch & Graduation Ticks)
+        auto stroke_knob_line = [&](const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness) {
+            draw_list->PathClear();
+            draw_list->PathLineTo(p1);
+            draw_list->PathLineTo(p2);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            draw_list->PathStroke(col, thickness, 0);
+#else
+            draw_list->PathStroke(col, 0, thickness);
+#endif
+        };
+
         if (has_off_detente) {
             ImVec2 off_p1(center.x + std::cos(kOffAngle) * (track_radius - track_thickness * 0.5f),
                           center.y + std::sin(kOffAngle) * (track_radius - track_thickness * 0.5f));
             ImVec2 off_p2(center.x + std::cos(kOffAngle) * (track_radius + track_thickness * 0.5f + 1.5f),
                           center.y + std::sin(kOffAngle) * (track_radius + track_thickness * 0.5f + 1.5f));
             ImU32 off_tick_col = is_in_off_detente ? IM_COL32(230, 126, 34, 255) : GetColorU32(ImGuiCol_TextDisabled);
-            draw_list->AddLine(off_p1, off_p2, off_tick_col, 1.5f);
+            stroke_knob_line(off_p1, off_p2, off_tick_col, 1.5f);
         }
 
         if (flags & ImGuiKnobFlags_ShowTicks) {
@@ -473,7 +484,7 @@ namespace Detail {
                           center.y + std::sin(tick_angle) * (track_radius + track_thickness * 0.5f + 1.0f));
                 ImVec2 t2(center.x + std::cos(tick_angle) * (track_radius + track_thickness * 0.5f + 3.5f),
                           center.y + std::sin(tick_angle) * (track_radius + track_thickness * 0.5f + 3.5f));
-                draw_list->AddLine(t1, t2, GetColorU32(ImGuiCol_Border), 1.0f);
+                stroke_knob_line(t1, t2, GetColorU32(ImGuiCol_Border), 1.0f);
             }
         }
 
@@ -501,7 +512,7 @@ namespace Detail {
         } else if (held) {
             needle_col = GetColorU32(ImGuiCol_SliderGrabActive);
         }
-        draw_list->AddLine(np1, np2, needle_col, ImMax(1.5f, radius * 0.12f));
+        stroke_knob_line(np1, np2, needle_col, ImMax(1.5f, radius * 0.12f));
 
         draw_list->AddCircleFilled(center, ImMax(1.5f, hub_radius * 0.20f), needle_col, 16);
 
