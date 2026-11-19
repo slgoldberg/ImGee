@@ -383,6 +383,27 @@ ImGui::StyledText("Status: <pill #2ecc71>%s</pill> | VOR: <mono>%s</mono>",
 ImGui::StyledTextUnformatted(bufStart, bufEnd);
 ```
 
+### 9.3 Standalone Markdown Document Viewer (`extensions/DocViewer/imgui_doc_viewer.h`)
+When your plugin or desktop application includes a user manual, aircraft checklist, or interactive reference guide, `ImGui::DocumentViewer` provides a complete, zero-boilerplate viewer built on top of `BeginZoomedViewport` and `MarkdownExt`:
+
+* **Two-Row `1.0x` Header Chrome:** Keeps the responsive title, repeating `[-]` / `[+]` zoom steppers, mouse-wheel `Zoom` slider (`50%..250%`), 1-click A/B zoom reset/undo (`↺` / `↻`), Table-of-Contents `SelectPulldown`, zero-shift `Opacity:` + `Transparent` HUD controls, and 5-preset `Theme:` picker (`Charcoal`, `Rusty`, `ImGui Dark`, `ImGui Classic`, `ImGui Light`) crisp at `1.0x` scale while zooming document prose independently.
+* **Automatic Section Jump & `#heading-slug` Links:** Scans `#`, `##`, and `###` ATX headings (skipping fenced code blocks and blockquotes) into the Row 2 TOC pulldown and intercepts internal `[Jump](#section-slug)` links to scroll directly to the matching section.
+* **Optional Host Window Hooks:** Exposes clean boolean flags and function-pointer callbacks in `DocumentViewerConfig` (`showFitButton`, `showCursorToggle`, `showPopOutButton`, `showVrButton`, `showCloseButton`, `showReloadButton`, `externalPdfPath`) with zero simulator SDK dependencies.
+
+```cpp
+static ImGui::DocumentViewerState s_ManualState;
+
+ImGui::DocumentViewerConfig docCfg;
+docCfg.title           = "Flight Operations Manual";
+docCfg.baseDir         = "Resources/plugins/my_plugin/docs";
+docCfg.externalPdfPath = "Resources/plugins/my_plugin/docs/Manual.pdf";
+docCfg.showCloseButton = true;
+
+if (!ImGui::DocumentViewer("##UserManual", manualMarkdown, s_ManualState, &docCfg)) {
+    s_ShowManualWindow = false; // Closed via Row 1 [X] or optional footer Close button
+}
+```
+
 ---
 
 ## 10. Cockpit & Avionics Widgets Showcase
@@ -626,13 +647,14 @@ ImGui::StyleColorsRusty();    // Warm aviation bronze / terracotta with ivory te
 ### A.2 Subsystem & Feature Opt-Outs
 | Macro Directive | Description |
 | :--- | :--- |
-| `IMGEE_DISABLE_EXTENSIONS` | Excludes `Typography`, `Markdown`, `TimedTooltip`, and `ZoomableViewport`. |
+| `IMGEE_DISABLE_EXTENSIONS` | Excludes `Typography`, `Markdown`, `TimedTooltip`, `ZoomableViewport`, and `DocumentViewer`. |
 | `IMGEE_DISABLE_WIDGETS` | Excludes all immediate-mode widgets in `widgets/`. |
 | `IMGEE_DISABLE_THEMES` | Excludes `StyleColorsCharcoal` / `StyleColorsRusty` in `themes/`. |
 | `IMGEE_DISABLE_TIMED_TOOLTIP` | Excludes stationary delayed tooltip engine. |
 | `IMGEE_DISABLE_MARKDOWN` | Excludes Markdown parser, GFM tables, and callouts. |
 | `IMGEE_DISABLE_TYPOGRAPHY` | Excludes `ImFontRole` and `ImGui::StyledText`. |
 | `IMGEE_DISABLE_ZOOMABLE_VIEWPORT` | Excludes `ZoomableViewportState` and `BeginZoomedViewport` / `EndZoomedViewport`. |
+| `IMGEE_DISABLE_DOC_VIEWER` | Excludes `DocumentViewer`, `DocumentViewerState`, and `ParseMarkdownToc`. |
 | `IMGEE_DISABLE_ICONS` | Excludes procedural vector icon rendering engine. |
 | `IMGEE_DISABLE_ICON_BUTTON` | Excludes `IconButton` and `ButtonIcon` push buttons. |
 | `IMGEE_DISABLE_KNOBS` | Excludes avionics rotary knobs, dials, and detents. |

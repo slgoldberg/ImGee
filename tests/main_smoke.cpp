@@ -2279,6 +2279,147 @@ int main(int argc, char** argv) {
         IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_Hand);
     }
 
+    // =========================================================================
+    // StyledText <color=#hex> Delimiter & Standalone DocumentViewer Suite
+    // =========================================================================
+    {
+        // 1. Verify <color=#hex>...</color> and <col=#hex>...</col> parse tagName cleanly without space:
+        ImGui::NewFrame();
+        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(560.0f, 220.0f), ImGuiCond_Always);
+        ImGui::Begin("StyledTextColorEqWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        StackSnapshot stSnap = StackSnapshot::Capture();
+
+        ImDrawList* stDl = ImGui::GetWindowDrawList();
+        const int vtxBefore = stDl->VtxBuffer.Size;
+        ImGui::StyledText("<color=#F5C469><b>Crosswind Advisory:</b></color> <col=#66B8FF>210@18KT</col>");
+        const int vtxAfter = stDl->VtxBuffer.Size;
+        IMGEE_TEST_CHECK(vtxAfter > vtxBefore);
+
+        // Verify amber vertex color (#F5C469 -> R=0xF5, G=0xC4, B=0x69) was pushed onto rendered glyphs
+        const ImU32 expectedAmber = IM_COL32(0xF5, 0xC4, 0x69, 0xFF);
+        bool sawAmberGlyph = false;
+        for (int vi = vtxBefore; vi < vtxAfter; ++vi) {
+            if (stDl->VtxBuffer[vi].col == expectedAmber) {
+                sawAmberGlyph = true;
+                break;
+            }
+        }
+        IMGEE_TEST_CHECK(sawAmberGlyph);
+
+        stSnap.VerifyBalanced("StyledTextColorEqWin");
+        ImGui::End();
+        ImGui::Render();
+        CompleteHeadlessRenderTextures();
+
+        // 2. Verify ParseMarkdownToc & MakeMarkdownHeadingSlug (skipping code fences & > callouts, deduplicating slugs):
+        const char* kSampleManual =
+            "# Flight Deck Operations Manual\n\n"
+            "Introductory overview with [Jump to Emergency](#3-emergency-procedures).\n\n"
+            "```python\n"
+            "# Not a heading inside backtick fence!\n"
+            "## Neither is this!\n"
+            "```\n\n"
+            "~~~bash\n"
+            "# Not a heading inside tilde fence!\n"
+            "~~~\n\n"
+            "> [!NOTE]\n"
+            "> # Heading inside blockquote should be ignored in top-level TOC\n\n"
+            "## 1. Normal Procedures ##\n\n"
+            "Paragraph line 1.\n\nParagraph line 2.\n\nParagraph line 3.\n\n"
+            "### Preflight Inspection\n\n"
+            "Detailed preflight items.\n\n\n\n"
+            "### Preflight Inspection\n\n"
+            "Duplicate heading name verifying -1 slug suffix.\n\n\n\n"
+            "#### Deep H4 Excluded at Default Level 3\n\n"
+            "## 2. Autopilot Modes\n\n"
+            "Lateral and vertical guidance modes.\n\n"
+            "Paragraph A.\n\nParagraph B.\n\nParagraph C.\n\nParagraph D.\n\nParagraph E.\n\n"
+            "Paragraph F.\n\nParagraph G.\n\nParagraph H.\n\nParagraph I.\n\nParagraph J.\n\n"
+            "## 3. Emergency Procedures\n\n"
+            "Engine fire and dual generator failure memory items.\n\n"
+            "Final paragraph.\n";
+
+        std::vector<ImGui::DocumentTocEntry> parsedToc;
+        std::string firstH1;
+        ImGui::ParseMarkdownToc(kSampleManual, std::strlen(kSampleManual), parsedToc, 3, &firstH1);
+        IMGEE_TEST_CHECK(firstH1 == "Flight Deck Operations Manual");
+        IMGEE_TEST_CHECK(parsedToc.size() == 6);
+        if (parsedToc.size() == 6) {
+            IMGEE_TEST_CHECK(parsedToc[0].level == 1 && parsedToc[0].slug == "flight-deck-operations-manual");
+            IMGEE_TEST_CHECK(parsedToc[1].level == 2 && parsedToc[1].title == "1. Normal Procedures" && parsedToc[1].slug == "1-normal-procedures");
+            IMGEE_TEST_CHECK(parsedToc[2].level == 3 && parsedToc[2].slug == "preflight-inspection");
+            IMGEE_TEST_CHECK(parsedToc[3].level == 3 && parsedToc[3].slug == "preflight-inspection-1");
+            IMGEE_TEST_CHECK(parsedToc[4].level == 2 && parsedToc[4].slug == "2-autopilot-modes");
+            IMGEE_TEST_CHECK(parsedToc[5].level == 2 && parsedToc[5].slug == "3-emergency-procedures");
+        }
+
+        // 3. Verify ApplyDocumentViewerTheme preserves window_opacity when transparent_hud is enabled:
+        ImGuiStyle savedStyle = ImGui::GetStyle();
+        ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Rusty, true, 0.72f);
+        IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w - 0.72f) <= 0.005f);
+        ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Light, true, 0.65f);
+        IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w - 0.65f) <= 0.005f);
+        ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Charcoal, false, 0.65f);
+        IMGEE_TEST_CHECK(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w > 0.90f);
+        ImGui::GetStyle() = savedStyle;
+
+        // 4. Multi-frame headless DocumentViewer render, zoom A/B toggle, & anchor jump verification:
+        ImGui::DocumentViewerState docState;
+        docState.viewport.SetZoom(1.25f);
+        ImGui::DocumentViewerConfig docCfg;
+        docCfg.showFitButton         = true;
+        docCfg.showCursorToggle      = true;
+        docCfg.showPopOutButton      = true;
+        docCfg.showVrButton          = true;
+        docCfg.showCloseButton       = true;
+        docCfg.showReloadButton      = true;
+        docCfg.showFooterCloseButton = true;
+
+        auto renderViewerFrame = [&]() {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(720.0f, 260.0f), ImGuiCond_Always);
+            ImGui::Begin("DocViewerSmokeWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot dvSnap = StackSnapshot::Capture();
+
+            const bool stillOpen = ImGui::DocumentViewer("##smoke_manual", kSampleManual, docState, &docCfg);
+            IMGEE_TEST_CHECK(stillOpen);
+            // Parent window font scale must remain strictly 1.0x after DocumentViewer returns!
+            IMGEE_TEST_CHECK(std::fabs(ImGui::GetCurrentWindow()->FontWindowScale - 1.0f) <= 0.001f);
+
+            dvSnap.VerifyBalanced("DocViewerSmokeWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        renderViewerFrame();
+        renderViewerFrame();
+        IMGEE_TEST_CHECK(docState.toc.size() == 6);
+        IMGEE_TEST_CHECK(docState.toc[5].content_y > docState.toc[1].content_y + 80.0f);
+
+        // Verify zoom A/B reset & restore memory:
+        IMGEE_TEST_CHECK(docState.viewport.ToggleResetZoom());
+        IMGEE_TEST_CHECK(std::fabs(docState.viewport.zoom - 1.0f) <= 0.001f);
+        IMGEE_TEST_CHECK(docState.viewport.ToggleResetZoom());
+        IMGEE_TEST_CHECK(std::fabs(docState.viewport.zoom - 1.25f) <= 0.001f);
+
+        // Verify JumpToDocumentAnchor("#3-emergency-procedures") scrolls inner viewport down to section #5:
+        IMGEE_TEST_CHECK(ImGui::JumpToDocumentAnchor(docState, "#3-emergency-procedures"));
+        renderViewerFrame();
+        renderViewerFrame();
+        IMGEE_TEST_CHECK(docState.last_scroll_y > 50.0f);
+        IMGEE_TEST_CHECK(docState.active_toc_index >= 4);
+
+        // Jump back to top heading (#0):
+        IMGEE_TEST_CHECK(ImGui::JumpToDocumentHeading(docState, 0));
+        renderViewerFrame();
+        renderViewerFrame();
+        IMGEE_TEST_CHECK(docState.last_scroll_y <= 5.0f);
+        IMGEE_TEST_CHECK(docState.active_toc_index == 0);
+    }
+
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
     IMGEE_TEST_CHECK(gpuState.createdCount == 4);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);

@@ -63,6 +63,7 @@
     #include "imgui_internal.h"
 #endif
 #include <string>
+#include <cstring>
 #include <vector>
 #include <map>
 #include <cstdio>
@@ -569,7 +570,7 @@ namespace ImGui {
         ImVec2 text_sz = ImGui::CalcTextSize(preview_text, nullptr, true);
         float arrow_w = has_custom_icon 
             ? ImGui::CalcTextSize(custom_icon, nullptr, true).x 
-            : (font_size * 0.70f);
+            : (font_size * 0.85f);
         float arrow_zone_w = arrow_w + pad_x;
         float min_btn_w = text_sz.x + pad_x * 2.0f + arrow_zone_w;
 
@@ -584,34 +585,48 @@ namespace ImGui {
             ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_ButtonHovered]);
         }
 
-        ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
-        std::string btn_id = std::string(preview_text) + "##" + popup_id;
+        std::string btn_id = std::string("##") + popup_id;
         bool clicked = ImGui::Button(btn_id.c_str(), ImVec2(btn_w, btn_h));
         ImGuiHoveredFlags hover_flags = is_open ? ImGuiHoveredFlags_AllowWhenBlockedByPopup : ImGuiHoveredFlags_None;
         bool btn_hovered = ImGui::IsItemHovered(hover_flags);
         if (btn_hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
-        ImGui::PopStyleVar();
 
         if (is_open) {
             ImGui::PopStyleColor();
         }
 
-        // Draw caret / arrow docked at the right edge of the button:
+        // Draw caret / arrow docked at the right edge of the button, and clip preview
+        // text strictly to the left of the caret zone so narrow explicit widths never collide:
         ImVec2 item_min = ImGui::GetItemRectMin();
         ImVec2 item_max = ImGui::GetItemRectMax();
         ImDrawList* draw_list = ImGui::GetWindowDrawList();
         ImU32 icon_col = ImGui::GetColorU32(ImGuiCol_Text);
 
+        float icon_left_x = item_max.x - pad_x;
         if (has_custom_icon) {
             ImVec2 icon_sz = ImGui::CalcTextSize(custom_icon, nullptr, true);
-            ImVec2 icon_pos(item_max.x - pad_x - icon_sz.x, item_min.y + (btn_h - icon_sz.y) * 0.5f);
+            icon_left_x = item_max.x - pad_x - icon_sz.x;
+            ImVec2 icon_pos(icon_left_x, item_min.y + (btn_h - icon_sz.y) * 0.5f);
             draw_list->AddText(icon_pos, icon_col, custom_icon);
         } else {
             ImGuiDir arrow_dir = points_up ? ImGuiDir_Up : ImGuiDir_Down;
-            ImVec2 arrow_pos(item_max.x - pad_x - font_size * 0.85f, item_min.y + (btn_h - font_size) * 0.5f);
+            icon_left_x = item_max.x - pad_x - font_size * 0.85f;
+            ImVec2 arrow_pos(icon_left_x, item_min.y + (btn_h - font_size) * 0.5f);
             DrawPulldownArrow(draw_list, arrow_pos, icon_col, arrow_dir, font_size, 1.0f);
+        }
+
+        const char* preview_end = std::strstr(preview_text, "##");
+        if (!preview_end) {
+            preview_end = preview_text + std::strlen(preview_text);
+        }
+        float text_clip_max_x = (std::max)(item_min.x + pad_x, icon_left_x - pad_x * 0.5f);
+        if (preview_end > preview_text && text_clip_max_x > item_min.x + pad_x) {
+            ImVec4 clip_rect(item_min.x + pad_x, item_min.y, text_clip_max_x, item_max.y);
+            ImVec2 text_pos(item_min.x + pad_x, item_min.y + (btn_h - text_sz.y) * 0.5f);
+            draw_list->AddText(ImGui::GetFont(), font_size, text_pos, icon_col,
+                               preview_text, preview_end, 0.0f, &clip_rect);
         }
 
         bool value_changed = false;

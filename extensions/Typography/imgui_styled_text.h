@@ -346,7 +346,7 @@ namespace ImGui {
 
             // B. Opening tags
             std::string tagName;
-            size_t spacePos = tagStr.find_first_of(" \t>/");
+            size_t spacePos = tagStr.find_first_of(" \t>/=");
             if (spacePos != std::string::npos) tagName = tagStr.substr(0, spacePos);
             else tagName = tagStr;
             for (auto& c : tagName) c = (char)std::tolower(c);

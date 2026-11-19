@@ -9,10 +9,12 @@
 // Markdown or TimedTooltip is included first).
 //
 // Opt-Out Configuration:
-//   #define IMGEE_DISABLE_EXTENSIONS      // Exclude all extensions
-//   #define IMGEE_DISABLE_MARKDOWN        // Exclude Markdown extension
-//   #define IMGEE_DISABLE_TIMED_TOOLTIP   // Exclude TimedTooltip extension
-//   #define IMGEE_DISABLE_TYPOGRAPHY      // Exclude Typography & StyledText
+//   #define IMGEE_DISABLE_EXTENSIONS         // Exclude all extensions
+//   #define IMGEE_DISABLE_MARKDOWN           // Exclude Markdown extension
+//   #define IMGEE_DISABLE_TIMED_TOOLTIP      // Exclude TimedTooltip extension
+//   #define IMGEE_DISABLE_TYPOGRAPHY         // Exclude Typography & StyledText
+//   #define IMGEE_DISABLE_ZOOMABLE_VIEWPORT  // Exclude ZoomableViewport helper
+//   #define IMGEE_DISABLE_DOC_VIEWER         // Exclude composite DocumentViewer
 // ============================================================================
 
 #pragma once
@@ -66,6 +68,12 @@
     !defined(CONTRIB_DISABLE_ZOOMABLE_VIEWPORT) && \
     !defined(IMGUI_DISABLE_ZOOMABLE_VIEWPORT)
 #include "Viewport/imgui_zoomable_viewport.h"
+#endif
+
+#if !defined(IMGEE_DISABLE_DOC_VIEWER) && \
+    !defined(CONTRIB_DISABLE_DOC_VIEWER) && \
+    !defined(IMGUI_DISABLE_DOC_VIEWER)
+#include "DocViewer/imgui_doc_viewer.h"
 #endif
 
 #endif // !CONTRIB_DISABLE_EXTENSIONS
