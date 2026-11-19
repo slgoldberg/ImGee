@@ -2166,6 +2166,119 @@ int main(int argc, char** argv) {
         renderIndicatorFrame();
     }
 
+    // ========================================================================
+    // SelectPulldown Open-Button Cursor & Mouse-Wheel Consistency Tests:
+    //  1. Closed + hovering opener button: Hand cursor, wheel pass-through
+    //     (neither mutates *current_item nor consumes io.MouseWheel).
+    //  2. Open + hovering opener button: ResizeNS cursor, wheel steps
+    //     *current_item in place ("click to unlock, then scroll in place").
+    //  3. Open + hovering popup list item: ResizeNS cursor, wheel steps
+    //     *current_item; closing restores Hand cursor on opener button.
+    // ========================================================================
+    {
+        auto setMouseAndWheel = [&](float mx, float my, bool down, float wheelY = 0.0f) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+            io.AddMousePosEvent(mx, my);
+            io.AddMouseButtonEvent(0, down);
+            if (wheelY != 0.0f) {
+                io.AddMouseWheelEvent(0.0f, wheelY);
+            }
+#else
+            io.MousePos = ImVec2(mx, my);
+            io.MouseDown[0] = down;
+            io.MouseWheel = wheelY;
+#endif
+        };
+
+        static const char* const kModes[4] = { "Circle", "Spot", "Tower", "Chase" };
+        int selectedMode = 0;
+        ImVec2 btnMin(0.0f, 0.0f), btnMax(0.0f, 0.0f);
+        ImGuiMouseCursor observedCursor = ImGuiMouseCursor_Arrow;
+        float unconsumedWheelAfterWidget = 0.0f;
+        bool stepChanged = false;
+
+        auto renderPulldownFrame = [&](bool captureBtnRect = false) {
+            io.DeltaTime = 1.0f / 60.0f;
+            ImGui::NewFrame();
+
+            ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(360.0f, 280.0f), ImGuiCond_Always);
+            ImGui::Begin("SelectPulldownCursorWheelWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot pdSnap = StackSnapshot::Capture();
+
+            const ImVec2 p0 = ImGui::GetCursorScreenPos();
+            stepChanged = ImGui::SelectPulldown("##cam_mode", &selectedMode, kModes, 4, nullptr, 150.0f);
+            if (captureBtnRect) {
+                btnMin = p0;
+                btnMax = ImVec2(p0.x + 150.0f, p0.y + ImGui::GetFrameHeight());
+            }
+            unconsumedWheelAfterWidget = io.MouseWheel;
+            observedCursor = ImGui::GetMouseCursor();
+
+            pdSnap.VerifyBalanced("SelectPulldownCursorWheelWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        };
+
+        setMouseAndWheel(2.0f, 2.0f, false, 0.0f);
+        renderPulldownFrame(true);
+        const ImVec2 btnCenter((btnMin.x + btnMax.x) * 0.5f, (btnMin.y + btnMax.y) * 0.5f);
+
+        // State 1: Closed + hovering opener button -> Hand cursor & wheel pass-through!
+        setMouseAndWheel(btnCenter.x, btnCenter.y, false, 0.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_Hand);
+
+        setMouseAndWheel(btnCenter.x, btnCenter.y, false, -1.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_Hand);
+        IMGEE_TEST_CHECK(!stepChanged);
+        IMGEE_TEST_CHECK(selectedMode == 0);
+        IMGEE_TEST_CHECK(std::fabs(unconsumedWheelAfterWidget - (-1.0f)) < 0.01f);
+
+        // Click + release opener button to unlock/open the pulldown without moving the mouse:
+        setMouseAndWheel(btnCenter.x, btnCenter.y, true, 0.0f);
+        renderPulldownFrame();
+        setMouseAndWheel(btnCenter.x, btnCenter.y, false, 0.0f);
+        renderPulldownFrame();
+
+        // State 2: Open + hovering opener button -> ResizeNS cursor & wheel steps *current_item!
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_ResizeNS);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_ResizeNS);
+
+        setMouseAndWheel(btnCenter.x, btnCenter.y, false, -1.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_ResizeNS);
+        IMGEE_TEST_CHECK(stepChanged);
+        IMGEE_TEST_CHECK(selectedMode == 1);
+        IMGEE_TEST_CHECK(std::fabs(unconsumedWheelAfterWidget) < 0.01f);
+
+        // State 3: Open + hovering popup item below opener button -> ResizeNS cursor & wheel steps *current_item!
+        const ImVec2 popupItemPos(btnCenter.x, btnMax.y + ImGui::GetTextLineHeightWithSpacing() * 1.2f);
+        setMouseAndWheel(popupItemPos.x, popupItemPos.y, false, 0.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_ResizeNS);
+
+        setMouseAndWheel(popupItemPos.x, popupItemPos.y, false, -1.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_ResizeNS);
+        IMGEE_TEST_CHECK(stepChanged);
+        IMGEE_TEST_CHECK(selectedMode == 2);
+        IMGEE_TEST_CHECK(std::fabs(unconsumedWheelAfterWidget) < 0.01f);
+
+        // Close popup by clicking outside, then re-hover opener button -> returns to Hand cursor!
+        setMouseAndWheel(320.0f, 240.0f, true, 0.0f);
+        renderPulldownFrame();
+        setMouseAndWheel(320.0f, 240.0f, false, 0.0f);
+        renderPulldownFrame();
+
+        setMouseAndWheel(btnCenter.x, btnCenter.y, false, 0.0f);
+        renderPulldownFrame();
+        IMGEE_TEST_CHECK(observedCursor == ImGuiMouseCursor_Hand);
+    }
+
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
     IMGEE_TEST_CHECK(gpuState.createdCount == 4);
     IMGEE_TEST_CHECK(gpuState.deletedCount == 0);

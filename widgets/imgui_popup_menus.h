@@ -643,9 +643,7 @@ namespace ImGui {
 
             // In-menu wheel cycling: allow spinning while hovering popup items OR the opener button!
             if (popup_hovered || btn_hovered) {
-                if (popup_hovered) {
-                    ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-                }
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
                 float clicks = Detail::GetPopupMouseWheel(true);
                 if (clicks != 0.0f) {
                     s_WheelLatchPulldownID = id;
