@@ -292,6 +292,78 @@ int main(int argc, char** argv) {
         }
 
         {
+            // Regression suite: quote delimiters after opening emphasis, outer emphasis across links, and nested code spans
+            struct FormatRecord {
+                ImGui::MarkdownFormatType type;
+                int level;
+                char emphasisChar;
+                bool start;
+            };
+            std::vector<FormatRecord> formatLog;
+
+            ImGui::MarkdownConfig regCfg = mdCfg;
+            regCfg.userData = &formatLog;
+            regCfg.formatCallback = [](const ImGui::MarkdownFormatInfo& info, bool start) {
+                if (info.config && info.config->userData) {
+                    auto* log = static_cast<std::vector<FormatRecord>*>(info.config->userData);
+                    log->push_back({ info.type, info.level, info.emphasisChar, start });
+                }
+                ImGui::defaultMarkdownFormatCallback(info, start);
+            };
+
+            // 1. Quotes after opening emphasis delimiter: (*"Italic In Quotes"*) and *"Quoted Italic"*
+            formatLog.clear();
+            const std::string qDoc = "(*\"Italic In Quotes\"*) and *\"Quoted Italic\"*";
+            ImGui::Markdown::Render(qDoc.c_str(), qDoc.length(), regCfg);
+            int qItalicCount = 0;
+            for (const auto& ev : formatLog) {
+                if (ev.type == ImGui::MarkdownFormatType::EMPHASIS && ev.emphasisChar == '*' && ev.level == 1 && ev.start) {
+                    ++qItalicCount;
+                }
+            }
+            IMGEE_TEST_CHECK(qItalicCount == 2);
+
+            // 2. Enclosing links preserving outer emphasis: **[Linked Heading](#slug)** and *[Italic Link](url)*
+            formatLog.clear();
+            const std::string lDoc = "**[Linked Heading](#slug)** and *[Italic Link](url)*";
+            ImGui::Markdown::Render(lDoc.c_str(), lDoc.length(), regCfg);
+            bool sawBoldLink = false;
+            bool sawItalicLink = false;
+            for (const auto& ev : formatLog) {
+                if (ev.type == ImGui::MarkdownFormatType::EMPHASIS && ev.emphasisChar == '*' && ev.start) {
+                    if (ev.level == 2) sawBoldLink = true;
+                    if (ev.level == 1) sawItalicLink = true;
+                }
+            }
+            IMGEE_TEST_CHECK(sawBoldLink);
+            IMGEE_TEST_CHECK(sawItalicLink);
+
+            // 3. Nested inline code span inside bold emphasis: **Bold text with (`code span`) inside**
+            formatLog.clear();
+            const std::string cDoc = "**Bold text with (`code span`) inside**";
+            ImGui::Markdown::Render(cDoc.c_str(), cDoc.length(), regCfg);
+            bool sawOuterBoldStart = false;
+            bool sawOuterBoldEnd = false;
+            bool sawNestedCodeStart = false;
+            bool sawNestedCodeEnd = false;
+            for (const auto& ev : formatLog) {
+                if (ev.type == ImGui::MarkdownFormatType::EMPHASIS) {
+                    if (ev.emphasisChar == '*' && ev.level == 2) {
+                        if (ev.start) sawOuterBoldStart = true;
+                        else sawOuterBoldEnd = true;
+                    } else if (ev.emphasisChar == '`' && ev.level == 1) {
+                        if (ev.start) sawNestedCodeStart = true;
+                        else sawNestedCodeEnd = true;
+                    }
+                }
+            }
+            IMGEE_TEST_CHECK(sawOuterBoldStart);
+            IMGEE_TEST_CHECK(sawOuterBoldEnd);
+            IMGEE_TEST_CHECK(sawNestedCodeStart);
+            IMGEE_TEST_CHECK(sawNestedCodeEnd);
+        }
+
+        {
             StackSnapshot s = StackSnapshot::Capture();
             ImGui::StyledText("Bus <b>A</b> <i>status</i>: <badge=primary>OK</badge> <icon gear /> <img name=\"test_logo\" width=12 height=12 />");
             ImGui::StyledTextWrapped("Wrapped <b>styled</b> telemetry <color=#44cc88>nominal</color>.");

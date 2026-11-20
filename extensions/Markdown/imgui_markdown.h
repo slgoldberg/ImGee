@@ -1325,7 +1325,88 @@ namespace ImGui
 			formatInfo.type = MarkdownFormatType::EMPHASIS;
 			mdConfig_.formatCallback(formatInfo, true);
 			const char* text = markdown_ + textStart;
-			textRegion_.RenderTextWrapped(text, text + textSize);
+			const char* textEnd = text + textSize;
+
+			bool hasNestedCode = false;
+			if( line_.emphasisChar != '`' && textSize > 2 )
+			{
+				for( const char* s = text; s < textEnd; ++s )
+				{
+					if( *s == '`' ) { hasNestedCode = true; break; }
+				}
+			}
+
+			if( hasNestedCode )
+			{
+				const char* cur = text;
+				bool renderedAny = false;
+				while( cur < textEnd )
+				{
+					const char* bOpen = nullptr;
+					for( const char* s = cur; s < textEnd; ++s )
+					{
+						if( *s == '`' && ( s == text || *(s - 1) != '\\' ) )
+						{
+							bOpen = s;
+							break;
+						}
+					}
+					if( !bOpen )
+					{
+						if( cur < textEnd )
+						{
+							if( renderedAny ) ImGui::SameLine( 0.0f, 0.0f );
+							textRegion_.RenderTextWrapped( cur, textEnd );
+						}
+						break;
+					}
+
+					const char* bClose = nullptr;
+					for( const char* s = bOpen + 1; s < textEnd; ++s )
+					{
+						if( *s == '`' && *(s - 1) != '\\' )
+						{
+							bClose = s;
+							break;
+						}
+					}
+					if( !bClose )
+					{
+						// No matching close backtick; render remainder as normal emphasized text
+						if( cur < textEnd )
+						{
+							if( renderedAny ) ImGui::SameLine( 0.0f, 0.0f );
+							textRegion_.RenderTextWrapped( cur, textEnd );
+						}
+						break;
+					}
+
+					// 1. Render preceding text segment if non-empty
+					if( bOpen > cur )
+					{
+						if( renderedAny ) ImGui::SameLine( 0.0f, 0.0f );
+						textRegion_.RenderTextWrapped( cur, bOpen );
+						renderedAny = true;
+					}
+
+					// 2. Render code span segment without enclosing backtick delimiters
+					if( renderedAny ) ImGui::SameLine( 0.0f, 0.0f );
+					MarkdownFormatInfo codeInfo = formatInfo;
+					codeInfo.type = MarkdownFormatType::EMPHASIS;
+					codeInfo.emphasisChar = '`';
+					codeInfo.level = 1;
+					mdConfig_.formatCallback( codeInfo, true );
+					textRegion_.RenderTextWrapped( bOpen + 1, bClose );
+					mdConfig_.formatCallback( codeInfo, false );
+					renderedAny = true;
+
+					cur = bClose + 1;
+				}
+			}
+			else
+			{
+				textRegion_.RenderTextWrapped( text, textEnd );
+			}
 		}
         else                                // render a normal paragraph chunk
         {
@@ -6551,28 +6632,77 @@ namespace ImGui
                 }
                 if( link.num_brackets_open == 0 )
                 {
-                    em = Emphasis();
-                    line.lineEnd = link.text.start - ( link.isImage ? 2 : 1 );
-                    if( line.lineEnd > line.lineStart && line.lineEnd > line.lastRenderPosition + 1 )
+                    const bool isEnclosedInEmphasis = ( em.state == Emphasis::MIDDLE );
+                    const int linkOpenPos = link.text.start - ( link.isImage ? 2 : 1 );
+
+                    if( isEnclosedInEmphasis )
                     {
-                        RenderLine( markdown_, line, textRegion, mdConfig_ );
-                        line.isUnorderedListStart = false;
-                        line.isOrderedListStart = false;
-                        ImGui::SameLine( 0.0f, 0.0f );
+                        // 1. Render any plain text that preceded the opening emphasis delimiter:
+                        int preEmphasisEnd = em.text.start - line.emphasisCount;
+                        if( preEmphasisEnd > line.lineStart && preEmphasisEnd > line.lastRenderPosition + 1 )
+                        {
+                            line.lineEnd = preEmphasisEnd;
+                            RenderLine( markdown_, line, textRegion, mdConfig_ );
+                            line.isUnorderedListStart = false;
+                            line.isOrderedListStart = false;
+                            ImGui::SameLine( 0.0f, 0.0f );
+                            line.lastRenderPosition = preEmphasisEnd - 1;
+                            line.lineStart = preEmphasisEnd;
+                        }
+                        else if( line.isUnorderedListStart )
+                        {
+                            int numLeadIndents = line.leadSpaceCount / 2;
+                            textRegion.ApplyLeadIndent( numLeadIndents );
+                            textRegion.ApplyBullet( mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
+                            line.isUnorderedListStart = false;
+                        }
+                        else if( line.isOrderedListStart )
+                        {
+                            int numLeadIndents = line.leadSpaceCount / 2;
+                            textRegion.ApplyLeadIndent( numLeadIndents );
+                            textRegion.ApplyOrderedNumber( markdown_ + line.orderedListNumStart, markdown_ + line.orderedListNumEnd, mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
+                            line.isOrderedListStart = false;
+                        }
+
+                        // 2. Render any emphasized text that preceded this link (from em.text.start to linkOpenPos):
+                        if( linkOpenPos > em.text.start && linkOpenPos > line.lastRenderPosition + 1 )
+                        {
+                            line.isEmphasis = true;
+                            line.lastRenderPosition = em.text.start - 1;
+                            line.lineStart = em.text.start;
+                            line.lineEnd = linkOpenPos;
+                            RenderLine( markdown_, line, textRegion, mdConfig_ );
+                            line.isEmphasis = false;
+                            ImGui::SameLine( 0.0f, 0.0f );
+                            line.lastRenderPosition = linkOpenPos - 1;
+                            line.lineStart = linkOpenPos;
+                        }
                     }
-                    else if( line.isUnorderedListStart )
+                    else
                     {
-                        int numLeadIndents = line.leadSpaceCount / 2;
-                        textRegion.ApplyLeadIndent( numLeadIndents );
-                        textRegion.ApplyBullet( mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
-                        line.isUnorderedListStart = false;
-                    }
-                    else if( line.isOrderedListStart )
-                    {
-                        int numLeadIndents = line.leadSpaceCount / 2;
-                        textRegion.ApplyLeadIndent( numLeadIndents );
-                        textRegion.ApplyOrderedNumber( markdown_ + line.orderedListNumStart, markdown_ + line.orderedListNumEnd, mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
-                        line.isOrderedListStart = false;
+                        em = Emphasis();
+                        line.lineEnd = linkOpenPos;
+                        if( line.lineEnd > line.lineStart && line.lineEnd > line.lastRenderPosition + 1 )
+                        {
+                            RenderLine( markdown_, line, textRegion, mdConfig_ );
+                            line.isUnorderedListStart = false;
+                            line.isOrderedListStart = false;
+                            ImGui::SameLine( 0.0f, 0.0f );
+                        }
+                        else if( line.isUnorderedListStart )
+                        {
+                            int numLeadIndents = line.leadSpaceCount / 2;
+                            textRegion.ApplyLeadIndent( numLeadIndents );
+                            textRegion.ApplyBullet( mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
+                            line.isUnorderedListStart = false;
+                        }
+                        else if( line.isOrderedListStart )
+                        {
+                            int numLeadIndents = line.leadSpaceCount / 2;
+                            textRegion.ApplyLeadIndent( numLeadIndents );
+                            textRegion.ApplyOrderedNumber( markdown_ + line.orderedListNumStart, markdown_ + line.orderedListNumEnd, mdConfig_.bulletSpacing > 0.0f ? mdConfig_.bulletSpacing : -1.0f );
+                            line.isOrderedListStart = false;
+                        }
                     }
                     link.url.stop = i;
                     if( link.isImage )
@@ -6685,11 +6815,29 @@ namespace ImGui
                     }
                     else
                     {
-                        textRegion.RenderLinkTextWrapped( markdown_ + link.text.start, markdown_ + link.text.start + link.text.size(), link, markdown_, mdConfig_, &linkHoverStart, false );
+                        if( isEnclosedInEmphasis )
+                        {
+                            MarkdownFormatInfo emFormatInfo;
+                            emFormatInfo.config = &mdConfig_;
+                            emFormatInfo.type = MarkdownFormatType::EMPHASIS;
+                            emFormatInfo.emphasisChar = line.emphasisChar;
+                            emFormatInfo.level = line.emphasisCount;
+                            mdConfig_.formatCallback( emFormatInfo, true );
+                            textRegion.RenderLinkTextWrapped( markdown_ + link.text.start, markdown_ + link.text.start + link.text.size(), link, markdown_, mdConfig_, &linkHoverStart, false );
+                            mdConfig_.formatCallback( emFormatInfo, false );
+                        }
+                        else
+                        {
+                            textRegion.RenderLinkTextWrapped( markdown_ + link.text.start, markdown_ + link.text.start + link.text.size(), link, markdown_, mdConfig_, &linkHoverStart, false );
+                        }
                     }
                     ImGui::SameLine( 0.0f, 0.0f );
                     link = Link();
                     line.lastRenderPosition = i;
+                    if( isEnclosedInEmphasis )
+                    {
+                        em.text.start = i + 1;
+                    }
                     break;
                 }
             }
@@ -6716,9 +6864,7 @@ namespace ImGui
                         && (int)markdownLength_ > next 
                         && markdown_[ next ] != ' '
                         && markdown_[ next ] != '\n'
-					    && markdown_[ next ] != '"'
 					    && markdown_[ next ] != ')'
-					    && markdown_[ next ] != '\''
                         && markdown_[ next ] != '\t' )
                     {
 						em.state = Emphasis::LEFT;
