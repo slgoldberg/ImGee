@@ -1350,13 +1350,13 @@ int main(int argc, char** argv) {
             // and 1-click A/B ToggleResetZoom restores 1.0f <-> custom zoom without closing the lightbox:
             {
                 const auto& lbTelem = ImGui::MarkdownDetail::GetLightboxTelemetryState();
-                const ImVec2 imgCenter(
+                const ImVec2 lbImgCenter(
                     (lbTelem.lightboxImageMin.x + lbTelem.lightboxImageMax.x) * 0.5f,
                     (lbTelem.lightboxImageMin.y + lbTelem.lightboxImageMax.y) * 0.5f);
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
-                io.AddMousePosEvent(imgCenter.x, imgCenter.y);
+                io.AddMousePosEvent(lbImgCenter.x, lbImgCenter.y);
 #else
-                io.MousePos = imgCenter;
+                io.MousePos = lbImgCenter;
 #endif
                 renderMultiLineCaptionLightbox();
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
