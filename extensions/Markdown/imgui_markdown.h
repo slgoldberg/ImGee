@@ -5115,6 +5115,7 @@ namespace ImGui
                         if( close_pressed ) {
                             should_close = true;
                         }
+                        MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_close_tip" ), close_hovered, "Close Lightbox (Esc or click outside)" );
 
                         // 1b. Top-right hover zoom control strip docked immediately to the LEFT of [X]:
                         //     [-]  [100%]  [+]  [Reset/Restore]
@@ -5156,6 +5157,7 @@ namespace ImGui
                             z_dec_act = ImGui::IsItemActive();
                             if( z_dec_hov && !at_min_z ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
                             if( dec_clicked && !at_min_z ) lb_view.SetZoom( lb_view.zoom - 0.25f );
+                            MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_zdec_tip" ), z_dec_hov, "Zoom Out (Wheel Down)" );
 
                             ImGui::SetCursorScreenPos( ImVec2( bx_pct, btn_in_y ) );
                             const bool pct_clicked = ImGui::InvisibleButton( "##imgee_lb_zpct", ImVec2( z_pct_w, btn_in_h ) );
@@ -5163,6 +5165,7 @@ namespace ImGui
                             z_pct_act = ImGui::IsItemActive();
                             if( z_pct_hov && ( is_z_mod || can_z_restore ) ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
                             if( pct_clicked ) lb_view.ToggleResetZoom();
+                            MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_zpct_tip" ), z_pct_hov, is_z_mod ? "Reset to Fitted View (Click or 1-click Reset)" : "Restore Previous Zoom" );
 
                             ImGui::SetCursorScreenPos( ImVec2( bx_inc, btn_in_y ) );
                             const bool inc_clicked = ImGui::InvisibleButton( "##imgee_lb_zinc", ImVec2( z_inc_w, btn_in_h ) );
@@ -5170,6 +5173,7 @@ namespace ImGui
                             z_inc_act = ImGui::IsItemActive();
                             if( z_inc_hov && !at_max_z ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
                             if( inc_clicked && !at_max_z ) lb_view.SetZoom( lb_view.zoom + 0.25f );
+                            MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_zinc_tip" ), z_inc_hov, "Zoom In (Wheel Up)" );
 
                             ImGui::SetCursorScreenPos( ImVec2( bx_rst, btn_in_y ) );
                             const bool rst_clicked = ImGui::InvisibleButton( "##imgee_lb_zrst", ImVec2( z_rst_w, btn_in_h ) );
@@ -5177,6 +5181,7 @@ namespace ImGui
                             z_rst_act = ImGui::IsItemActive();
                             if( z_rst_hov && ( is_z_mod || can_z_restore ) ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
                             if( rst_clicked ) lb_view.ToggleResetZoom();
+                            MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_zrst_tip" ), z_rst_hov, can_z_restore ? "Restore Previous Zoom" : "Reset Zoom & Pan" );
 
                             any_strip_hovered = z_dec_hov || z_pct_hov || z_inc_hov || z_rst_hov ||
                                                 z_dec_act || z_pct_act || z_inc_act || z_rst_act;

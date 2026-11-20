@@ -1929,7 +1929,9 @@ int main(int argc, char** argv) {
             BeginShowcaseCard("##sc13", "GFM Callout Cards & Native Blockquotes",
                               "All five GitHub-Flavored Markdown alert severities plus quiet slate blockquotes", 600.0f);
 
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, 4.0f));
             ImGui::MD::TextWrapped(kCalloutsMd, &mdCfg);
+            ImGui::PopStyleVar();
 
             EndShowcaseCard();
             ImGui::Render();

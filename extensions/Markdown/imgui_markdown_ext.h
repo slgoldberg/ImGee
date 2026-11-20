@@ -2527,11 +2527,9 @@ namespace ImGui {
 
                 const float bar_w    = is_callout ? ImMax(3.0f, std::round(4.0f * scale)) : ImMax(2.5f, std::round(3.5f * scale));
                 const float pad_x    = is_callout ? std::round(12.0f * scale) : std::round(11.0f * scale);
-                const float pad_y    = is_callout ? std::round(9.0f * scale)  : std::round(6.0f * scale);
+                const float pad_y    = std::round(6.0f * scale);
                 const float inset_x  = std::round(1.0f * scale);
                 const float rounding = is_callout ? std::round(4.0f * scale)  : std::round(3.0f * scale);
-
-                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
 
                 float raw_avail_w = (active_cfg && active_cfg->wrapWidth > 0.0f)
                                         ? active_cfg->wrapWidth
@@ -2663,7 +2661,6 @@ namespace ImGui {
                 underlay.EndUnderlay();
 
                 ImGui::EndGroup();
-                ImGui::Dummy(ImVec2(0.0f, std::round(2.0f * scale)));
             };
 
             auto blockquoteHandler = [renderBlockquoteOrCallout](const std::string& inner_text, const std::string& param) {
