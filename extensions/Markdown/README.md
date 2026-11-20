@@ -1,6 +1,6 @@
 # Markdown Extension
 
-The **Markdown** extension provides rich CommonMark and GitHub Flavored Markdown parsing and rendering for Dear ImGui as part of the **ImGee** UI toolkit (based on `enkisoftware/imgui_markdown` and heavily enhanced for modern desktop and cockpit user interfaces).
+The **Markdown** extension provides rich CommonMark and GitHub Flavored Markdown parsing and rendering for Dear ImGui as part of the **ImGee** UI toolkit (based on `enkisoftware/imgui_markdown` and heavily enhanced for modern desktop, studio, and simulation user interfaces).
 
 It allows you to embed rich text formatting, headers, links, lists, and custom interactive widgets directly into your ImGui windows, settings panels, and stationary tooltips.
 
@@ -20,7 +20,7 @@ The Markdown system is structured as a clean two-layer architecture:
    * Our fork incorporates crucial low-level fixes for CommonMark punctuation lookahead and bullet list token isolation.
 
 2. **ImGee Extension Wrapper (`imgui_markdown_ext.h`):**
-   * High-level, ergonomic C++ layer designed for modern Dear ImGui applications and X-Plane cockpit plugins.
+   * High-level, ergonomic C++ layer designed for modern Dear ImGui desktop applications, studio tools, and simulation plugins.
    * Encapsulates all functionality inside the second-level `ImGui::Markdown::` namespace, with `ImGui::MD::` provided as an official, zero-overhead namespace alias (`namespace ImGui { namespace MD = Markdown; }`).
    * Eliminates the upstream symbol collision: Upstream's raw C-style function `ImGui::Markdown(text, len, config)` has been moved to `ImGui::Markdown::Render(...)` (and `ImGui::MD::Render(...)`). This prevents beginners from accidentally invoking the raw unconfigured parser and frees `ImGui::Markdown` to be a clean, first-class C++ namespace.
    * Introduces an XML/HTML-style inline tag pre-processor (`<tag>`, `<color>`, `<backdrop>`, `<badge>`, `<btn>`) with custom tag callback registration via `ImGui::Markdown::RegisterTag`.
@@ -91,7 +91,7 @@ The Markdown system is structured as a clean two-layer architecture:
   * Supports percentage sizing (`=68%`, `width=68%`), horizontal block alignment (`left`, `center` / `centered` / `centre`, `right`, `align=center`), true text-wrapping floats (`float=left` / `float-left` / `wrap=left`, `float=right` / `float-right` / `wrap=right`, optional `gap=` / `margin=` spacing, explicit `<clear/>` / `<br clear="all"/>` / `<!-- clear -->` clearing, and responsive narrow-viewport fallback), zoom-proportional scaling for natural/pixel images (with `nozoom` / `scale=fixed` opt-out for strict 1:1 pixel assets), centered figure captions (`caption`, `caption="Custom **Markdown** caption"`, `nocaption`, `mdConfig.showImageCaptions`), and an opt-in same-context click-to-enlarge lightbox overlay (`lightbox` / `zoom` / `expand`, `nolightbox`, `mdConfig.enableImageLightbox`) clamped strictly to the host window bounds with zero OS windows.
   * When `MarkdownConfig::baseDir` is configured (for example pointing at a plugin's `docs/` folder), relative image lookups automatically check `baseDir/<url>` as well as `baseDir/images/<url>`, `baseDir/images/<file>`, `baseDir/../<url>`, `baseDir/../images/<url>`, and `baseDir/../images/<file>` (when `<url>` contains no `..` traversal segments).
 * **Two-Layer Zoomable Viewport (`imgui_zoomable_viewport.h`):**
-  * Provides `ImGui::ZoomableViewportState` + `ImGui::BeginZoomedViewport(...)` / `ImGui::EndZoomedViewport()` + `ImGui::ZoomViewportControls(...)` so document viewers keep header, toolbar, and footer chrome at crisp `1.0x` while zooming inner scrollable Markdown content across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS).
+  * Provides `ImGui::ZoomableViewportState` + `ImGui::BeginZoomedViewport(...)` / `ImGui::EndZoomedViewport()` + `ImGui::ZoomViewportControls(...)` so document viewers keep header, toolbar, and footer chrome at crisp `1.0x` while zooming inner scrollable Markdown content smoothly across `[0.50x .. 2.50x]`.
 * **Dynamic Font Scaling:**
   * Uses `ImGui::GetFontScale()` to cleanly honor parent window text zoom and high-DPI display scales.
 * **Custom Tag Registration:**
@@ -666,9 +666,11 @@ Both inline angle-bracket modifiers (`![Alt](<diagram.png =68% center>)`), Pando
 * **Content Zoom Scaling (`nozoom` / `scale=fixed` opt-out):** Natural and pixel-sized images scale proportionally with active window/font zoom (`SetWindowFontScale` / `BeginZoomedViewport`), clamped to available width while preserving aspect ratio. Add `nozoom` or `scale=fixed` for strict `1:1` pixel assets.
 * **`baseDir` Documentation Layouts:** When `mdConfig.baseDir` points at a documentation folder (e.g. `plugin/docs`), relative image URLs without `..` traversal segments automatically check `baseDir/<url>`, `baseDir/images/<file>`, `baseDir/../<url>`, and `baseDir/../images/<file>` before falling through to `ImGee::HostBackend::ResolveAssetPath` and working-directory paths.
 
-#### 6.2 Optional Visible Figure Captions & Same-Context Lightbox
-* **Figure Captions:** Add `caption` / `figcaption` to display the `[alt]` text centered beneath `[img_x .. img_x + img_w]`, `caption="Figure 1: **AFDS** Mode Panel"` for custom inline-Markdown captions, or `nocaption` to suppress captions on an individual image when `mdConfig.showImageCaptions = true`.
-* **Same-Context Lightbox Overlay:** Add `lightbox` (or `zoom` / `expand`, with `nolightbox` opt-out and `mdConfig.enableImageLightbox` global default) to enable click-to-enlarge thumbnails with a `Hand` cursor affordance and delayed instructional tooltip. Clicking opens a dimmed, aspect-fit overlay inside the **same `ImGuiContext` and clamped strictly to the host window's bounds** (zero secondary OS windows), dismissing on backdrop click, `[X]`, or `Esc`.
+#### 6.2 Optional Visible Figure Captions & Interactive Same-Context Lightbox
+* **Figure Captions:** Add `caption` / `figcaption` to display the `[alt]` text centered beneath `[img_x .. img_x + img_w]`, `caption="Figure 1: **Signal** Routing"` for custom inline-Markdown captions, or `nocaption` to suppress captions on an individual image when `mdConfig.showImageCaptions = true`.
+* **Same-Context Lightbox Overlay with Zoom & Pan:** Add `lightbox` (or `zoom` / `expand`, with `nolightbox` opt-out and `mdConfig.enableImageLightbox` global default) to enable click-to-enlarge thumbnails with a `Hand` cursor affordance and delayed instructional tooltip. Clicking opens a dimmed, aspect-fit overlay inside the **same `ImGuiContext` and clamped strictly to the host window's bounds** (zero secondary OS windows):
+  * **Top-Right Hover Zoom Strip:** Hovering inside the lightbox (or whenever zoomed away from `100%`) reveals a sleek dark-glass pill strip (`[-]  [100%]  [+]  [↺]`) docked immediately to the left of `[X]` for `25%` stepping (`50%..400%`) and 1-click A/B reset/restore.
+  * **Wheel Zoom, Drag-to-Pan, & Backdrop-Only Dismiss:** Roll the mouse wheel over the enlarged image to zoom smoothly (`10%` per notch), click-and-drag (`ResizeAll` cursor) to pan zoomed artwork clipped cleanly inside the image frame, or stationary-click the image to toggle `100% <-> 200%` zoom. Only backdrop clicks outside the image/controls, `[X]`, or `Esc` close the lightbox.
 
 ```markdown
 ![Figure 1: **AFDS** Mode Panel](<afds_panel.png =68% center caption lightbox>)
@@ -694,24 +696,24 @@ Primary electrical buses automatically isolate faulted generators while preservi
 ![Text-Wrapping Image Floats & Figure Captions: Mid-paragraph reflow around a floated schematic with lightbox affordance](../../docs/images/fig_markdown_floats_captions.png)
 
 #### 6.4 Two-Layer Chrome (`1.0x`) + Zoomed Content (`Nx`) Viewport Helper
-When building in-app manuals or briefing viewers, `ImGui::ZoomableViewportState` and `ImGui::BeginZoomedViewport` / `ImGui::EndZoomedViewport` (`extensions/Viewport/imgui_zoomable_viewport.h`, included automatically by `imgee.h` and `imgui_markdown_ext.h`) keep window toolbars and footers at crisp `1.0x` while zooming the scrollable inner document body across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS):
+When building in-app manuals or reference viewers, `ImGui::ZoomableViewportState` and `ImGui::BeginZoomedViewport` / `ImGui::EndZoomedViewport` (`extensions/Viewport/imgui_zoomable_viewport.h`, included automatically by `imgee.h` and `imgui_markdown_ext.h`) keep window toolbars and footers at crisp `1.0x` while zooming the scrollable inner document body across `[0.50x .. 2.50x]`:
 
 ```cpp
 static ImGui::ZoomableViewportState s_DocZoom;
 
 // Fixed 1.0x header & [-][100%][+] toolbar:
-ImGui::TextUnformatted("Operations Manual");
+ImGui::TextUnformatted("User Manual");
 ImGui::SameLine();
 ImGui::ZoomViewportControls(s_DocZoom);
 
 // Scrollable Nx-zoomed Markdown body (always pair BeginZoomedViewport / EndZoomedViewport):
-if (ImGui::BeginZoomedViewport("##ManualBody", s_DocZoom, ImVec2(0.0f, -26.0f))) {
+if (ImGui::BeginZoomedViewport("##ManualBody", s_DocZoom, ImVec2(0.0f, -24.0f))) {
     ImGui::MD::TextWrapped(manualMarkdown, &mdConfig);
 }
 ImGui::EndZoomedViewport();
 
 // Fixed 1.0x footer:
-ImGui::TextDisabled("Use Ctrl+Wheel (or Cmd+Wheel on macOS) to zoom");
+ImGui::TextDisabled("Click images to enlarge");
 ```
 
 ---

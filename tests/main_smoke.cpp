@@ -1346,6 +1346,39 @@ int main(int argc, char** argv) {
             renderMultiLineCaptionLightbox();
             verifyPlateAndVertices();
 
+            // Verify top-right hover zoom strip sits strictly to the left of [X], mouse-wheel zoom steps & consumes wheel,
+            // and 1-click A/B ToggleResetZoom restores 1.0f <-> custom zoom without closing the lightbox:
+            {
+                const auto& lbTelem = ImGui::MarkdownDetail::GetLightboxTelemetryState();
+                const ImVec2 imgCenter(
+                    (lbTelem.lightboxImageMin.x + lbTelem.lightboxImageMax.x) * 0.5f,
+                    (lbTelem.lightboxImageMin.y + lbTelem.lightboxImageMax.y) * 0.5f);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                io.AddMousePosEvent(imgCenter.x, imgCenter.y);
+#else
+                io.MousePos = imgCenter;
+#endif
+                renderMultiLineCaptionLightbox();
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                io.AddMouseWheelEvent(0.0f, 3.0f);
+#else
+                io.MouseWheel = 3.0f;
+#endif
+                renderMultiLineCaptionLightbox();
+                IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+                IMGEE_TEST_CHECK(lbTelem.zoomStripMax.x > lbTelem.zoomStripMin.x);
+                IMGEE_TEST_CHECK(lbTelem.zoomStripMax.x <= lbTelem.closeButtonMin.x);
+                IMGEE_TEST_CHECK(std::fabs(lbTelem.lightboxZoom - 1.30f) <= 0.01f);
+
+                // Verify A/B zoom reset/restore state machine:
+                auto& lbView = ImGui::MarkdownDetail::GetLightboxViewState();
+                IMGEE_TEST_CHECK(lbView.ToggleResetZoom());
+                IMGEE_TEST_CHECK(std::fabs(lbView.zoom - 1.0f) <= 0.005f);
+                IMGEE_TEST_CHECK(lbView.ToggleResetZoom());
+                IMGEE_TEST_CHECK(std::fabs(lbView.zoom - 1.30f) <= 0.01f);
+                lbView.ToggleResetZoom();
+            }
+
             // Cleanly close via Escape:
             setEscapeKey(true);
             renderMultiLineCaptionLightbox();
@@ -1422,8 +1455,9 @@ int main(int argc, char** argv) {
         rmDir("imgee_ci_docroot/images");
         rmDir("imgee_ci_docroot");
 
-        // 5. Two-Layer Zoomable Viewport (1.0x chrome + Nx zoomed content + Ctrl+Wheel + A/B reset):
+        // 5. Two-Layer Zoomable Viewport (1.0x chrome + Nx zoomed content + opt-in Ctrl+Wheel + A/B reset):
         ImGui::ZoomableViewportState vpState;
+        IMGEE_TEST_CHECK(vpState.enable_ctrl_wheel == false);
         IMGEE_TEST_CHECK(vpState.GetZoomPercent() == 100);
         vpState.SetZoom(0.10f);
         IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 0.50f) <= 0.001f);
@@ -1437,8 +1471,8 @@ int main(int argc, char** argv) {
         ImGui::StepViewportZoom(vpState, -0.10f);
         IMGEE_TEST_CHECK(std::fabs(vpState.zoom - 1.50f) <= 0.001f);
 
-        // Render two-layer window (1 warm-up frame so NewFrame hover routing sees Wave2ZoomViewportWin,
-        // then fire Ctrl+MouseWheel on pass 1) and verify 1.0x header/footer isolation + Ctrl+Wheel zoom step:
+        // Opt in to Ctrl+MouseWheel zoom explicitly and verify 1.0x header/footer isolation + wheel consumption:
+        vpState.enable_ctrl_wheel = true;
         float headerFontSz = 0.0f;
         float innerFontSz = 0.0f;
         float footerFontSz = 0.0f;
@@ -2410,6 +2444,22 @@ int main(int argc, char** argv) {
         renderViewerFrame();
         renderViewerFrame();
         IMGEE_TEST_CHECK(docState.last_scroll_y > 50.0f);
+        IMGEE_TEST_CHECK(docState.active_toc_index >= 4);
+
+        // Verify 1-click Scroll-to-Top & Return-to-Reading-Spot (ToggleDocumentScrollReset):
+        const float savedReadingY = docState.last_scroll_y;
+        IMGEE_TEST_CHECK(ImGui::ToggleDocumentScrollReset(docState));
+        renderViewerFrame();
+        renderViewerFrame();
+        IMGEE_TEST_CHECK(docState.last_scroll_y <= 1.0f);
+        IMGEE_TEST_CHECK(std::fabs(docState.saved_scroll_y - savedReadingY) <= 0.5f);
+        IMGEE_TEST_CHECK(docState.active_toc_index == 0);
+
+        // 1-click return to reading spot restores exact savedReadingY:
+        IMGEE_TEST_CHECK(ImGui::ToggleDocumentScrollReset(docState));
+        renderViewerFrame();
+        renderViewerFrame();
+        IMGEE_TEST_CHECK(std::fabs(docState.last_scroll_y - savedReadingY) <= 1.0f);
         IMGEE_TEST_CHECK(docState.active_toc_index >= 4);
 
         // Jump back to top heading (#0):

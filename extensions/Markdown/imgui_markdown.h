@@ -1713,10 +1713,67 @@ namespace ImGui
             return s_Cache;
         }
 
+        struct LightboxViewState {
+            ImGuiID popupId     = 0;
+            float   zoom        = 1.0f;
+            float   lastZoom    = 1.0f;
+            ImVec2  pan         = ImVec2( 0.0f, 0.0f );
+            bool    wasDragging = false;
+
+            void ResetForPopup( ImGuiID id ) {
+                popupId     = id;
+                zoom        = 1.0f;
+                lastZoom    = 1.0f;
+                pan         = ImVec2( 0.0f, 0.0f );
+                wasDragging = false;
+            }
+
+            static float ClampZoom( float z ) {
+                return ( z < 0.50f ) ? 0.50f : ( ( z > 4.00f ) ? 4.00f : z );
+            }
+
+            bool SetZoom( float target ) {
+                const float c = std::round( ClampZoom( target ) * 100.0f ) / 100.0f;
+                const bool changed = ( std::fabs( c - zoom ) > 0.0005f );
+                zoom = c;
+                if( zoom <= 1.001f ) {
+                    pan = ImVec2( 0.0f, 0.0f );
+                }
+                return changed;
+            }
+
+            bool ToggleResetZoom() {
+                if( std::fabs( zoom - 1.0f ) > 0.005f ) {
+                    lastZoom = zoom;
+                    zoom     = 1.0f;
+                    pan      = ImVec2( 0.0f, 0.0f );
+                    return true;
+                }
+                const float prev = ClampZoom( lastZoom );
+                if( std::fabs( prev - 1.0f ) > 0.005f ) {
+                    zoom = prev;
+                    if( zoom <= 1.001f ) {
+                        pan = ImVec2( 0.0f, 0.0f );
+                    }
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        inline LightboxViewState& GetLightboxViewState() {
+            static LightboxViewState s_View;
+            return s_View;
+        }
+
         struct LightboxTelemetryState {
             int     openFrame = -1;
             ImGuiID activePopupId = 0;
             bool    hasLightboxCaption = false;
+            float   lightboxZoom = 1.0f;
+            ImVec2  lightboxPan = ImVec2( 0.0f, 0.0f );
+            ImVec2  zoomStripMin = ImVec2( 0.0f, 0.0f );
+            ImVec2  zoomStripMax = ImVec2( 0.0f, 0.0f );
             ImVec2  closeButtonMin = ImVec2( 0.0f, 0.0f );
             ImVec2  closeButtonMax = ImVec2( 0.0f, 0.0f );
             ImVec2  lightboxImageMin = ImVec2( 0.0f, 0.0f );
@@ -4810,6 +4867,11 @@ namespace ImGui
                         const bool is_appearing = ImGui::IsWindowAppearing();
                         bool should_close = false;
 
+                        LightboxViewState& lb_view = GetLightboxViewState();
+                        if( is_appearing || lb_view.popupId != popup_id ) {
+                            lb_view.ResetForPopup( popup_id );
+                        }
+
                         const float pad = 10.0f;
                         const float close_sz = 28.0f;
                         const ImVec2 close_min( host_min.x + host_size.x - pad - close_sz, host_min.y + pad );
@@ -4825,6 +4887,72 @@ namespace ImGui
                         }
                         if( close_pressed ) {
                             should_close = true;
+                        }
+
+                        // 1b. Top-right hover zoom control strip docked immediately to the LEFT of [X]:
+                        //     [-]  [100%]  [+]  [Reset/Restore]
+                        const bool show_zoom_strip =
+                            ( host_size.x >= 220.0f ) &&
+                            ( ImGui::IsMouseHoveringRect( host_min, host_max, false ) || std::fabs( lb_view.zoom - 1.0f ) > 0.005f );
+                        const float strip_pad_x = 3.0f;
+                        const float strip_gap_x = 3.0f;
+                        const float z_dec_w = 26.0f;
+                        const float z_pct_w = 50.0f;
+                        const float z_inc_w = 26.0f;
+                        const float z_rst_w = 28.0f;
+                        const float strip_total_w = strip_pad_x * 2.0f + z_dec_w + strip_gap_x + z_pct_w + strip_gap_x + z_inc_w + strip_gap_x + z_rst_w;
+                        const ImVec2 strip_max( close_min.x - 6.0f, close_max.y );
+                        const ImVec2 strip_min( strip_max.x - strip_total_w, close_min.y );
+
+                        bool z_dec_hov = false, z_dec_act = false;
+                        bool z_pct_hov = false, z_pct_act = false;
+                        bool z_inc_hov = false, z_inc_act = false;
+                        bool z_rst_hov = false, z_rst_act = false;
+                        bool any_strip_hovered = false;
+
+                        const float bx_dec = strip_min.x + strip_pad_x;
+                        const float bx_pct = bx_dec + z_dec_w + strip_gap_x;
+                        const float bx_inc = bx_pct + z_pct_w + strip_gap_x;
+                        const float bx_rst = bx_inc + z_inc_w + strip_gap_x;
+                        const float btn_in_h = close_sz - 4.0f;
+                        const float btn_in_y = strip_min.y + 2.0f;
+
+                        if( show_zoom_strip ) {
+                            const bool at_min_z = ( lb_view.zoom <= 0.501f );
+                            const bool at_max_z = ( lb_view.zoom >= 3.999f );
+                            const bool is_z_mod = ( std::fabs( lb_view.zoom - 1.0f ) > 0.005f );
+                            const bool can_z_restore = !is_z_mod && ( std::fabs( lb_view.lastZoom - 1.0f ) > 0.005f );
+
+                            ImGui::SetCursorScreenPos( ImVec2( bx_dec, btn_in_y ) );
+                            const bool dec_clicked = ImGui::InvisibleButton( "##imgee_lb_zdec", ImVec2( z_dec_w, btn_in_h ) );
+                            z_dec_hov = ImGui::IsItemHovered();
+                            z_dec_act = ImGui::IsItemActive();
+                            if( z_dec_hov && !at_min_z ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                            if( dec_clicked && !at_min_z ) lb_view.SetZoom( lb_view.zoom - 0.25f );
+
+                            ImGui::SetCursorScreenPos( ImVec2( bx_pct, btn_in_y ) );
+                            const bool pct_clicked = ImGui::InvisibleButton( "##imgee_lb_zpct", ImVec2( z_pct_w, btn_in_h ) );
+                            z_pct_hov = ImGui::IsItemHovered();
+                            z_pct_act = ImGui::IsItemActive();
+                            if( z_pct_hov && ( is_z_mod || can_z_restore ) ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                            if( pct_clicked ) lb_view.ToggleResetZoom();
+
+                            ImGui::SetCursorScreenPos( ImVec2( bx_inc, btn_in_y ) );
+                            const bool inc_clicked = ImGui::InvisibleButton( "##imgee_lb_zinc", ImVec2( z_inc_w, btn_in_h ) );
+                            z_inc_hov = ImGui::IsItemHovered();
+                            z_inc_act = ImGui::IsItemActive();
+                            if( z_inc_hov && !at_max_z ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                            if( inc_clicked && !at_max_z ) lb_view.SetZoom( lb_view.zoom + 0.25f );
+
+                            ImGui::SetCursorScreenPos( ImVec2( bx_rst, btn_in_y ) );
+                            const bool rst_clicked = ImGui::InvisibleButton( "##imgee_lb_zrst", ImVec2( z_rst_w, btn_in_h ) );
+                            z_rst_hov = ImGui::IsItemHovered();
+                            z_rst_act = ImGui::IsItemActive();
+                            if( z_rst_hov && ( is_z_mod || can_z_restore ) ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                            if( rst_clicked ) lb_view.ToggleResetZoom();
+
+                            any_strip_hovered = z_dec_hov || z_pct_hov || z_inc_hov || z_rst_hov ||
+                                                z_dec_act || z_pct_act || z_inc_act || z_rst_act;
                         }
 
                         ImDrawList* lb_dl = ImGui::GetWindowDrawList();
@@ -4911,22 +5039,31 @@ namespace ImGui
                         if( fit_scale > max_upscale ) {
                             fit_scale = max_upscale;
                         }
-                        ImVec2 lb_img_sz( std::round( nat.x * fit_scale ), std::round( nat.y * fit_scale ) );
-                        if( lb_img_sz.x < 1.0f ) lb_img_sz.x = 1.0f;
-                        if( lb_img_sz.y < 1.0f ) lb_img_sz.y = 1.0f;
+                        ImVec2 base_img_sz( std::round( nat.x * fit_scale ), std::round( nat.y * fit_scale ) );
+                        if( base_img_sz.x < 1.0f ) base_img_sz.x = 1.0f;
+                        if( base_img_sz.y < 1.0f ) base_img_sz.y = 1.0f;
 
-                        const float combo_h = lb_img_sz.y + ( has_lb_caption ? ( cap_img_gap + plate_h ) : 0.0f );
-                        const ImVec2 lb_img_min(
-                            std::round( host_min.x + ( host_size.x - lb_img_sz.x ) * 0.5f ),
+                        //Compute zoomed dimensions & clamped viewport bounds (never overlapping top strip or bottom caption):
+                        ImVec2 scaled_img_sz(
+                            ImMax( 1.0f, std::round( base_img_sz.x * lb_view.zoom ) ),
+                            ImMax( 1.0f, std::round( base_img_sz.y * lb_view.zoom ) ) );
+                        const float vis_w = ImMin( avail_lb_w, scaled_img_sz.x );
+                        const float vis_h = ImMin( avail_lb_h, scaled_img_sz.y );
+                        const float combo_h = vis_h + ( has_lb_caption ? ( cap_img_gap + plate_h ) : 0.0f );
+                        const ImVec2 vis_img_min(
+                            std::round( host_min.x + ( host_size.x - vis_w ) * 0.5f ),
                             std::round( host_min.y + top_margin + ImMax( 0.0f, ( total_avail_h - combo_h ) * 0.5f ) ) );
-                        const ImVec2 lb_img_max( lb_img_min.x + lb_img_sz.x, lb_img_min.y + lb_img_sz.y );
+                        const ImVec2 vis_img_max( vis_img_min.x + vis_w, vis_img_min.y + vis_h );
+
+                        const ImVec2 lb_img_min = vis_img_min;
+                        const ImVec2 lb_img_max = vis_img_max;
 
                         ImVec2 plate_min( 0.0f, 0.0f );
                         ImVec2 plate_max( 0.0f, 0.0f );
                         if( has_lb_caption ) {
                             plate_min.x = std::round( host_min.x + ( host_size.x - plate_w ) * 0.5f );
                             plate_max.x = plate_min.x + std::round( plate_w );
-                            plate_min.y = std::round( lb_img_max.y + cap_img_gap );
+                            plate_min.y = std::round( vis_img_max.y + cap_img_gap );
                             plate_max.y = plate_min.y + std::round( plate_h );
 
                             if( plate_max.y > host_max.y - 2.0f ) {
@@ -4977,24 +5114,9 @@ namespace ImGui
                             cap_underlay.EndUnderlay();
                         }
 
-                        if( has_lb_caption ) {
-                            img_underlay.BeginBackground();
-                        }
-                        ImGui::SetCursorScreenPos( lb_img_min );
-                        ImGui::ImGeeCompat::Image(
-                            imageData.user_texture_id,
-                            lb_img_sz,
-                            imageData.uv0,
-                            imageData.uv1,
-                            imageData.tint_col,
-                            ImVec4( 0.72f, 0.78f, 0.88f, 0.50f ) );
-                        if( has_lb_caption ) {
-                            img_underlay.EndUnderlay();
-                        }
-
-                        // 2. Hit-shield over the enlarged image so clicks inside the image never dismiss:
+                        // 2. Interactive zoom & pan surface over the enlarged image viewport:
                         {
-                            const ImRect lb_img_r( lb_img_min, lb_img_max );
+                            const ImRect lb_img_r( vis_img_min, vis_img_max );
                             const ImGuiID lb_img_id = ImGui::GetID( "##imgee_lb_image" );
 #if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
                             ImGui::ItemAdd( lb_img_r, lb_img_id, NULL );
@@ -5002,7 +5124,151 @@ namespace ImGui
                             ImGui::ItemAdd( lb_img_r, lb_img_id, NULL, ImGuiItemFlags_NoNav );
 #endif
                             bool lb_img_hov = false, lb_img_held = false;
-                            (void)ImGui::ButtonBehavior( lb_img_r, lb_img_id, &lb_img_hov, &lb_img_held );
+                            const bool lb_img_clicked = ImGui::ButtonBehavior( lb_img_r, lb_img_id, &lb_img_hov, &lb_img_held );
+
+                            ImGuiIO& lb_io = ImGui::GetIO();
+                            if( ( lb_img_hov || any_strip_hovered ) && std::fabs( lb_io.MouseWheel ) > 0.0001f ) {
+                                lb_view.SetZoom( lb_view.zoom + 0.10f * lb_io.MouseWheel );
+                                lb_io.MouseWheel = 0.0f;
+                                scaled_img_sz = ImVec2(
+                                    ImMax( 1.0f, std::round( base_img_sz.x * lb_view.zoom ) ),
+                                    ImMax( 1.0f, std::round( base_img_sz.y * lb_view.zoom ) ) );
+                            }
+
+                            const bool can_pan = ( lb_view.zoom > 1.001f ) &&
+                                                 ( scaled_img_sz.x > vis_w + 0.5f || scaled_img_sz.y > vis_h + 0.5f );
+                            if( lb_img_held ) {
+                                if( can_pan && ImGui::IsMouseDragging( 0, 2.0f ) ) {
+                                    lb_view.wasDragging = true;
+                                    lb_view.pan.x += lb_io.MouseDelta.x;
+                                    lb_view.pan.y += lb_io.MouseDelta.y;
+                                    ImGui::SetMouseCursor( ImGuiMouseCursor_ResizeAll );
+                                } else if( lb_img_hov ) {
+                                    ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                                }
+                            } else if( lb_img_hov ) {
+                                ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
+                            }
+
+                            if( lb_img_clicked ) {
+                                if( !lb_view.wasDragging ) {
+                                    if( std::fabs( lb_view.zoom - 1.0f ) > 0.05f ) {
+                                        lb_view.lastZoom = lb_view.zoom;
+                                        lb_view.SetZoom( 1.0f );
+                                    } else {
+                                        lb_view.lastZoom = 1.0f;
+                                        lb_view.SetZoom( 2.0f );
+                                    }
+                                    scaled_img_sz = ImVec2(
+                                        ImMax( 1.0f, std::round( base_img_sz.x * lb_view.zoom ) ),
+                                        ImMax( 1.0f, std::round( base_img_sz.y * lb_view.zoom ) ) );
+                                }
+                                lb_view.wasDragging = false;
+                            } else if( !lb_img_held ) {
+                                lb_view.wasDragging = false;
+                            }
+                        }
+
+                        // Clamp pan so scaled artwork edges never pull inward past the viewport frame:
+                        const float max_pan_x = ImMax( 0.0f, ( scaled_img_sz.x - vis_w ) * 0.5f );
+                        const float max_pan_y = ImMax( 0.0f, ( scaled_img_sz.y - vis_h ) * 0.5f );
+                        lb_view.pan.x = ImClamp( lb_view.pan.x, -max_pan_x, max_pan_x );
+                        lb_view.pan.y = ImClamp( lb_view.pan.y, -max_pan_y, max_pan_y );
+
+                        const ImVec2 draw_img_min(
+                            std::round( ( vis_img_min.x + vis_img_max.x - scaled_img_sz.x ) * 0.5f + lb_view.pan.x ),
+                            std::round( ( vis_img_min.y + vis_img_max.y - scaled_img_sz.y ) * 0.5f + lb_view.pan.y ) );
+
+                        if( has_lb_caption ) {
+                            img_underlay.BeginBackground();
+                        }
+                        lb_dl->PushClipRect( ImVec2( vis_img_min.x - 1.0f, vis_img_min.y - 1.0f ),
+                                             ImVec2( vis_img_max.x + 1.0f, vis_img_max.y + 1.0f ), true );
+                        ImGui::SetCursorScreenPos( draw_img_min );
+                        ImGui::ImGeeCompat::Image(
+                            imageData.user_texture_id,
+                            scaled_img_sz,
+                            imageData.uv0,
+                            imageData.uv1,
+                            imageData.tint_col,
+                            ImVec4( 0.0f, 0.0f, 0.0f, 0.0f ) );
+                        lb_dl->PopClipRect();
+                        AddRectCompat( lb_dl, vis_img_min, vis_img_max, IM_COL32( 184, 199, 224, 128 ), 0.0f, 0, 1.0f );
+                        if( has_lb_caption ) {
+                            img_underlay.EndUnderlay();
+                        }
+
+                        // Draw top-right zoom control strip foreground chrome (immediately left of [X]):
+                        if( show_zoom_strip ) {
+                            lb_dl->AddRectFilled( strip_min, strip_max, IM_COL32( 22, 27, 36, 222 ), 5.0f );
+                            AddRectCompat( lb_dl, strip_min, strip_max, IM_COL32( 140, 155, 180, 105 ), 5.0f, 0, 1.0f );
+
+                            const bool at_min_z = ( lb_view.zoom <= 0.501f );
+                            const bool at_max_z = ( lb_view.zoom >= 3.999f );
+                            const bool is_z_mod = ( std::fabs( lb_view.zoom - 1.0f ) > 0.005f );
+                            const bool can_z_restore = !is_z_mod && ( std::fabs( lb_view.lastZoom - 1.0f ) > 0.005f );
+
+                            auto drawStripPill = [&]( float x, float w, bool hov, bool act, bool enabled ) {
+                                const ImVec2 bmin( x, btn_in_y );
+                                const ImVec2 bmax( x + w, btn_in_y + btn_in_h );
+                                ImU32 bg = IM_COL32( 36, 42, 54, 215 );
+                                if( enabled && act ) bg = IM_COL32( 74, 112, 168, 240 );
+                                else if( enabled && hov ) bg = IM_COL32( 54, 64, 82, 232 );
+                                lb_dl->AddRectFilled( bmin, bmax, bg, 4.0f );
+                            };
+
+                            const ImU32 fg_on  = IM_COL32( 242, 245, 250, 255 );
+                            const ImU32 fg_dim = IM_COL32( 148, 158, 174, 125 );
+                            const float cy = btn_in_y + btn_in_h * 0.5f;
+
+                            // [-]
+                            drawStripPill( bx_dec, z_dec_w, z_dec_hov, z_dec_act, !at_min_z );
+                            const float cx_dec = bx_dec + z_dec_w * 0.5f;
+                            StrokeLineCompat( lb_dl, ImVec2( cx_dec - 4.5f, cy ), ImVec2( cx_dec + 4.5f, cy ), at_min_z ? fg_dim : fg_on, 1.7f );
+
+                            // [100%]
+                            drawStripPill( bx_pct, z_pct_w, z_pct_hov, z_pct_act, is_z_mod || can_z_restore );
+                            char pct_buf[24];
+                            std::snprintf( pct_buf, sizeof( pct_buf ), "%d%%", static_cast<int>( std::round( lb_view.zoom * 100.0f ) ) );
+                            const ImVec2 pct_sz = ImGui::CalcTextSize( pct_buf );
+                            lb_dl->AddText(
+                                ImVec2( std::round( bx_pct + ( z_pct_w - pct_sz.x ) * 0.5f ), std::round( cy - pct_sz.y * 0.5f ) ),
+                                fg_on, pct_buf );
+
+                            // [+]
+                            drawStripPill( bx_inc, z_inc_w, z_inc_hov, z_inc_act, !at_max_z );
+                            const float cx_inc = bx_inc + z_inc_w * 0.5f;
+                            StrokeLineCompat( lb_dl, ImVec2( cx_inc - 4.5f, cy ), ImVec2( cx_inc + 4.5f, cy ), at_max_z ? fg_dim : fg_on, 1.7f );
+                            StrokeLineCompat( lb_dl, ImVec2( cx_inc, cy - 4.5f ), ImVec2( cx_inc, cy + 4.5f ), at_max_z ? fg_dim : fg_on, 1.7f );
+
+                            // [Reset / Restore] (counter-clockwise undo when modified, clockwise restore when at 100% with lastZoom)
+                            const bool rst_enabled = is_z_mod || can_z_restore;
+                            drawStripPill( bx_rst, z_rst_w, z_rst_hov, z_rst_act, rst_enabled );
+                            const ImVec2 c_rst( bx_rst + z_rst_w * 0.5f, cy );
+                            const ImU32 rst_col = rst_enabled ? fg_on : fg_dim;
+                            const float ar = 5.4f;
+                            lb_dl->PathClear();
+                            if( can_z_restore ) {
+                                // Clockwise restore arc + right-pointing upper arrowhead
+                                lb_dl->PathArcTo( c_rst, ar, -2.55f, 2.15f, 16 );
+                            } else {
+                                // Counter-clockwise reset arc + left-pointing upper arrowhead
+                                lb_dl->PathArcTo( c_rst, ar, -0.59f, 4.11f, 16 );
+                            }
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+                            lb_dl->PathStroke( rst_col, 1.65f, 0 );
+#else
+                            lb_dl->PathStroke( rst_col, 0, 1.65f );
+#endif
+                            if( can_z_restore ) {
+                                const ImVec2 tip( c_rst.x + std::cos( -0.59f ) * ar, c_rst.y + std::sin( -0.59f ) * ar );
+                                const ImVec2 ah[3] = { ImVec2( tip.x - 3.6f, tip.y - 1.2f ), tip, ImVec2( tip.x - 0.8f, tip.y + 3.4f ) };
+                                StrokePolylineCompat( lb_dl, ah, 3, rst_col, 1.6f, 0 );
+                            } else {
+                                const ImVec2 tip( c_rst.x + std::cos( -2.55f ) * ar, c_rst.y + std::sin( -2.55f ) * ar );
+                                const ImVec2 ah[3] = { ImVec2( tip.x + 3.6f, tip.y - 1.2f ), tip, ImVec2( tip.x + 0.8f, tip.y + 3.4f ) };
+                                StrokePolylineCompat( lb_dl, ah, 3, rst_col, 1.6f, 0 );
+                            }
                         }
 
                         // Draw [X] close button foreground glyph:
@@ -5016,7 +5282,7 @@ namespace ImGui
                         StrokeLineCompat( lb_dl, ImVec2( close_min.x + x_ins, close_min.y + x_ins ), ImVec2( close_max.x - x_ins, close_max.y - x_ins ), close_fg, 1.8f );
                         StrokeLineCompat( lb_dl, ImVec2( close_max.x - x_ins, close_min.y + x_ins ), ImVec2( close_min.x + x_ins, close_max.y - x_ins ), close_fg, 1.8f );
 
-                        // 3. Release-triggered backdrop button covering the popup outside [X] and the enlarged image.
+                        // 3. Release-triggered backdrop button covering the popup outside [X], the zoom strip, caption, and image.
                         //    Keeps the popup alive and owning ActiveId across multi-frame press-and-release gestures,
                         //    preventing orphan mouse-releases from bleeding into underlying thumbnails, links, or scrollbars.
                         {
@@ -5031,7 +5297,9 @@ namespace ImGui
                             const bool backdrop_pressed = ImGui::ButtonBehavior( lb_backdrop_r, lb_backdrop_id, &backdrop_hovered, &backdrop_held );
                             const ImVec2 mp = ImGui::GetIO().MousePos;
                             const bool inside_img = ( mp.x >= lb_img_min.x && mp.x <= lb_img_max.x && mp.y >= lb_img_min.y && mp.y <= lb_img_max.y );
-                            if( !is_appearing && backdrop_pressed && !inside_img && !close_hovered ) {
+                            const bool inside_plate = has_lb_caption && ( mp.x >= plate_min.x && mp.x <= plate_max.x && mp.y >= plate_min.y && mp.y <= plate_max.y );
+                            const bool inside_strip = show_zoom_strip && ( mp.x >= strip_min.x && mp.x <= strip_max.x && mp.y >= strip_min.y && mp.y <= strip_max.y );
+                            if( !is_appearing && backdrop_pressed && !inside_img && !inside_plate && !inside_strip && !close_hovered && !any_strip_hovered ) {
                                 should_close = true;
                             }
                         }
@@ -5046,6 +5314,10 @@ namespace ImGui
                             telem.openFrame = ImGui::GetFrameCount();
                             telem.activePopupId = popup_id;
                             telem.hasLightboxCaption = has_lb_caption;
+                            telem.lightboxZoom = lb_view.zoom;
+                            telem.lightboxPan = lb_view.pan;
+                            telem.zoomStripMin = show_zoom_strip ? strip_min : ImVec2( 0.0f, 0.0f );
+                            telem.zoomStripMax = show_zoom_strip ? strip_max : ImVec2( 0.0f, 0.0f );
                             telem.closeButtonMin = close_min;
                             telem.closeButtonMax = close_max;
                             telem.lightboxImageMin = lb_img_min;

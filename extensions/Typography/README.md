@@ -60,7 +60,7 @@ During startup, bind your loaded `ImFont*` handles to semantic roles (if you loa
 
 ```cpp
 void InitializeFonts() {
-    auto atlas = ImgWindow::sFontAtlas; // (or ImGui::GetIO().Fonts in standalone ImGui)
+    ImFontAtlas* atlas = ImGui::GetIO().Fonts; // (or ImgWindow::sFontAtlas when hosted in ImgWindow)
     ImFont* fontRegular = atlas->AddFontFromFileTTF("fonts/Roboto-Regular.ttf", 15.0f);
     ImFont* fontBold    = atlas->AddFontFromFileTTF("fonts/Roboto-Bold.ttf", 15.0f);
     ImFont* fontTitle   = atlas->AddFontFromFileTTF("fonts/Roboto-Bold.ttf", 20.0f);
@@ -136,7 +136,7 @@ ImGui::StyledTextWrapped("Notice: Route clearance is <i>pending</i> from <color=
 | **Badges** | `<badge=primary>v1.14</badge>` | Inline rounded badge pill |
 | **Pills** | `<pill color=#2ecc71>ARMED</pill>` | Interactive status pill with background color |
 | **Keys** | `<kbd>Ctrl+C</kbd>` | 3D-styled keyboard keycap |
-| **Textures** | `<img name="my_logo" width=24 height=24 />` | In-memory texture registered via `ImgWindow::RegisterMemoryImage` |
+| **Textures** | `<img name="my_logo" width=24 height=24 />` | In-memory texture registered via `ImGui::RegisterNamedTexture` (or `ImgWindow::RegisterMemoryImage`) |
 | **Vector Icons**| `<icon caret-up />`, `:gear:`, `▲` | Procedural vector icon from `imgui_icons.h` |
 
 ---
@@ -165,25 +165,21 @@ ImGui::MonoText("ICAO: %s | SQUAWK: %04d", callsign, squawk);
 
 ## 4. In-Memory Image & Icon Integration
 
-The StyledText engine directly integrates with named memory textures (`ImgWindow::RegisterMemoryImage` or `ImGui::MarkdownImageService`) and procedural vector icons.
+The StyledText engine directly integrates with named memory textures (`ImGui::RegisterNamedTexture` / `ImGui::MarkdownImageService`, or `ImgWindow::RegisterMemoryImage` when `ImgWindow` is present) and procedural vector icons.
 
 ### In-Memory Textures (`<img ... />`)
 ```cpp
-// Static embedded PNG array:
-static const unsigned char g_BeaconPng[] = { 0x89, 0x50, 0x4e, 0x47, ... };
+// Register a pre-uploaded GPU texture by name:
+ImGui::RegisterNamedTexture("status_beacon", myBeaconTexId, ImVec2(20, 20));
 
-// 1. Register texture:
-int w = 0, h = 0;
-ImgWindow::RegisterMemoryImage("avionics_beacon", g_BeaconPng, sizeof(g_BeaconPng), &w, &h);
+// 1. Render inline with text:
+ImGui::StyledText("Server: <img name='status_beacon' width=20 height=20 /> ONLINE");
 
-// 2. Render inline with text:
-ImGui::StyledText("Beacon: <img name='avionics_beacon' width=20 height=20 /> ONLINE");
+// 2. Embedded inside an icon pill:
+ImGui::StyledText("Pipeline: <pill icon=status_beacon color=#2ecc71>ACTIVE</pill>");
 
-// 3. Embedded inside an icon pill:
-ImGui::StyledText("Transponder: <pill icon=avionics_beacon color=#2ecc71>ACTIVE</pill>");
-
-// 4. Standalone unary annunciator:
-ImGui::StyledText("Master Warning: <pill icon=avionics_beacon color=#e74c3c />");
+// 3. Standalone unary indicator:
+ImGui::StyledText("Alert: <pill icon=status_beacon color=#e74c3c />");
 ```
 
 ### Procedural Vector Icons (`<icon ... />`)

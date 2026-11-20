@@ -5,7 +5,7 @@
 // License: BSD 3-Clause (see LICENSE)
 //
 // Single-header entry point and unified configuration hub for the ImGee
-// Dear ImGui extensions, cockpit/desktop widgets, and style themes.
+// Dear ImGui extensions, immediate-mode UI widgets, and style themes.
 //
 // Architectural Design:
 // 1. 100% Header-Only & Order-Independent: Individual ImGee headers in
@@ -327,7 +327,7 @@
 #include "widgets/includes.h"
 
 // ============================================================================
-// 3. THEMES (Curated cockpit & studio style presets)
+// 3. THEMES (Curated color style presets)
 // ============================================================================
 
 #include "themes/includes.h"

@@ -1,4 +1,4 @@
-# ImGee Flight-Deck & Avionics Widgets
+# ImGee Immediate-Mode UI Widgets
 
 This directory contains lightweight, reusable, immediate-mode **Widgets** extending Dear ImGui as part of the **ImGee** UI toolkit.
 
@@ -24,7 +24,7 @@ Define any of the following `IMGEE_*` macros *before* including `imgee.h` if you
 
 ```cpp
 #define IMGEE_DISABLE_WIDGETS                 // Disables all ImGee widgets
-#define IMGEE_DISABLE_KNOBS                   // Disables avionics rotary knobs, dimmer dials & detents
+#define IMGEE_DISABLE_KNOBS                   // Disables rotary knobs, dimmer dials & detents
 #define IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS    // Disables wheel sliders, drags, cyclers & combos
 #define IMGEE_DISABLE_TOGGLE_BUTTONS          // Disables ToggleButton & ToggleButtons
 #define IMGEE_DISABLE_BADGES                  // Disables Badge, Pill, PillNamed & Kbd widgets
@@ -229,29 +229,29 @@ ImGui::CopyLastItemButton("##copy_route");
 
 ---
 
-### 7. Avionics Rotary Knobs & Dimmer Dials (`imgui_knobs.h`)
+### 7. Rotary Knobs & Dimmer Dials (`imgui_knobs.h`)
 
-Cockpit potentiometers and panel lighting dimmers built around an unmistakable 270° "Omega" arc (90° open deadband at 6 o'clock), perimeter graduation ticks, mouse-wheel + drag control, and tactile two-step `OFF` detents:
+Potentiometers and dimmer dials for studio/audio mixers, lighting controllers, hardware control strips, and instrument panels -- built around an unmistakable 270° "Omega" arc (90° open deadband at 6 o'clock), perimeter graduation ticks, mouse-wheel + drag control, and tactile two-step `OFF` detents:
 
 ```cpp
-static float s_FloodDimmer = 0.85f;
-static float s_RadioVol    = 0.70f;
-static float s_XpndrGain   = 0.50f;
+static float s_DeskDimmer = 0.85f;
+static float s_MonitorVol = 0.70f;
+static float s_InputTrim  = 0.50f;
 
 // 1. Lighting dimmer with 2-step OFF detente at 5% floor:
-ImGui::DimmerKnob("Floodlight", &s_FloodDimmer, 0.05f /* min active */, 1.0f, 1.0f /* default */, "%.0f%%");
+ImGui::DimmerKnob("Keylight", &s_DeskDimmer, 0.05f /* min active */, 1.0f, 1.0f /* default */, "%.0f%%");
 
 // 2. Rotary knob paired with 1-click Reset-with-Undo:
-ImGui::KnobWithReset("COM1 Vol", &s_RadioVol, 0.70f /* default */, 0.0f, 1.0f, "%.0f%%");
+ImGui::KnobWithReset("Monitor Gain", &s_MonitorVol, 0.70f /* default */, 0.0f, 1.0f, "%.0f%%");
 
-// 3. Compact gauge unit with graduation ticks and digital readout below:
-ImGui::Knob("XPNDR", &s_XpndrGain, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f,
+// 3. Compact dial with graduation ticks and digital readout below:
+ImGui::Knob("Input Trim", &s_InputTrim, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f,
             ImGuiKnobFlags_ValueBelow | ImGuiKnobFlags_ShowTicks);
 ```
 
-![Avionics Rotary Knobs & Dimmer Dials: 270-degree Omega arc, two-step OFF detente, and 1-click Reset](../docs/images/fig_rotary_knobs.png)
+![Rotary Knobs & Dimmer Dials: 270-degree Omega arc, two-step OFF detente, and 1-click Reset](../docs/images/fig_rotary_knobs.png)
 
-* **Two-Step `OFF` Detente Safety:** Rotating counter-clockwise stops cleanly at the minimum active floor (`5%`) so pilots never cut panel lighting by accident in turbulence. One deliberate extra downward wheel notch (or drag) snaps across the detente into amber `"OFF"`; rotating clockwise from `"OFF"` restores active power immediately.
+* **Two-Step `OFF` Detente Safety:** Rotating counter-clockwise stops cleanly at the minimum active floor (`5%`) so users never cut lighting or output power by accident during rapid adjustments. One deliberate extra downward wheel notch (or drag) snaps across the detente into amber `"OFF"`; rotating clockwise from `"OFF"` restores active power immediately.
 * **Precision Modifiers & Double-Click Reset:** Hold `Shift` (`0.1x` fine) or `Ctrl` (`2.0x` coarse), hover for `ResizeEW` cursor feedback, or double-click to restore baseline default.
 
 ---
@@ -289,28 +289,29 @@ if (ImGui::BeginAnchoredPopup("##BusMenu")) {
 
 ---
 
-### 9. In-Cockpit File Dialogs & Toolbar Pickers (`imgui_file_dialog.h`)
+### 9. Non-Blocking File Dialogs & Toolbar Pickers (`imgui_file_dialog.h`)
 
-Non-blocking, modal-free file browsers and single-line directory pickers rendered natively inside Dear ImGui using POSIX (`opendir`/`readdir`) and Win32 (`FindFirstFileW`) APIs -- safe for full-screen Vulkan/Metal viewports and VR headsets without stalling the render thread on OS dialogs:
+Non-blocking, modal-free file browsers and single-line directory pickers rendered natively inside Dear ImGui using POSIX (`opendir`/`readdir`) and Win32 (`FindFirstFileW`) APIs -- safe for full-screen Vulkan/Metal/DX12 viewports, game engines, and VR headsets without stalling the render thread on blocking OS dialogs:
 
 ```cpp
 // 1. Compact toolbar dropdown of matching directory files (+ built-in "Browse..." item):
-static std::string s_ActiveProfile = "Aircraft_Profiles/A320_Night_Approach.json";
-if (ImGui::FilePickerCombo("Profile", &s_ActiveProfile, "Aircraft_Profiles", ".json;.ini")) {
-    LoadProfile(s_ActiveProfile);
+static std::string s_ActivePreset = "Default_Docking.json";
+if (ImGui::FilePickerCombo("Preset", &s_ActivePreset, "Workspace_Presets", ".json;.ini")) {
+    LoadPreset(s_ActivePreset);
 }
 
-// 2. Full non-blocking Open / Save file browser popup:
-if (ImGui::ButtonLink("Import Checklist...")) {
-    ImGui::OpenPopup("##ImportChecklistDlg");
-}
+// 2. Full non-blocking Open / Save file browser modal:
+static bool s_BrowserOpen = false;
 static std::string s_ChosenPath;
-if (ImGui::OpenFileDialog("##ImportChecklistDlg", "Select Checklist", &s_ChosenPath, ".md;.txt")) {
-    LoadChecklist(s_ChosenPath);
+if (ImGui::ButtonLink("Load Workspace Preset...")) {
+    s_BrowserOpen = true;
+}
+if (ImGui::OpenFileDialog("Load Workspace Preset", &s_BrowserOpen, &s_ChosenPath, "Workspace_Presets", ".json;.ini")) {
+    LoadPreset(s_ChosenPath);
 }
 ```
 
-![Non-Blocking In-Viewport File Dialogs & FilePickerCombo](../docs/images/fig_file_dialog.png)
+![Non-Blocking File Picker & Modal Browser](../docs/images/fig_file_dialog.png)
 
 ---
 

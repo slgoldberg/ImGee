@@ -1,6 +1,6 @@
 # TimedTooltip Extension
 
-The **TimedTooltip** extension provides an advanced, stationary tooltip engine for Dear ImGui as part of the **ImGee** UI toolkit (battle-tested in desktop applications and X-Plane cockpit plugins via `ImgWindow`). 
+The **TimedTooltip** extension provides an advanced, stationary tooltip engine for Dear ImGui as part of the **ImGee** UI toolkit (designed for desktop applications, studio tools, game engines, and simulation hosts).
 
 Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, obstruct UI elements, or run off-screen, `TimedTooltip` locks in place, calculates dynamic viewport boundaries, preserves custom interactive cursors, isolates its styling hermetically from parent windows, and supports both plain-text and rich Markdown content.
 
@@ -21,16 +21,16 @@ Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, o
   * **Wiggle Latch:** Micro-mouse movements reset the auto-hide timer so users can continue reading long descriptions.
 * **Hermetic Style Isolation:**
   * Pushes and pops its own `WindowPadding`, `ItemSpacing`, `FramePadding`, and `IndentSpacing`. Outer parent window style modifications (such as `ItemSpacing.x = 0` in menu bars or compressed button pads) can never distort tooltip typography, and tooltip styles never leak back out.
-  * Precise vertical line pitch (`item_spacing.y = 0.0f`) preserves the exact 15px native font leading in X-Plane, preventing vertical bloat and screen overrun.
+  * Precise vertical line pitch (`item_spacing.y = 0.0f`) preserves native font leading across DPI scales, preventing vertical bloat and viewport overrun.
 * **Smart Bounds Clamping & Docking:**
   * **Cursor-Safe Viewport Clamping (Flip Above Cursor):** If a tooltip would clip off the bottom of the screen (e.g. over a bottom control strip or footer slider), it automatically flips **above the mouse cursor**, ensuring the tooltip never covers the cursor or the widget being manipulated.
   * **Leftward Shift:** If a tooltip approaches the right screen border, it automatically shifts leftwards.
   * **Adaptive Wrap:** Shrink-wraps tightly around concise text while wrapping paragraphs at a readable width (80% of available viewport width by default).
 * **Interactive Cursor Protection & Click-to-Toggle Ergonomics:**
   * Preserves and restores custom widget cursors (e.g., `ImGuiMouseCursor_Hand` or `ImGuiMouseCursor_ResizeEW`), and automatically shows a Hand cursor on passive text/labels that have a tooltip attached.
-  * Clicking passive text, right-side Slider/Drag/Combo labels, dimmed at-default reset buttons, or standalone `*Link` widgets immediately toggles the tooltip ON/OFF without waiting for `hover_delay_cycles`.
+  * Clicking passive text, right-side Slider/Drag/Combo labels, dimmed at-default reset buttons, read-only indicator widgets, or standalone `*Link` widgets immediately toggles the tooltip ON/OFF without waiting for `hover_delay_cycles`.
 * **Multi-`ImGuiContext` & Overlapping-Widget Safety:**
-  * Isolates tooltip state and wheel-selection latches per `ImGuiContext*` so multiple `ImgWindow` instances rendering in the same X-Plane draw cycle never interfere with one another.
+  * Isolates tooltip state and wheel-selection latches per `ImGuiContext*` so multi-window applications hosting independent `ImGuiContext` instances on the same frame never interfere with one another.
   * **Foreground-Widget Hover Priority:** When a button sits on the same line as a full-width background `Selectable(..., ImGuiSelectableFlags_SpanAllColumns)`, `TimedTooltip` automatically gives tooltip priority to the earlier foreground widget on the row without requiring manual hover-suppression flags.
 * **Plain Text & Markdown Support (Order-Independent):**
   * Native auto-wrapping plain-text via `Text(...)`, single-line non-wrapping plain-text via `TextUnformatted(...)`, rich auto-wrapping Markdown via `TextMD(...)`, and single-line non-wrapping Markdown via `TextUnformattedMD(...)`.
@@ -52,21 +52,21 @@ Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, o
 Attach a timed tooltip directly after drawing any ImGui widget:
 
 ```cpp
-if (ImGui::Button("Save Flight Plan")) {
-    SavePlan();
+if (ImGui::Button("Export Preset")) {
+    ExportPreset();
 }
 // Automatically attaches to the preceding widget:
-ImGui::TimedTooltip::Text("Saves the active route to disk as an .fms file.");
+ImGui::TimedTooltip::Text("Writes the active workspace configuration to disk as a .json file.");
 ```
 
 ### 3. Markdown Tooltips
 If using the companion **Markdown** extension, simply call `TextMD`:
 
 ```cpp
-#include "ImgWindow/contrib/imgee.h"
+#include "imgee.h"
 
-ImGui::Button("Autopilot Nav");
-ImGui::TimedTooltip::TextMD("Arms **LNAV** mode. *Requires active GPS waypoint.*");
+ImGui::Button("Sync Timeline");
+ImGui::TimedTooltip::TextMD("Locks **Frame Sync** to the master clock. *Requires an active transport source.*");
 ```
 
 > [!TIP]
@@ -187,14 +187,14 @@ Tooltips attached to interactive or proxy-instrumented widgets (like `ButtonLink
 
 ---
 
-## X-Plane 12 Panel Graphics (Linear Blending & Font Scaling)
+## GPU Linear Color-Space Blending & Font Scaling
 
 ### 1. 100% Solid Opacity (`alpha = 1.0f`)
-In legacy OpenGL, plugins composited in uncorrected gamma space, where semi-transparent yellow cards (`alpha = 0.95f`) appeared largely solid. 
+In legacy sRGB-unaware OpenGL backends, UI overlays composited in uncorrected gamma space, where semi-transparent yellow cards (`alpha = 0.95f`) appeared nearly solid.
 
-In X-Plane 12's modern **Panel Graphics** pipeline (Metal on macOS, Vulkan on Windows/Linux), compositing is computed in **physically linear color space**. Even a minor 5% transparency allows intense runway lights, aircraft labels, and bright background elements to illuminate the pixels under dark text. Furthermore, linear antialiasing blends 50% edge coverage at ~73% background luminance (`0.5^(1/2.2) ~ 0.73`), optically eroding dark letter stems.
+In modern **physically linear GPU compositing** pipelines (Metal, Vulkan, DirectX 12 sRGB framebuffers, HDR viewports, and simulation renderers), blending is computed in linear light. Even a minor 5% transparency allows bright 3D geometry, highlights, or high-contrast canvas elements behind the card to bleed into pixels under dark text -- and linear antialiasing blends 50% edge coverage at ~73% background luminance (`0.5^(1/2.2) ~ 0.73`), optically thinning dark letter stems.
 
-To ensure crisp, dark typography without background wash-out, `TooltipConfig::bg_color` defaults to **`1.0f` solid opacity** (`ImVec4(1.0f, 0.95f, 0.6f, 1.0f)`).
+To ensure crisp, high-contrast dark typography without background wash-out across both gamma and linear renderers, `TooltipConfig::bg_color` defaults to **`1.0f` solid opacity** (`ImVec4(1.0f, 0.95f, 0.6f, 1.0f)`).
 
 ### 2. Automatic Ambient Font Scale Inheritance & Base-Font Isolation
 When `TooltipConfig::font_scale` is left at `0.0f` (the default), the tooltip engine automatically queries and inherits the ambient window font scale of the calling widget while isolating the tooltip's base font against transient caller `PushFont(...)` scopes:

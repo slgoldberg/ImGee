@@ -5,12 +5,13 @@
 // License: BSD 3-Clause (see LICENSE)
 //
 // Self-contained, 100% standalone composite Markdown manual & reference viewer
-// combining a fixed 1.0x two-row cockpit/studio header bar (responsive title,
-// repeating [-]/[+] zoom steppers, mouse-wheel zoom slider, 1-click A/B zoom
-// reset/undo, optional host window mode hooks, ATX Table-of-Contents section
-// pulldown, zero-shift opacity/transparency controls, and 5-preset theme
-// picker) with an Nx-zoomed ([0.50x .. 2.50x]) MarkdownExt body supporting
-// internal #heading-slug navigation, image lightboxes, and 1.0x footer chrome.
+// combining a fixed 1.0x two-row header bar (responsive title, repeating
+// [-]/[+] zoom steppers, mouse-wheel zoom slider, 1-click A/B zoom reset/undo,
+// optional host window mode hooks, ATX Table-of-Contents section pulldown with
+// 1-click scroll-to-top / return-to-reading-spot reset, zero-shift opacity and
+// transparency controls, and 5-preset theme picker) with an Nx-zoomed
+// ([0.50x .. 2.50x]) MarkdownExt body supporting internal #heading-slug
+// navigation, image lightboxes, and crisp 1.0x footer chrome.
 //
 // Zero X-Plane / ImgWindow dependencies -- compiles standalone against pure
 // upstream Dear ImGui (v1.84+ through v1.92+).
@@ -211,21 +212,22 @@ struct DocumentViewerConfig {
     int    maxTocHeadingLevel    = 3;       // Maximum ATX heading depth included in TOC (1..3)
     float  tocWidth              = 220.0f;  // Target width for Row 2 Section Jump SelectPulldown
     bool   scaleRow2WithZoom     = false;   // Keep Row 2 at 1.0x chrome scale by default (true = scale with zoom)
-    bool   showHeaderRow1        = true;    // Title + Zoom suite + optional host window buttons
-    bool   showHeaderRow2        = true;    // TOC Section Jump + Opacity/Transparent + Theme picker
-    bool   showOpacityControls   = true;    // Show Opacity/Saturation slider + Transparent/Custom toggle
-    bool   showThemePicker       = true;    // Show 5-preset Theme MouseWheelCombo
-    bool   showFooter            = true;    // Show compact 1.0x footer bar at bottom of viewer
-    bool   showFooterCloseButton = false;   // Show [Close] button on right side of footer
-    const char* footerHint       = nullptr; // Optional left footer override text
+    bool   showHeaderRow1          = true;    // Title + Zoom suite + optional host window buttons
+    bool   showHeaderRow2          = true;    // TOC Section Jump + Opacity/Transparent + Theme picker
+    bool   showScrollResetButton   = true;    // [Reset / Restore] 1-click jump-to-top / return-to-reading-spot button beside TOC
+    bool   showOpacityControls     = true;    // Show Opacity/Saturation slider + Transparent/Custom toggle
+    bool   showThemePicker         = true;    // Show 5-preset Theme MouseWheelCombo
+    bool   showFooter              = true;    // Show compact 1.0x footer bar at bottom of viewer
+    bool   showFooterCloseButton   = false;   // Show [Close] button on right side of footer
+    const char* footerHint         = nullptr; // Optional left footer override text
 
     // --- Optional Host Window Chrome Hooks (All hidden by default in standalone mode) ---
-    bool   showFitButton         = false;   // [Fit] proportional window resize button
-    bool   showCursorToggle      = false;   // Dynamic cursor affordance toggle button
-    bool   showPopOutButton      = false;   // [Pop-Out / Pop-In] OS window mode button
-    bool   showVrButton          = false;   // [VR] move-into-VR button (shown when !isInVr)
-    bool   showCloseButton       = false;   // [X] close button at right end of Row 1
-    bool   showReloadButton      = false;   // [Reload] button beside TOC pulldown in Row 2
+    bool   showFitButton           = false;   // [Fit] proportional window resize button
+    bool   showCursorToggle        = false;   // Dynamic cursor affordance toggle button
+    bool   showPopOutButton        = false;   // [Pop-Out / Pop-In] OS window mode button
+    bool   showVrButton            = false;   // [VR] move-into-VR button (shown when !isInVr)
+    bool   showCloseButton         = false;   // [X] close button at right end of Row 1
+    bool   showReloadButton        = false;   // [Reload] two-arc sync button beside TOC pulldown in Row 2
     bool   isPoppedOut           = false;   // Switches Transparent->Custom & Opacity->Saturation + Pop-In icon
     bool   isInVr                = false;   // Switches Pop button to Pop-In and hides [VR] button
 
@@ -280,12 +282,14 @@ struct DocumentViewerState {
     bool        dynamic_cursors_enabled = true;
     bool        is_open                 = true;
 
-    // Table of Contents & Anchor Jump State
+    // Table of Contents, Scroll Reset & Anchor Jump State
     std::vector<DocumentTocEntry> toc;
     int         active_toc_index         = 0;
     int         pending_scroll_toc_index = -1;
     std::string pending_anchor_slug;
     float       last_scroll_y            = 0.0f;
+    float       saved_scroll_y           = 0.0f;
+    float       pending_raw_scroll_y     = -1.0f;
 
     // Internal Repeat & Cache Bookkeeping
     int         _dec_repeat_count     = 0;
@@ -477,17 +481,32 @@ namespace DocViewerDetail {
                 break;
             }
             case ToolbarGlyph_Reload: {
-#if defined(IMGUI_ICONS_H) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS) && !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS)
-                ImGui::DrawVectorIcon(dl, ImVec2(center.x - r, center.y - r), sz, col, "redo");
-#else
-                dl->PathClear();
-                dl->PathArcTo(center, r * 0.65f, -2.4f, 2.2f, 14);
+                // Distinct two-arc circular sync glyph (never visually confused with single-arrow ResetButton)
+                const float ar = r * 0.62f;
+                const float hw = ImMax(2.2f, r * 0.34f);
+                for (int side = 0; side < 2; ++side) {
+                    const float a0 = (side == 0) ? -2.62f : 0.52159265f;
+                    const float a1 = (side == 0) ? -0.52f : 2.62159265f;
+                    dl->PathClear();
+                    dl->PathArcTo(center, ar, a0, a1, 12);
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
-                dl->PathStroke(col, sw, 0);
+                    dl->PathStroke(col, sw, 0);
 #else
-                dl->PathStroke(col, 0, sw);
+                    dl->PathStroke(col, 0, sw);
 #endif
-#endif
+                    const float ca = std::cos(a1);
+                    const float sa = std::sin(a1);
+                    const ImVec2 tip(center.x + ca * ar, center.y + sa * ar);
+                    // Clockwise tangent (-sin, cos) and inward/outward normal (cos, sin)
+                    const ImVec2 tx(-sa, ca);
+                    const ImVec2 nx(ca, sa);
+                    const ImVec2 head[3] = {
+                        ImVec2(tip.x - tx.x * hw + nx.x * hw * 0.68f, tip.y - tx.y * hw + nx.y * hw * 0.68f),
+                        ImVec2(tip.x + tx.x * hw * 0.25f,             tip.y + tx.y * hw * 0.25f),
+                        ImVec2(tip.x - tx.x * hw - nx.x * hw * 0.68f, tip.y - tx.y * hw - nx.y * hw * 0.68f)
+                    };
+                    StrokePointsZeroBias(dl, head, 3, col, sw);
+                }
                 break;
             }
             default:
@@ -920,6 +939,27 @@ inline bool JumpToDocumentAnchor(DocumentViewerState& state, const char* anchor_
     return true;
 }
 
+// 1-click A/B toggle between top of document (0.0f) and saved reading spot (saved_scroll_y)
+inline bool ToggleDocumentScrollReset(DocumentViewerState& state) {
+    const bool is_scrolled = (state.last_scroll_y > 4.0f);
+    const bool can_restore = !is_scrolled && (state.saved_scroll_y > 4.0f);
+    if (is_scrolled) {
+        state.saved_scroll_y           = state.last_scroll_y;
+        state.pending_raw_scroll_y     = 0.0f;
+        state.pending_scroll_toc_index = -1;
+        state.pending_anchor_slug.clear();
+        state.active_toc_index         = 0;
+        return true;
+    }
+    if (can_restore) {
+        state.pending_raw_scroll_y     = state.saved_scroll_y;
+        state.pending_scroll_toc_index = -1;
+        state.pending_anchor_slug.clear();
+        return true;
+    }
+    return false;
+}
+
 // ----------------------------------------------------------------------------
 // 3. Composite DocumentViewer Widget
 // ----------------------------------------------------------------------------
@@ -1313,7 +1353,7 @@ inline bool DocumentViewer(
             right_r2_w += theme_lbl_w + 4.0f * r2_scale + theme_combo_w;
         }
 
-        // 1. Left: Section Jump TOC SelectPulldown (+ optional Reload button)
+        // 1. Left: Section Jump TOC SelectPulldown (+ 1-click Scroll Reset + optional Reload button)
         ImGui::AlignTextToFramePadding();
         const bool show_sec_lbl = (win_w > 620.0f);
         if (show_sec_lbl) {
@@ -1321,8 +1361,9 @@ inline bool DocumentViewer(
             ImGui::SameLine(0.0f, 4.0f * r2_scale);
         }
 
-        const float reload_reserve = cfg.showReloadButton ? (24.0f + 4.0f) : 0.0f;
-        const float max_toc_avail = ImGui::GetWindowWidth() - ImGui::GetCursorPosX() - right_r2_w - right_margin - reload_reserve - 12.0f;
+        const float scroll_rst_reserve = cfg.showScrollResetButton ? (ImGui::GetFrameHeight() + 3.0f) : 0.0f;
+        const float reload_reserve     = cfg.showReloadButton ? (24.0f + 4.0f) : 0.0f;
+        const float max_toc_avail = ImGui::GetWindowWidth() - ImGui::GetCursorPosX() - right_r2_w - right_margin - scroll_rst_reserve - reload_reserve - 12.0f;
         const float toc_w = ImClamp(cfg.tocWidth * r2_scale, 95.0f, (std::max)(95.0f, max_toc_avail));
 
         if (!state.toc.empty()) {
@@ -1349,6 +1390,34 @@ inline bool DocumentViewer(
                 "**Jump to Section**\n\nClick to open Table of Contents, then click or spin mouse wheel to jump.");
         } else {
             ImGui::TextDisabled("No sections");
+        }
+
+        if (cfg.showScrollResetButton) {
+            ImGui::SameLine(0.0f, 3.0f);
+            const bool is_scrolled = (state.last_scroll_y > 4.0f);
+            const bool can_restore = !is_scrolled && (state.saved_scroll_y > 4.0f);
+#if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS) && !defined(IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS) && !defined(CONTRIB_DISABLE_MOUSE_WHEEL_CONTROLS) && !defined(IMGEE_DISABLE_RESET_BUTTON) && !defined(CONTRIB_DISABLE_RESET_BUTTON)
+            bool scroll_rst_clicked = ImGui::ResetButton("##dv_scroll_reset", is_scrolled, 0.0f, false, nullptr, can_restore);
+#else
+            const float fh = ImGui::GetFrameHeight();
+            const bool actionable = (is_scrolled || can_restore);
+            if (!actionable) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.45f);
+            bool scroll_rst_clicked = ImGui::Button(can_restore ? "U##dv_scroll_reset" : "R##dv_scroll_reset", ImVec2(fh, fh)) && actionable;
+            if (!actionable) ImGui::PopStyleVar();
+#endif
+            bool scroll_rst_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (scroll_rst_hov && (is_scrolled || can_restore)) {
+                DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_Hand);
+            }
+            if (scroll_rst_clicked) {
+                (void)ToggleDocumentScrollReset(state);
+            }
+            const char* scroll_rst_tip = is_scrolled
+                ? "**Jump to Top:** Scroll back to the start of the document (saves your current reading spot)."
+                : (can_restore
+                    ? "**Return to Reading Spot:** 1-click jump back to your previous scroll position."
+                    : "**At Top of Document**");
+            DocViewerDetail::ShowDelayedTip(DocViewerDetail::GetItemIDCompat(), scroll_rst_hov, scroll_rst_tip);
         }
 
         if (cfg.showReloadButton) {
@@ -1440,14 +1509,14 @@ inline bool DocumentViewer(
             if (cfg.showThemePicker) {
                 static const char* const kThemeNames[DocumentViewerTheme_COUNT] = {
                     "Charcoal (Default)",
-                    "Rusty (Aviation)",
+                    "Rusty (Bronze)",
                     "ImGui Dark",
                     "ImGui Classic",
                     "ImGui Light"
                 };
                 static const char* const kThemeTips[DocumentViewerTheme_COUNT] = {
                     "**Charcoal (Default)**\nSleek modern slate and graphite studio palette.",
-                    "**Rusty (Aviation)**\nWarm aviation bronze and terracotta cockpit palette.",
+                    "**Rusty (Bronze)**\nWarm low-glare bronze and terracotta palette.",
                     "**ImGui Dark**\nStock Dear ImGui dark color scheme.",
                     "**ImGui Classic**\nClassic Dear ImGui indigo color scheme.",
                     "**ImGui Light**\nHigh-contrast daytime light color scheme."
@@ -1487,10 +1556,20 @@ inline bool DocumentViewer(
     // C. Nx ZOOMED MARKDOWN VIEWPORT BODY
     // ========================================================================
     float footer_reserve_h = 0.0f;
+    const float footer_gap_y = 4.0f;
+    float footer_content_h = 0.0f;
     if (cfg.showFooter) {
         ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
-        const float footer_line_h = cfg.showFooterCloseButton ? ImGui::GetFrameHeight() : ImGui::GetTextLineHeightWithSpacing();
-        footer_reserve_h = footer_line_h + style.ItemSpacing.y * 2.0f + 2.0f;
+        float footer_text_h = ImGui::GetTextLineHeight();
+#if defined(IMGUI_FONT_ROLES_H) && !defined(IMGEE_DISABLE_TYPOGRAPHY) && !defined(CONTRIB_DISABLE_TYPOGRAPHY)
+        if (ImFont* sm = ImGui::GetFont(ImGui::ImFontRole::Small)) {
+            ImGui::ImGeeCompat::PushFont(sm);
+            footer_text_h = ImGui::GetTextLineHeight();
+            ImGui::PopFont();
+        }
+#endif
+        footer_content_h = cfg.showFooterCloseButton ? ImGui::GetFrameHeight() : footer_text_h;
+        footer_reserve_h = footer_gap_y + 1.0f + footer_gap_y + footer_content_h;
     }
 
     const ImVec2 body_size(0.0f, (footer_reserve_h > 0.0f) ? -footer_reserve_h : 0.0f);
@@ -1518,6 +1597,15 @@ inline bool DocumentViewer(
     if (body_visible) {
         ImGuiWindow* vp_win = ImGui::GetCurrentWindow();
         const float top_pad_y = vp_win ? vp_win->WindowPadding.y : 14.0f;
+
+        bool applied_raw_scroll = false;
+        if (state.pending_raw_scroll_y >= 0.0f) {
+            const float raw_target_y = (std::max)(0.0f, state.pending_raw_scroll_y);
+            ImGui::SetScrollY(raw_target_y);
+            state.last_scroll_y = raw_target_y;
+            state.pending_raw_scroll_y = -1.0f;
+            applied_raw_scroll = true;
+        }
 
         // Immediate jump if target TOC entry already has a measured content_y from a prior frame
         if (state.pending_scroll_toc_index >= 0 &&
@@ -1637,16 +1725,18 @@ inline bool DocumentViewer(
         }
 
         // Sync active_toc_index with manual user scrolling
-        state.last_scroll_y = ImGui::GetScrollY();
-        if (state.pending_scroll_toc_index < 0 && !state.toc.empty()) {
-            const float probe_y = state.last_scroll_y + top_pad_y + 12.0f;
-            int current_sec = 0;
-            for (size_t i = 0; i < state.toc.size(); ++i) {
-                if (state.toc[i].content_y >= 0.0f && state.toc[i].content_y <= probe_y) {
-                    current_sec = static_cast<int>(i);
+        if (!applied_raw_scroll) {
+            state.last_scroll_y = ImGui::GetScrollY();
+            if (state.pending_scroll_toc_index < 0 && !state.toc.empty()) {
+                const float probe_y = state.last_scroll_y + top_pad_y + 12.0f;
+                int current_sec = 0;
+                for (size_t i = 0; i < state.toc.size(); ++i) {
+                    if (state.toc[i].content_y >= 0.0f && state.toc[i].content_y <= probe_y) {
+                        current_sec = static_cast<int>(i);
+                    }
                 }
+                state.active_toc_index = current_sec;
             }
-            state.active_toc_index = current_sec;
         }
     }
 
@@ -1656,13 +1746,17 @@ inline bool DocumentViewer(
     ImGui::EndChild();
     ImGui::PopStyleVar();
 #endif
+    const float child_bottom_y = ImGui::GetItemRectMax().y;
 
     // ========================================================================
     // D. OPTIONAL 1.0x FOOTER CHROME (Base-Font Isolated from TimedTooltip)
     // ========================================================================
     if (cfg.showFooter) {
         ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        const float footer_left_x = ImGui::GetCursorScreenPos().x;
+        ImGui::SetCursorScreenPos(ImVec2(footer_left_x, child_bottom_y + footer_gap_y));
         ImGui::Separator();
+        ImGui::SetCursorScreenPos(ImVec2(footer_left_x, child_bottom_y + footer_gap_y + 1.0f + footer_gap_y));
 
         bool pushed_small = false;
 #if defined(IMGUI_FONT_ROLES_H) && !defined(IMGEE_DISABLE_TYPOGRAPHY) && !defined(CONTRIB_DISABLE_TYPOGRAPHY)
@@ -1680,10 +1774,10 @@ inline bool DocumentViewer(
                    state.active_toc_index >= 0 &&
                    static_cast<size_t>(state.active_toc_index) < state.toc.size())
         {
-            ImGui::TextDisabled("%s  |  Ctrl+Wheel to zoom  |  Click images to enlarge",
+            ImGui::TextDisabled("%s  |  Click images to enlarge",
                                 state.toc[static_cast<size_t>(state.active_toc_index)].title.c_str());
         } else {
-            ImGui::TextDisabled("Ctrl+Wheel to zoom  |  Click images to enlarge");
+            ImGui::TextDisabled("Click images to enlarge");
         }
         if (pushed_small) {
             ImGui::PopFont();
@@ -1693,7 +1787,7 @@ inline bool DocumentViewer(
             const float close_w = 64.0f;
             const float close_x = ImGui::GetWindowWidth() - close_w - right_margin;
             ImGui::SameLine((std::max)(ImGui::GetCursorPosX() + 8.0f, close_x));
-            if (ImGui::Button("Close##dv_footer_close", ImVec2(close_w, 0.0f))) {
+            if (ImGui::Button("Close##dv_footer_close", ImVec2(close_w, footer_content_h))) {
                 state.is_open = false;
                 if (cfg.onCloseRequested) cfg.onCloseRequested(cfg.userData);
             }

@@ -6,14 +6,14 @@
 //
 // Standalone Dear ImGui helper for rendering unscaled 1.0x header/toolbar/
 // footer chrome alongside a scrollable Nx-zoomed ([0.50x .. 2.50x]) inner
-// content child window, with native Ctrl+MouseWheel (and Cmd+MouseWheel on
-// macOS) zoom support and zero host-SDK dependencies.
+// content child window, with zero host-SDK dependencies (and optional opt-in
+// Ctrl/Cmd+MouseWheel zoom via state.enable_ctrl_wheel).
 //
 // Usage:
 //   static ImGui::ZoomableViewportState s_DocZoom;
 //
 //   // 1. Fixed 1.0x header / toolbar chrome:
-//   ImGui::TextUnformatted("Flight Operations Manual");
+//   ImGui::TextUnformatted("User Guide");
 //   ImGui::SameLine();
 //   ImGui::ZoomViewportControls(s_DocZoom);
 //
@@ -120,7 +120,7 @@ struct ZoomableViewportState {
     float  max_zoom          = 2.50f;                // Maximum clamped zoom (default: 250%)
     float  wheel_step        = 0.05f;                // Zoom increment per mouse-wheel notch (5%)
     float  button_step       = 0.10f;                // Zoom increment per [-]/[+] button press (10%)
-    bool   enable_ctrl_wheel = true;                 // Enable Ctrl+Wheel (and Cmd+Wheel on macOS)
+    bool   enable_ctrl_wheel = false;                // Optional opt-in Ctrl+Wheel (and Cmd+Wheel on macOS) zoom
     bool   border            = false;                // Draw outer border around the content child
     ImVec2 content_padding   = ImVec2(-1.0f, -1.0f); // Optional inner padding (-1 = inherit style.WindowPadding)
 
