@@ -92,7 +92,9 @@ Use RAII guards to push and pop font roles safely:
 
 ## 2. Inline StyledText Engine (`imgui_styled_text.h`)
 
-`ImGui::StyledText` parses lightweight XML-style tags and renders continuous text flows across lines.
+`ImGui::StyledText` parses lightweight XML-style tags and renders continuous text flows across lines with unbroken baseline alignment across fonts, capsules, keycaps, and icons.
+
+![Semantic Typography & Inline StyledText: Font role hierarchy, baseline-aligned badges and pills, keycaps, and vector icons](../../docs/images/fig_typography_styled_text.png)
 
 ### Function Signatures
 

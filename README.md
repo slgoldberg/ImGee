@@ -1,12 +1,14 @@
 # ImGee: Avionics & Flight-Sim UI Toolkit for Dear ImGui
-**Version 1.0.0 • Architecture & Developer Reference**
+**Architecture & Developer Reference**
 
 **ImGee** turns stock [Dear ImGui](https://github.com/ocornut/imgui) from a game-debugger overlay into a tactile, ergonomic desktop and flight-deck UI system in **a single header `#include`** -- with zero `.cpp` files to compile and zero CMake changes.
 
-Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the mouse scroll-wheel, leaves interactive buttons on a dead `Arrow` cursor, and renders missing-glyph `?` boxes for Unicode symbols, **ImGee** gives you polite stationary `TimedTooltip`s, mouse-wheel sliders/combos/pulldowns with 1-click Reset-with-Undo (`↺`/`↻`), 270° rotary dimmer knobs, animated rocker switches, CommonMark + sortable GFM tables, async 3-tier images, semantic typography (`ImFontRole` & `StyledText`), curated themes (`Charcoal`, `Rusty`), and a zero-font procedural vector icon engine.
+Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the mouse scroll-wheel, leaves interactive buttons on a dead `Arrow` cursor, and renders missing-glyph `?` boxes for Unicode symbols, **ImGee** gives you polite stationary `TimedTooltip`s, mouse-wheel sliders/combos/pulldowns with 1-click Reset-with-Undo (`↺`/`↻`), 270° rotary dimmer knobs, animated rocker switches, CommonMark + sortable GFM tables, text-wrapping image floats, a turnkey `DocumentViewer`, semantic typography (`ImFontRole` & `StyledText`), curated themes (`Charcoal`, `Rusty`), and a zero-font procedural vector icon engine.
+
+![ImGee in Action: Standalone DocumentViewer combining 1.0x header toolbars, section-jump pulldown, HUD opacity and theme controls, right-floated schematic, and GFM callouts](docs/images/fig_doc_viewer.png)
 
 > **Standalone Dear ImGui Toolkit + Turnkey `ImgWindow` Integration:**  
-> **ImGee** ([`slgoldberg/ImGee`](https://github.com/slgoldberg/ImGee)) is a standalone, 100% generic Dear ImGui C++ toolkit (`v1.78` through `v1.92+`) with zero dependency on X-Plane or any windowing backend. For X-Plane plugin authors using [`ImgWindow`](https://github.com/slgoldberg/ImgWindow), ImGee is also mounted directly at `ImgWindow/contrib/ImGee/` (with convenience forwarder `contrib/imgee.h`) and auto-wires texture uploading, in-memory image decoding, and reload cleanup when `ImgWindow.h` is present.
+> **ImGee** ([`slgoldberg/ImGee`](https://github.com/slgoldberg/ImGee)) is a standalone, 100% generic Dear ImGui C++ toolkit (`v1.84` through `v1.92+`) with zero dependency on X-Plane or any windowing backend. For X-Plane plugin authors using [`ImgWindow`](https://github.com/slgoldberg/ImgWindow), ImGee is also mounted directly at `ImgWindow/contrib/ImGee/` (with convenience forwarder `contrib/imgee.h`) and auto-wires texture uploading, in-memory image decoding, and reload cleanup when `ImgWindow.h` is present.
 
 ---
 
@@ -14,6 +16,7 @@ Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the
 
 * **[Comprehensive ImGee User Manual (Markdown)](docs/ImGee_User_Guide.md)** • **[(PDF Manual)](docs/ImGee_User_Guide.pdf)**: Full API reference, copy-pasteable C++ examples, typography tables, and architectural details.
 * **[The ImGee UX Design Manifesto (Markdown)](docs/ImGee_UX_Design_Manifesto.md)** • **[(PDF Standard)](docs/ImGee_UX_Design_Manifesto.pdf)**: Human-factors principles, cursor & wheel affordance laws, "Lens UI" focus latching, and developer checklists.
+* **Component Reference Guides:** [Extensions Suite](extensions/README.md) • [Cockpit & Desktop Widgets](widgets/README.md) • [Curated Themes](themes/README.md)
 
 ---
 
@@ -21,79 +24,93 @@ Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the
 
 Every component within ImGee is delivered strictly as a **single, self-contained C++ header file (`.h` only)**. There are zero `.cpp` compilation units to add to your build system, zero static or dynamic link dependencies, and zero order-of-inclusion restrictions. You can `#include` ImGee headers in any order without circular dependency hazards.
 
-ImGee is divided into two distinct architectural categories:
+ImGee is divided into two complementary architectural categories plus curated color palettes:
 
 ```
 ImGee/
-├── extensions/          # Heavyweight, stateful subsystems (TimedTooltip, Markdown, Typography)
-├── widgets/             # Lightweight, immediate-mode controls & vector icons (.h only)
+├── extensions/          # Stateful subsystems (TimedTooltip, Markdown, Typography, Viewport, DocViewer)
+├── widgets/             # Immediate-mode flight & desktop controls + vector icons (.h only)
 └── themes/              # Curated studio & cockpit palettes (Charcoal, Rusty)
 ```
 
 ### 1. Flagship Extensions (`extensions/`)
-Extensions are feature-complete, heavyweight subsystems that solve deep architectural limitations of stock Dear ImGui. Unlike simple widgets, extensions maintain internal or frame-to-frame state, manage timing delays, parse complex syntax trees, or manage font registries.
 
-ImGee provides **three flagship extensions** that form the core value of the package:
-* **`TimedTooltip` (`imgui_tooltip_ext.h`):** Replaces volatile, cursor-following vanilla `ImGui::SetTooltip()` with stationary, delay-timed tooltips featuring intelligent display boundary clamping, cursor avoidance, and low-water scroll dismissal.
-* **`Markdown` (`imgui_markdown_ext.h`):** Replaces flat plain ASCII with interactive CommonMark, full GFM tables with tristate column sorting and drag-resizing, async 3-tier image loading, parameterized styling tags (`<badge>`, `<pill>`, `<icon>`), and custom vector button faces (`ButtonMD`).
-* **`Typography` (`imgui_font_roles.h` & `imgui_styled_text.h`):** A 9-slot semantic font role registry (`ImFontRole`), RAII scoped font guards (`ScopedFontRole`), and the `StyledText` engine for inline baseline-aligned sizing with zero Markdown document overhead.
+<img src="docs/images/fig_timed_tooltips.png" align="right" width="380" alt="Stationary TimedTooltip with dwell delay and embedded status pills"/>
+
+Extensions are self-contained subsystems that address deep architectural gaps in stock Dear ImGui -- maintaining frame-to-frame timing, parsing CommonMark/GFM syntax, managing semantic font hierarchies, or isolating content zoom:
+
+* **[`TimedTooltip`](extensions/TimedTooltip/README.md) (`imgui_tooltip_ext.h`):** Replaces cursor-following `ImGui::SetTooltip()` with stationary, dwell-timed sticky-note tooltips featuring screen-edge clamping, cursor preservation, click-to-toggle support, and wheel-scroll dismissal.
+* **[`Markdown`](extensions/Markdown/README.md) (`imgui_markdown_ext.h`):** Interactive CommonMark + GFM tables with tristate column sorting and drag-resizing, GFM alert callouts (`> [!NOTE]` .. `[!CAUTION]`), 3-tier images with text-wrapping floats and same-context lightboxes, inline tags (`<badge>`, `<pill>`, `<kbd>`, `<icon>`), and `ButtonMD`.
+* **[`Typography`](extensions/Typography/README.md) (`imgui_font_roles.h` & `imgui_styled_text.h`):** A 9-slot semantic font registry (`ImFontRole`), RAII `ScopedFontRole` guards, and baseline-aligned `StyledText` for inline rich readouts without full Markdown block margins.
+* **[`Viewport`](extensions/Viewport/README.md) (`imgui_zoomable_viewport.h`):** Two-layer `BeginZoomedViewport` / `EndZoomedViewport` container keeping window chrome at crisp `1.0x` while zooming inner content from `50%` to `250%` via `Ctrl`/`Cmd + MouseWheel`.
+* **[`DocViewer`](extensions/DocViewer/README.md) (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` with automatic ATX Table-of-Contents section jumping, `#heading-slug` anchor navigation, zero-shift HUD opacity controls, and 5-preset theme switching.
+
+<br clear="all"/>
+
+![Interactive GFM Markdown Tables: Tristate column sorting, drag-resizable dividers, and inline status badges](docs/images/fig_gfm_tables.png)
 
 > [!IMPORTANT]
-> **The Flagship Core:** We consider `TimedTooltip`, `Markdown`, and `Typography` the **flagship foundation** of the entire ImGee suite. We strongly believe every flight simulation plugin should use these modern subsystems instead of the stock or open-source versions from which they derive.
+> **The Flagship Core:** `TimedTooltip`, `Markdown`, and `Typography` form the foundational triad of ImGee, while `Viewport` and `DocViewer` build directly on top of them to deliver turnkey in-app manuals and checklists.
 
-### 2. Cockpit & Avionics Widgets (`widgets/`)
-Widgets are lightweight, zero-dependency, immediate-mode flight-deck controls. They hook directly into Dear ImGui's ambient context (`GImGui`, ID stack, `ImGuiStorage`, and active window draw lists) and live directly in the root `ImGui::` namespace to feel completely native.
+### 2. Cockpit & Avionics Widgets (`widgets/`) & Themes (`themes/`)
 
-* **Completely Independent:** Even if a project chooses not to install or enable any of the three extensions, all widgets in `widgets/` remain 100% usable and self-sufficient.
-* **Zero Mandatory State:** Widgets execute strictly within the immediate-mode paradigm, drawing antialiased vector geometry directly to `ImDrawList`.
+<img src="docs/images/fig_toggle_switches.png" align="right" width="370" alt="Animated ToggleButton rocker switches and segmented ToggleButtons"/>
+
+Widgets are lightweight, zero-dependency immediate-mode controls. They hook directly into Dear ImGui's ambient context (`GImGui`, ID stack, `ImGuiStorage`, and active window draw lists) and live in the root `ImGui::` namespace so they feel completely native alongside built-in controls.
+
+* **Completely Independent:** Even if a project disables every extension (`#define IMGEE_DISABLE_EXTENSIONS`), all widgets in [`widgets/`](widgets/README.md) remain 100% usable and self-sufficient.
+* **Built-In Human Factors:** Active cursor affordances (`Hand`, `ResizeEW`, `ResizeNS`), automatic scroll pass-through on scrollable parent panels, 1-click Reset-with-Undo (`↺`/`↻`) session memory, and zero-font procedural vector icons come wired in automatically.
+
+<br clear="all"/>
+
+![Avionics Rotary Knobs & Dimmer Dials: 270-degree potentiometers with two-step OFF detente and 1-click Reset](docs/images/fig_rotary_knobs.png)
+
+![Mouse-Wheel Sliders & Combos: Flush abutting 1-click A/B Reset-with-Undo chasers](docs/images/fig_sliders_reset.png)
 
 ---
 
 ## 📐 Common Design Standards & Namespacing
 
-ImGee follows strict architectural patterns established by the broader Dear ImGui community:
+ImGee follows established conventions from the wider Dear ImGui ecosystem:
 
 ### 1. Omar Cornut's Ecosystem Standard (Single Point of Discovery)
-In official Dear ImGui extensions and ecosystem projects (such as `implot`, `imgui_club`, and `imnodes`), Omar Cornut explicitly advocates extending `namespace ImGui { ... }`.
-* **Discoverability & Autocomplete:** Modern C++ developers rely heavily on IDE autocomplete. When typing `ImGui::`, developers immediately discover every capability available across the toolkit in one place.
-* **Zero Cognitive Overhead:** Developers are not forced to memorize artificial root namespaces (such as `extgui::` or `imgee::`) or manage scattered `using namespace` directives.
+In official Dear ImGui extensions and ecosystem projects (such as `implot`, `imgui_club`, and `imnodes`), Omar Cornut advocates extending `namespace ImGui { ... }`:
+* **Discoverability & Autocomplete:** Typing `ImGui::` surfaces every widget and subsystem in one place via IDE autocomplete.
+* **Zero Cognitive Overhead:** No artificial root namespaces or scattered `using namespace` declarations to juggle.
 
 ### 2. Second-Level Sub-Namespaces for Subsystems
-While extending `namespace ImGui` is essential, placing heavy packages directly into the root risks colliding with future Dear ImGui core functions. ImGee cleanly encapsulates its extensions within **second-level sub-namespaces**:
+Heavyweight subsystems encapsulate their APIs cleanly inside second-level sub-namespaces under `ImGui`:
 * `ImGui::TimedTooltip::`
 * `ImGui::Markdown::` (with official shorthand alias `ImGui::MD::`)
 * `ImGui::Typography::`
 
-Sub-namespaces allow extensions to reuse Dear ImGui's standard vocabulary without ambiguity:
 ```cpp
 ImGui::TimedTooltip::Text("Hover-delayed stationary tooltip.");
 ImGui::MD::TextWrapped("Configure your **avionics** below.");
 ```
 
 ### 3. Convenient Root Shorthands & Global Scope
-* Shorthands like `ImGui::TextMD(...)` and `ImGui::ButtonMD(...)` are exposed in the root `ImGui::` namespace.
-* Defining `#define IMGEE_ENABLE_GLOBAL_NAMESPACES` publishes `Markdown::`, `MD::`, and `TimedTooltip::` directly to the global scope for maximum brevity.
+* Shorthands such as `ImGui::TextMD(...)`, `ImGui::ButtonMD(...)`, `ImGui::BeginZoomedViewport(...)`, and `ImGui::DocumentViewer(...)` are exposed directly in `ImGui::`.
+* Defining `#define IMGEE_ENABLE_GLOBAL_NAMESPACES` publishes `Markdown::`, `MD::`, and `TimedTooltip::` to the global scope when maximum brevity is preferred.
 
 ---
 
 ## 🌐 Generic Dear ImGui Core & Multi-Language Bindings
 
-While developed and battle-tested within the X-Plane flight simulation ecosystem, **ImGee core is 100% generic Dear ImGui**. Nothing in the C++ toolkit inherently requires X-Plane or any specific host environment. Any application, game engine, or simulator utilizing Dear ImGui can consume ImGee directly.
+While developed and battle-tested within the X-Plane flight simulation ecosystem, **ImGee core is 100% generic Dear ImGui**. Nothing in the C++ toolkit requires X-Plane or any specific host environment -- any desktop app, game engine, or simulator using Dear ImGui can drop ImGee right in.
 
 ### 1. LuiGee: Lua Bindings for FlyWithLua
-For Lua developers, ImGee's flight-deck capabilities are brought directly into the Lua scripting environment as **LuiGee**.
-* **Broad Simulator Support:** Available for ImGui-based windows in FlyWithLua across all X-Plane versions from **X-Plane 11.20 through the latest X-Plane 12+ releases and into the future**.
-* **Zero-Boilerplate Scripting:** Exposes cockpit switches, knobs, vector icons, and timed tooltips to Lua developers with idiomatic syntax.
+For Lua developers, ImGee's flight-deck capabilities are available inside FlyWithLua as **LuiGee**, bringing cockpit switches, rotary knobs, vector icons, and timed tooltips to X-Plane 11.20+ and X-Plane 12+ scripts with idiomatic Lua syntax.
 
 ### 2. Community & Other Language Bindings
-We are actively considering bindings for other environments and programming languages (such as **Python**, **Rust**, and **C#**). If developers in the wider Dear ImGui ecosystem are interested in bringing ImGee to other platforms or developing language wrappers, we warmly welcome community discussions and collaboration!
+We are open to bindings for additional environments and languages (such as **Python**, **Rust**, and **C#**). Developers interested in bringing ImGee to other platforms or language ecosystems are warmly invited to collaborate.
 
 ---
 
 ## 🚀 Quick Start & Integration Models
 
 ### 1. Standalone Clone or Git Submodule (Recommended)
-Add **ImGee** to your project (e.g. via `git submodule add https://github.com/slgoldberg/ImGee.git third-party/ImGee`), add its directory to your include path, and include `imgee.h`:
+Add **ImGee** to your project (e.g. `git submodule add https://github.com/slgoldberg/ImGee.git third-party/ImGee`), add its directory to your include path, and include `imgee.h`:
 
 ```cpp
 // When ImGee/ itself is on your -I include path:
@@ -103,24 +120,17 @@ Add **ImGee** to your project (e.g. via `git submodule add https://github.com/sl
 #include "ImGee/imgee.h"
 ```
 
-Everything works header-only out of the box with zero `.cpp` files to compile and zero CMake link flags required.
-
 ### 2. A-La-Carte & Order-Independent Inclusion
-ImGee subsystems and widget headers are modular and order-independent -- cross-extension bridges (such as `ImGui::TimedTooltip::TextMD` and rich Markdown widget tooltips) activate automatically regardless of include order:
+Subsystems and individual widget headers can also be cherry-picked in any include order:
 
 ```cpp
-// Option A: Include only extensions (TimedTooltip, Markdown, Typography):
-#include "ImGee/extensions.h"
-
-// Option B: Include only cockpit & desktop widgets (Knobs, Toggles, Wheel Sliders, Badges, Icons):
-#include "ImGee/widgets.h"
-
-// Option C: Cherry-pick individual headers in any order:
-#include "ImGee/widgets/imgui_knobs.h"
+#include "ImGee/extensions.h"              // Only extensions (TimedTooltip, Markdown, Typography, Viewport, DocViewer)
+#include "ImGee/widgets.h"                 // Only immediate-mode widgets & vector icons
+#include "ImGee/widgets/imgui_knobs.h"     // Or individual control headers
 ```
 
 ### 3. Optional GPU Texture Backend for Standalone Apps (`ImGee::HostBackend`)
-All vector widgets, icons, themes, typography, tooltips, and Markdown text/tables work with zero setup. If your standalone Dear ImGui app (GLFW, SDL, Win32, Metal, Vulkan, DX11/DX12) also renders **local disk or async HTTP/HTTPS Markdown images**, register your 2-callback texture hook once at startup and call `ImGee::Shutdown()` before destroying your graphics device:
+All vector widgets, icons, themes, typography, tooltips, and Markdown text/tables work with zero setup. If your standalone Dear ImGui app (GLFW, SDL, Win32, Metal, Vulkan, DX11/DX12) also renders **local disk or async HTTP/HTTPS Markdown images**, register two texture callbacks at startup and call `ImGee::Shutdown()` before tearing down your graphics device:
 
 ```cpp
 ImGee::HostBackend backend;
@@ -132,12 +142,12 @@ backend.DeleteTexture = [](ImTextureID tex, void*) {
 };
 ImGee::SetHostBackend(backend);
 
-// On application exit (before tearing down your GPU device):
+// On application exit (before destroying your GPU device):
 ImGee::Shutdown();
 ```
 
 ### 4. Turnkey X-Plane Integration via `ImgWindow`
-When consumed via an `ImgWindow` submodule in an X-Plane plugin, include `"ImgWindow/contrib/imgee.h"` (or `"contrib/imgee.h"` when `ImgWindow/` is on `-I`). When `ImgWindow.h` is detected on the include path, ImGee automatically bridges named textures, `ImGeeStbi` memory-image decoding, and plugin-reload VRAM cleanup with zero setup code.
+When consumed via an `ImgWindow` submodule in an X-Plane plugin, include `"ImgWindow/contrib/imgee.h"` (or `"contrib/imgee.h"` when `ImgWindow/` is on `-I`). When `ImgWindow.h` is detected on the include path, ImGee bridges named textures, `ImGeeStbi` memory-image decoding, and plugin-reload VRAM cleanup automatically.
 
 ---
 
@@ -145,61 +155,66 @@ When consumed via an `ImgWindow` submodule in an X-Plane plugin, include `"ImgWi
 
 ```
 ImGee/
-├── imgee.h                        # Canonical ImGee Master Header & Version Contract
-├── imgee_host_backend.h           # Standalone GPU texture, path & shutdown hook contract
-├── includes.h                     # Folder-level Roll-Up Header (-> imgee.h)
-├── extensions.h                   # Subsystem Roll-Up Header (-> extensions/includes.h)
-├── widgets.h                      # Subsystem Roll-Up Header (-> widgets/includes.h)
-├── imgee-global.h                 # Opt-in Global Scope Aliases (Markdown::, TimedTooltip::)
-├── imgee_stbi_internal.h          # Isolated namespace/symbol-prefixed PNG/JPG/GIF/BMP/TGA decoder
-├── imgee_stb_image.cpp            # Optional single-TU build unit (for -DIMGEE_EXTERNAL_STB_IMAGE)
-├── stb_image.h                    # Vendored stb_image implementation wrapped inside ImGeeStbi
-├── LICENSE                        # Open-Source License (BSD 3-Clause)
+├── imgee.h                           # Canonical ImGee Master Header & Version Contract
+├── imgee_host_backend.h              # Standalone GPU texture, path & shutdown hook contract
+├── includes.h                        # Folder-level Roll-Up Header (-> imgee.h)
+├── extensions.h                      # Subsystem Roll-Up Header (-> extensions/includes.h)
+├── widgets.h                         # Subsystem Roll-Up Header (-> widgets/includes.h)
+├── imgee-global.h                    # Opt-in Global Scope Aliases (Markdown::, TimedTooltip::)
+├── imgee_stbi_internal.h             # Isolated namespace/symbol-prefixed PNG/JPG/GIF/BMP/TGA decoder
+├── imgee_stb_image.cpp               # Optional single-TU build unit (for -DIMGEE_EXTERNAL_STB_IMAGE)
+├── stb_image.h                       # Vendored stb_image implementation wrapped inside ImGeeStbi
+├── LICENSE                           # Open-Source License (BSD 3-Clause)
 ├── docs/
-│   ├── ImGee_User_Guide.md        # Comprehensive User Manual (Source)
-│   ├── ImGee_User_Guide.pdf       # Compiled Publication-Grade Manual
+│   ├── ImGee_User_Guide.md           # Comprehensive User Manual (Source)
+│   ├── ImGee_User_Guide.pdf          # Compiled Publication-Grade Manual
 │   ├── ImGee_UX_Design_Manifesto.md  # Human Factors & Ergonomics Standard (Source)
 │   ├── ImGee_UX_Design_Manifesto.pdf # Compiled UX Design Manifesto
-│   └── images/                    # High-DPI in-cockpit figures and screenshots
-├── extensions/                    # Stateful Subsystems (The Flagships)
-│   ├── README.md                  # Extensions Architecture & Omar Cornut's Standard
-│   ├── includes.h                 # Extensions Roll-Up Header
-│   ├── TimedTooltip/              # Stationary & delayed tooltip engine with edge clamping
-│   ├── Markdown/                  # CommonMark GFM tables, tristate sorting, 3-tier images & tags
-│   └── Typography/                # Font roles (ImFontRole) & inline StyledText
-├── widgets/                       # Immediate-Mode Flight Controls (.h only)
-│   ├── README.md                  # Complete Widgets Catalog Reference
-│   ├── includes.h                 # Widgets Roll-Up Header
-│   ├── imgui_icons.h              # Zero-texture procedural vector icon engine & ImGui::Icon
-│   ├── imgui_knobs.h              # Avionics rotary knobs, dimmer dials & 2-step OFF detents
-│   ├── imgui_mouse_wheel_controls.h # Mouse-wheel sliders, combos & inline reset chasers
-│   ├── imgui_badges.h             # Status badges, pills, unary annunciators & <kbd>
-│   ├── imgui_popup_menus.h        # Directional popups (AboveItem) & SelectPulldown
-│   ├── imgui_toggle_buttons.h     # Tactile animated physical toggle switches
-│   ├── imgui_spinners.h           # Procedural radar sweeps & radial countdown timers
-│   ├── imgui_clickable_links.h    # OS hand cursor links (ButtonLink, TextLink)
-│   ├── imgui_copy_button.h        # Clipboard copy buttons with vector icons & feedback
-│   └── imgui_file_dialog.h        # Non-blocking modal-free in-sim file dialogs
-└── themes/                        # Curated Studio & Cockpit Palettes
-    ├── includes.h                 # Themes Roll-Up Header
-    └── imgui_styles.h             # StyleColorsCharcoal(), StyleColorsRusty(), ApplyDefaultTheme()
+│   └── images/                       # 2x Retina widget & extension showcase figures
+├── extensions/                       # Stateful Subsystems
+│   ├── README.md                     # Extensions Architecture & Sub-Namespace Guide
+│   ├── includes.h                    # Extensions Roll-Up Header
+│   ├── TimedTooltip/                 # Stationary & delayed tooltip engine with edge clamping
+│   ├── Markdown/                     # CommonMark, GFM tables/callouts, floats, lightboxes & tags
+│   ├── Typography/                   # Font roles (ImFontRole) & inline StyledText
+│   ├── Viewport/                     # Two-layer 1.0x chrome + Nx content zoom container
+│   └── DocViewer/                    # Turnkey standalone Markdown DocumentViewer
+├── widgets/                          # Immediate-Mode Flight & Desktop Controls (.h only)
+│   ├── README.md                     # Complete Widgets Catalog Reference
+│   ├── includes.h                    # Widgets Roll-Up Header
+│   ├── imgui_icons.h                 # Zero-texture procedural vector icon engine & IconButton
+│   ├── imgui_knobs.h                 # Avionics rotary knobs, dimmer dials & 2-step OFF detents
+│   ├── imgui_mouse_wheel_controls.h  # Mouse-wheel sliders, combos & inline reset chasers
+│   ├── imgui_badges.h                # Status badges, pills, unary annunciators & <kbd>
+│   ├── imgui_popup_menus.h           # Directional popups (AboveItem) & SelectPulldown
+│   ├── imgui_toggle_buttons.h        # Tactile animated physical toggle switches
+│   ├── imgui_spinners.h              # Procedural radar sweeps & radial countdown timers
+│   ├── imgui_clickable_links.h       # OS hand cursor links (ButtonLink, TextLink)
+│   ├── imgui_copy_button.h           # Clipboard copy buttons with vector icons & feedback
+│   └── imgui_file_dialog.h           # Non-blocking modal-free in-viewport file dialogs
+└── themes/                           # Curated Studio & Cockpit Palettes
+    ├── README.md                     # Theme Palettes Overview
+    ├── includes.h                    # Themes Roll-Up Header
+    └── imgui_styles.h                # StyleColorsCharcoal(), StyleColorsRusty(), ApplyDefaultTheme()
 ```
 
 ---
 
 ## ⚙️ Configuration Reference: Opt-Out Flags
 
-Every feature in ImGee is enabled by default. To disable specific components, define any of the following macros *before* including `imgee.h`:
+Every feature in ImGee is enabled by default. To exclude specific components, define any of the following macros *before* including `imgee.h`:
 
 | Macro Directive | Description |
 | :--- | :--- |
 | **`IMGEE_DISABLE_ALL`** | Disables the entire ImGee suite. |
-| **`IMGEE_DISABLE_EXTENSIONS`** | Excludes all extensions (`TimedTooltip`, `Markdown`, `Typography`). |
-| **`IMGEE_DISABLE_WIDGETS`** | Excludes all flight-deck widgets in `widgets/`. |
+| **`IMGEE_DISABLE_EXTENSIONS`** | Excludes all extensions (`TimedTooltip`, `Markdown`, `Typography`, `Viewport`, `DocViewer`). |
+| **`IMGEE_DISABLE_WIDGETS`** | Excludes all immediate-mode widgets in `widgets/`. |
 | **`IMGEE_DISABLE_THEMES`** | Excludes curated palettes in `themes/`. |
 | **`IMGEE_DISABLE_TIMED_TOOLTIP`** | Excludes stationary delayed tooltip engine. |
 | **`IMGEE_DISABLE_MARKDOWN`** | Excludes Markdown parser, GFM tables, and callouts. |
 | **`IMGEE_DISABLE_TYPOGRAPHY`** | Excludes `ImFontRole` and `ImGui::StyledText`. |
+| **`IMGEE_DISABLE_ZOOMABLE_VIEWPORT`** | Excludes `ZoomableViewportState` and `BeginZoomedViewport` / `EndZoomedViewport`. |
+| **`IMGEE_DISABLE_DOC_VIEWER`** | Excludes `DocumentViewer`, `DocumentViewerState`, and `ParseMarkdownToc`. |
 | **`IMGEE_DISABLE_ICONS`** | Excludes procedural vector icon engine and `ImGui::Icon`. |
 | **`IMGEE_DISABLE_ICON_BUTTON`** | Excludes `IconButton` and `ButtonIcon` push buttons. |
 | **`IMGEE_DISABLE_KNOBS`** | Excludes avionics rotary knobs, dials, and detents. |

@@ -50,15 +50,16 @@ Every component within ImGee is delivered strictly as a **single, self-contained
 ImGee separates its code into two distinct architectural categories:
 
 ### 2.1 Flagship Extensions (`extensions/`)
-Extensions are feature-complete, heavyweight subsystems that solve deep architectural limitations of stock Dear ImGui. Unlike simple widgets, extensions maintain internal or frame-to-frame state, manage timing delays, parse complex syntax trees, or manage font registries.
+Extensions are feature-complete subsystems that solve deep architectural limitations of stock Dear ImGui. Unlike simple widgets, extensions maintain frame-to-frame state, manage timing delays, parse CommonMark/GFM syntax, manage semantic font registries, or isolate content zoom:
 
-ImGee provides **three flagship extensions** that form the core value of the package:
-* **`TimedTooltip` (`imgui_tooltip_ext.h`):** Replaces volatile, cursor-following vanilla `ImGui::SetTooltip()` with stationary, delay-timed tooltips featuring intelligent display boundary clamping, cursor avoidance, and low-water scroll dismissal.
-* **`Markdown` (`imgui_markdown_ext.h`):** Replaces flat plain ASCII with interactive CommonMark, full GFM tables with tristate column sorting and drag-resizing, parameterized styling tags (`<badge>`, `<pill>`, `<icon>`), and custom vector button faces (`ButtonMD`).
+* **`TimedTooltip` (`imgui_tooltip_ext.h`):** Replaces volatile, cursor-following vanilla `ImGui::SetTooltip()` with stationary, delay-timed tooltips featuring display boundary clamping, cursor preservation, click-to-toggle support, and wheel-scroll dismissal.
+* **`Markdown` (`imgui_markdown_ext.h`):** Replaces flat plain ASCII with interactive CommonMark, full GFM tables with tristate column sorting and drag-resizing, GFM callouts (`> [!NOTE]` .. `[!CAUTION]`), 3-tier images with text-wrapping floats and same-context lightboxes, parameterized styling tags (`<badge>`, `<pill>`, `<icon>`), and `ButtonMD`.
 * **`Typography` (`imgui_font_roles.h` & `imgui_styled_text.h`):** A 9-slot semantic font role registry (`ImFontRole`), RAII scoped font guards (`ScopedFontRole`), and the `StyledText` engine for inline baseline-aligned sizing with zero Markdown document overhead.
+* **`Viewport` (`imgui_zoomable_viewport.h`):** Two-layer `BeginZoomedViewport` / `EndZoomedViewport` container keeping window chrome at crisp `1.0x` while zooming scrollable inner content across `50%..250%`.
+* **`DocViewer` (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` combining `BeginZoomedViewport` and `MarkdownExt` with an auto-parsed ATX TOC section jumper, `#heading-slug` navigation, zero-shift HUD opacity slider, and 5-preset theme picker.
 
 > [!IMPORTANT]
-> **The Flagship Core:** We consider `TimedTooltip`, `Markdown`, and `Typography` the **flagship foundation** of the entire ImGee suite. We strongly believe every flight simulation plugin should use these modern subsystems instead of the stock or open-source versions from which they derive.
+> **The Flagship Core:** `TimedTooltip`, `Markdown`, and `Typography` form the foundational triad of the ImGee suite, while `Viewport` and `DocViewer` build directly on top of them for turnkey in-app manuals and checklists.
 
 ### 2.2 Cockpit & Avionics Widgets (`widgets/`) & Curated Themes (`themes/`)
 Widgets are lightweight, zero-dependency, immediate-mode flight-deck controls (`imgui_knobs.h`, `imgui_toggle_buttons.h`, `imgui_mouse_wheel_controls.h`, `imgui_badges.h`, `imgui_popup_menus.h`, `imgui_file_dialog.h`, `imgui_spinners.h`, etc.), paired with curated studio and cockpit color palettes (`themes/imgui_styles.h`). They hook directly into Dear ImGui's ambient context (`GImGui`, ID stack, `ImGuiStorage`, and active window draw lists) and live directly in the root `ImGui::` namespace to feel completely native.
@@ -195,18 +196,19 @@ To guide developers through the suite, this manual is structured into dedicated,
 
 * **Part I: Flagship Extensions Suite**
   * **[TimedTooltip Extension](#7-flagship-extension-stationary-timed-tooltips-imgui_tooltip_exth)**: Stationary delayed tooltips, screen-edge clamping, and scroll dismissal.
-  * **[Markdown Extension](#8-flagship-extension-rich-markdown-engine--gfm-tables-imgui_markdown_exth)**: CommonMark rendering, GFM tables with tristate sorting and drag-resizing, 3-tier images, and custom tags.
-  * **[Typography Extension](#9-foundation-extension-semantic-typography--font-roles-imgui_font_rolesh--imgui_styled_texth)**: `ImFontRole` 9-slot registry, scoped font guards, and baseline-aligned `StyledText`.
+  * **[Markdown Extension](#8-flagship-extension-rich-markdown-engine--gfm-tables-imgui_markdown_exth)**: CommonMark rendering, GFM tables & callouts, 3-tier floated/lightbox images, and custom tags.
+  * **[Typography & DocumentViewer](#9-foundation-extension-semantic-typography--font-roles-imgui_font_rolesh--imgui_styled_texth)**: `ImFontRole` 9-slot registry, baseline-aligned `StyledText`, and standalone `ImGui::DocumentViewer`.
 * **Part II: Cockpit Widgets & Themes Catalog**
   * **[Procedural Vector Icons](#101-procedural-vector-icon-engine--glyphs-imgui_iconsh)**: Zero-texture vector engine and `IconButton` / `ButtonIcon`.
   * **[Avionics Rotary Knobs](#102-avionics-rotary-knobs--dimmer-dials-imgui_knobsh)**: 270° potentiometers with ticks, readout, 2-step `OFF` detents, and 1-click reset.
   * **[Mouse-Wheel Sliders with Reset](#103-mouse-wheel-sliders--reset-chasers-imgui_mouse_wheel_controlsh)**: Sliders and combos with natural wheel stepping and 1-click Reset-with-Undo.
   * **[Status Badges & Pills](#104-badges-pills--annunciators-imgui_badgesh)**: Badges, pills, named-icon annunciators (`PillNamed`), and `<kbd>` keycaps.
-  * **[Tactile Animated Toggles](#105-tactile-animated-toggle-switches-imgui_toggle_buttonsh)**: Cockpit rocker switches with dual-state tooltips.
+  * **[Tactile Animated Toggles](#105-tactile-animated-toggle-switches-imgui_toggle_buttonsh)**: Cockpit rocker switches and segmented dual toggles with per-state tooltips.
   * **[Radar Spinners & Countdown Dials](#106-procedural-activity-spinners--countdown-dials-imgui_spinnersh)**: Activity spinners and approach countdown timers.
   * **[Directional Popups & SelectPulldown](#107-directional-popups-item-anchoring--selectpulldown-imgui_popup_menush)**: Directional blossoming popups, headroom queries, and 1-line dataref selectors with Lens UI.
-  * **[In-Cockpit File Dialogs & Pickers](#108-in-cockpit-file-dialogs--toolbar-pickers-imgui_file_dialogh)**: Non-blocking VR-safe `OpenFileDialog`, `SaveFileDialog`, and inline `FilePickerCombo`.
-  * **[Curated Studio & Cockpit Themes](#109-curated-studio--cockpit-themes-imgui_stylesh)**: Turnkey `Charcoal` and `Rusty` palettes replacing Dear ImGui's stock neon blue.
+  * **[Clickable Links & Copy Buttons](#108-clickable-links-cursor-affordances--copy-buttons-imgui_clickable_linksh--imgui_copy_buttonh)**: Active `Hand` cursor wrappers, click-to-toggle tooltips, and anti-twitch clipboard buttons.
+  * **[In-Cockpit File Dialogs & Pickers](#109-in-cockpit-file-dialogs--toolbar-pickers-imgui_file_dialogh)**: Non-blocking VR-safe `OpenFileDialog`, `SaveFileDialog`, and inline `FilePickerCombo`.
+  * **[Curated Studio & Cockpit Themes](#1010-curated-studio--cockpit-themes-themesimgui_stylesh)**: Turnkey `Charcoal` and `Rusty` palettes replacing Dear ImGui's stock neon blue.
 * **Part III: Reference & Standards**
   * **[Appendix A: Preprocessor Opt-Out Configuration](#appendix-a-preprocessor-opt-out-configuration--build-matrix)**: Granular `IMGEE_DISABLE_*` switches for binary size and symbol isolation.
   * **Companion Standard: [The ImGee UX Design Manifesto](ImGee_UX_Design_Manifesto.md)** (`ImGee_UX_Design_Manifesto.pdf`): Canonical human factors and interaction engineering tenets.
@@ -232,6 +234,9 @@ ImGui::TimedTooltip::TextMD(
 ```
 
 ### Key Tooltip Affordances:
+
+<img src="images/fig_timed_tooltips.png" align="right" width="385" alt="Stationary TimedTooltip with dwell delay and embedded status pills"/>
+
 * **Initial Dwell Delay:** Prevents accidental popup flashing while sweeping the mouse across busy cockpit panels.
 * **Stationary Anchor:** Freezes in position once visible, allowing effortless, relaxed reading.
 * **Smart Screen Clamping:** Automatically nudges inside the simulator or host window boundaries.
@@ -239,7 +244,7 @@ ImGui::TimedTooltip::TextMD(
 * **Base-Font Isolation:** When `TooltipConfig::font` is left `nullptr`, tooltips automatically resolve the base UI font (`ImFontRole::Regular`, `io.FontDefault`, or `io.Fonts->Fonts[0]`) during both pre-measurement and rendering -- so calling `TimedTooltip` inside a compact caller `PushFont(...)` scope never shrinks body text relative to inline bold, italic, or monospace spans.
 * **Font Scaling & Damped Compression:** Automatically dampens font zoom (using a non-linear curve with a 0.90f floor and 1.65f ceiling) so tooltips stay readable without ballooning into unwieldy screen-filling rectangles on ultra-wide or 4K monitors.
 
-![Stationary Timed Tooltip: Anti-jitter hover tooltip with dwell timeout and embedded status pills](images/fig_timed_tooltips.png)
+<br clear="all"/>
 
 ---
 
@@ -280,7 +285,25 @@ ImGui::Markdown::Text(doc);
 
 ![Fenced Code Containers: Shaded charcoal blocks with language chips and 1-click clipboard copy](images/fig_code_blocks.png)
 
-### 8.1 Declarative Semantic Style Tags & Macro Aliases
+### 8.1 Blockquotes, GFM Callout Cards & Text-Wrapping Image Floats
+
+Standard CommonMark `> ...` blockquotes and all five GitHub-Flavored Markdown alerts (`> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]`, `> [!CAUTION]`) render with zero-font procedural vector icons and a splitter-free `ImDrawList` underlay -- allowing callout cards to contain fenced code blocks, GFM tables, and nested quotes freely:
+
+![GFM Alert Callout Cards: All five callout variants with procedural vector icons and tinted underlays](images/fig_callout_cards.png)
+
+For illustrated manuals and checklists, images float left or right with true mid-paragraph text reflow via either Markdown modifiers (`float=right` / `float=left`) or standard GitHub/HTML `<img src="..." align="right" width="380" alt="..."/>` tags (paired with `<br clear="all"/>` when clearing past a tall card early):
+
+```markdown
+<img src="images/afds_envelope.png" align="right" width="360" alt="Normal-law flight envelope"/>
+
+Under **Normal Law**, redundant air-data inertial reference units continuously monitor load factor and airspeed...
+
+<br clear="all"/>
+```
+
+![Text-Wrapping Image Floats & Figure Captions: Mid-paragraph reflow around a floated schematic with lightbox affordance](images/fig_markdown_floats_captions.png)
+
+### 8.2 Declarative Semantic Style Tags & Macro Aliases
 
 Rather than writing verbose C++ code or nesting raw push/pop color commands, developers can define custom semantic Markdown tags dynamically during plugin startup:
 
@@ -383,8 +406,12 @@ ImGui::StyledText("Status: <pill #2ecc71>%s</pill> | VOR: <mono>%s</mono>",
 ImGui::StyledTextUnformatted(bufStart, bufEnd);
 ```
 
+![Semantic Typography & Inline StyledText: Font role hierarchy, baseline-aligned badges and pills, keycaps, and vector icons](images/fig_typography_styled_text.png)
+
 ### 9.3 Standalone Markdown Document Viewer (`extensions/DocViewer/imgui_doc_viewer.h`)
 When your plugin or desktop application includes a user manual, aircraft checklist, or interactive reference guide, `ImGui::DocumentViewer` provides a complete, zero-boilerplate viewer built on top of `BeginZoomedViewport` and `MarkdownExt`:
+
+![Standalone Markdown DocumentViewer: Two-row 1.0x header chrome, section-jump pulldown, opacity and theme controls, and zoomed Markdown body](images/fig_doc_viewer.png)
 
 * **Two-Row `1.0x` Header Chrome:** Keeps the responsive title, repeating `[-]` / `[+]` zoom steppers, mouse-wheel `Zoom` slider (`50%..250%`), 1-click A/B zoom reset/undo (`↺` / `↻`), Table-of-Contents `SelectPulldown`, zero-shift `Opacity:` + `Transparent` HUD controls, and 5-preset `Theme:` picker (`Charcoal`, `Rusty`, `ImGui Dark`, `ImGui Classic`, `ImGui Light`) crisp at `1.0x` scale while zooming document prose independently.
 * **Automatic Section Jump & `#heading-slug` Links:** Scans `#`, `##`, and `###` ATX headings (skipping fenced code blocks and blockquotes) into the Row 2 TOC pulldown and intercepts internal `[Jump](#section-slug)` links to scroll directly to the matching section.
@@ -412,30 +439,16 @@ Standard Dear ImGui controls are built for developer tools and debug menus. ImGe
 
 ### 10.1 Procedural Vector Icon Engine & Glyphs (`imgui_icons.h`)
 
-Standard Dear ImGui plugins often suffer from missing glyphs when attempting to display symbols like reset arrows (`↺`), sort carets (`▲`, `▼`), checkmarks (`✓`), gears (`⚙`), or airplanes (`✈`). 
+<img src="images/fig_vector_icons.png" align="right" width="385" alt="Procedural Vector Icons, IconButton, and ButtonIcon"/>
 
-ImGee includes a **zero-texture, zero-font procedural vector engine** (`imgui_icons.h`). It submits antialiased geometric primitives (lines, arcs, bezier curves, triangles) directly to Dear ImGui's active `ImDrawList`.
+Standard Dear ImGui plugins often suffer from missing glyphs when attempting to display symbols like reset arrows (`↺`), sort carets (`▲`, `▼`), checkmarks (`✓`), gears (`⚙`), or airplanes (`✈`).
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                 ImGui::Icon("name", size)                   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                ┌──────────────┴──────────────┐
-                ▼                             ▼
-       Has Font / Texture?          Missing from Font?
-                │                             │
-    ┌───────────┴───────────┐                 │
-    ▼                       ▼                 ▼
-┌─────────────────┐     ┌─────────────────┐ ┌─────────────────┐
-│ Custom Texture  │     │ Icon Font Glyph │ │ Vector Engine   │
-│ (Memory Image)  │     │ (FontAtlas)     │ │ (100% Batched   │
-│                 │     │                 │ │  ImDrawList)    │
-└─────────────────┘     └─────────────────┘ └─────────────────┘
-```
+ImGee includes a **zero-texture, zero-font procedural vector engine** (`imgui_icons.h`) that submits antialiased geometric primitives (lines, arcs, bezier curves, and triangles) directly to Dear ImGui's active `ImDrawList` whenever a custom texture or icon-font glyph is not registered.
+
+<br clear="all"/>
 
 #### Vector Push-Buttons: `IconButton` & `ButtonIcon`
-ImGee provides turnkey button helpers that render procedural vector icons without font dependencies:
+Turnkey button helpers render procedural vector icons with `Hand` cursor feedback and optional `TimedTooltip`s:
 
 ```cpp
 // 1. Square Icon-Only Button with native hand cursor and tooltip
@@ -443,18 +456,14 @@ if (ImGui::IconButton("##ResetHdg", "undo", ImVec2(0, 0), "Reset Heading to 360�
     s_Heading = 360.0f;
 }
 
-// 2. Icon + Text Button (Icon on Left)
+// 2. Icon + Text Button (Icon on Left or Right)
 if (ImGui::ButtonIcon("Settings", "gear")) {
     OpenSettingsDialog();
 }
-
-// 3. Text + Icon Button (Icon on Right)
 if (ImGui::ButtonIcon("Next Waypoint", "caret-right", ImVec2(160, 0), /*icon_on_right=*/true)) {
     AdvanceWaypoint();
 }
 ```
-
-![Procedural Vector Icons: Aircraft enroute symbols, checks, gears, and Unicode rescues in live telemetry](images/fig_vector_icons.png)
 
 ---
 
@@ -505,7 +514,7 @@ ImGee solves this with **Inline 1-Click Restore-to-Default Chasers** (with autom
 static float s_Gamma = 2.2f;
 static const float s_DefaultGamma = 2.2f;
 
-// Renders slider with natural mouse-wheel stepping and an abutting ↺ / ↻ button.
+// Renders slider with natural mouse-wheel stepping and an abutting Reset/Undo button.
 // Clicking resets to s_DefaultGamma; clicking again swaps back to your previous value!
 ImGui::SliderWithReset("Display Gamma", &s_Gamma, s_DefaultGamma, 1.0f, 3.0f, "%.2f");
 ```
@@ -516,60 +525,67 @@ ImGui::SliderWithReset("Display Gamma", &s_Gamma, s_DefaultGamma, 1.0f, 3.0f, "%
 
 ### 10.4 Badges, Pills & Annunciators (`imgui_badges.h`)
 
-Avionics interfaces require prominent visual annunciations for modes, cautions, and operational states:
+<img src="images/fig_pills_and_badges.png" align="left" width="380" alt="Status Badges, Pills, PillNamed, and 3D Kbd keycaps"/>
+
+Avionics interfaces need clear, glanceable annunciations for modes, cautions, and operational states without running a full Markdown parser:
+
+* **Auto-Contrasting Capsules (`Badge` / `Pill`):** Computes ITU-R BT.601 luminance of the background color and chooses crisp dark or white text automatically while centering glyphs on the TrueType baseline.
+* **Icon Annunciators & Keycaps (`PillNamed` / `Kbd`):** Combines procedural vector icons (or named memory textures) with status capsules, alongside 3D beveled `<kbd>` shortcut chips.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Standard Status Pill (auto-selects high-contrast dark/light foreground text)
 ImGui::Pill("ONLINE", ImVec4(0.1f, 0.8f, 0.3f, 1.0f));
-
-// 2. Icon + Text Capsule or Unary Annunciator (using vector icon name or registered texture)
+ImGui::SameLine();
 ImGui::PillNamed("plane", "AP ENG", ImVec4(0.2f, 0.6f, 1.0f, 1.0f));
 ImGui::SameLine();
-ImGui::PillNamed("warning", ImVec4(0.9f, 0.3f, 0.2f, 1.0f)); // Icon-only unary capsule
-
-// 3. Keyboard Shortcut Keycap
-ImGui::Text("AP Disconnect:");
-ImGui::SameLine();
-ImGui::Kbd("Z");
+ImGui::Kbd("Ctrl+Z");
 ```
-
-![Status Pills and Badges: Modern status indicators, annunciators, and keycaps](images/fig_pills_and_badges.png)
 
 ---
 
 ### 10.5 Tactile Animated Toggle Switches (`imgui_toggle_buttons.h`)
 
-Replaces desktop form checkboxes with physical cockpit toggles featuring smooth thumb slide animations:
+<img src="images/fig_toggle_switches.png" align="right" width="375" alt="Animated ToggleButton and segmented ToggleButtons"/>
+
+Replaces desktop form checkboxes with smooth, `io.DeltaTime`-animated rocker switches (`ToggleButton`) and joined two-way mode selectors (`ToggleButtons`):
+
+* **Clamped Wheel & Per-State Tooltips:** Spinning the mouse wheel over the switch track toggles state cleanly without wrapping, while hovering the label lets scrollable parent panels scroll undisturbed. Optional `(off_tooltip, on_tooltip)` strings attach state-aware `TimedTooltip`s directly.
+
+<br clear="all"/>
 
 ```cpp
 static bool s_StrobeLights = true;
-if (ImGui::ToggleButton("Strobe Lights", &s_StrobeLights)) {
+if (ImGui::ToggleButton("Strobe Lights", &s_StrobeLights,
+                        "Strobes are **OFF**.", "Strobes are **ON**.")) {
     UpdateElectricalBus();
 }
 ```
-
-![Tactile Animated Toggle Switches: Dual-state rocker toggles with inline status pill](images/fig_toggle_switches.png)
 
 ---
 
 ### 10.6 Procedural Activity Spinners & Countdown Dials (`imgui_spinners.h`)
 
-Procedural radar sweeps and radial timers for approach fixes:
+<img src="images/fig_spinners_and_dials.png" align="right" width="385" alt="Activity Spinners, ProgressDial, and CountdownTimer dials"/>
+
+Antialiased `ImDrawList` activity spinners, progress rings, and 12-o'clock radial countdown timers with zero texture assets and built-in click-to-toggle `TimedTooltip` support:
+
+* **Ambient Font Scaling:** Passing `radius = 0.0f` scales stroke thickness and diameter automatically with `ImGui::GetFontSize()`.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Radar Spinner (Indicates active datalink connection)
-ImGui::Spinner("##RadarSweep", 12.0f, 2.5f, IM_COL32(59, 130, 246, 255));
-
-// 2. Radial Timer (Approach countdown)
-static float s_LegFraction = 0.65f;
+ImGui::Spinner("Syncing datalink...");
 ImGui::RadialTimer("Approach Leg", s_LegFraction, 14.0f, 3.0f, IM_COL32(234, 179, 8, 255));
 ```
 
-![Procedural Activity Spinners: Radar spinners, fuel burn gauges, and approach countdown timers](images/fig_spinners_and_dials.png)
+---
 
 ### 10.7 Directional Popups, Item Anchoring & SelectPulldown (`imgui_popup_menus.h`)
 
 Provides precision item-anchored popup placement, upward blossoming for bottom-docked status bars, and compact 1-line dataref selectors with Lens UI mouse-wheel interaction:
+
+![Directional Anchored Popups & SelectPulldown: Scroll pass-through when closed and live wheel stepping when open](images/fig_popup_menus.png)
 
 * **Item-Anchored Popups (`OpenPopupAtItem` & `BeginAnchoredPopup`)**:
   Positions dropdowns relative to the preceding item's bounding box (`GetItemRectMin`/`Max`). Supports `ImGuiPopupAnchor_BelowItem` (standard dropdown) or `ImGuiPopupAnchor_AboveItem` (blossoms upward for bottom bars and docks) with font-scale invariance and muscle-memory toggle protection.
@@ -577,30 +593,46 @@ Provides precision item-anchored popup placement, upward blossoming for bottom-d
   - **Scroll Pass-Through When Closed**: Ignores mouse-wheel events while closed so parent scrollable windows never accidentally change settings during scroll navigation.
   - **"Lens UI" Selection-Latched Tooltips**: When spinning the mouse wheel inside an open pulldown menu, per-item tooltips dynamically latch onto the newly selected item (`*current_item`) instead of remaining frozen over whichever row the stationary cursor rests on. Deliberate mouse movement (`> 6 px`) cleanly breaks the latch and reverts to standard spatial hover.
   - **Predictable Wheel Stepping & Circular Wrapping**: Supports optional `bool wrap = false` and `bool natural_list_order = true` parameters. When `wrap = true`, spinning past boundaries wraps smoothly; `natural_list_order = true` increments down the list on downward wheel rotation (`clicks < 0.0f`).
-  - **Automatic Focus & Scroll-Into-View**: Navigated items receive `SetItemDefaultFocus()` and scroll into view (`SetScrollHereY()`) in tall menus.
-  - **Dynamic Cursor Cues**: Hand cursor (`ImGuiMouseCursor_Hand`) on trigger button, resize cursor (`ImGuiMouseCursor_ResizeNS`) over open options.
-  - **Rich Markdown Tooltip Aliases**: Call `ImGui::SelectPulldownMD(...)` or `ImGui::MD::SelectPulldown(...)` with rich Markdown tooltips (`TimedTooltip::MD::TextProxy`).
+  - **Dynamic Cursor Cues & Caret Clipping**: Shows `ImGuiMouseCursor_Hand` when closed, switches to `ImGuiMouseCursor_ResizeNS` across both the open list and opener button while stepping, and clips long preview labels cleanly before the right-docked vector caret.
 
 ```cpp
-// 1. Standard Downward Pulldown with Lens UI tooltips and circular wrap:
 static int s_SelectedCam = 1;
 const char* const kCamModes[] = { "Circle", "Spot", "Tower", "Cockpit" };
 const char* const kCamTips[]  = { "**Circle**\nFollow aircraft", "**Spot**\nFixed distance chase", "**Tower**\nAirport tower view", "**Cockpit**\nPilot 3D cockpit" };
-if (ImGui::SelectPulldownMD("##CameraMode", &s_SelectedCam, kCamModes, 4, kCamTips, 130.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true /* wrap */)) {
+if (ImGui::SelectPulldownMD("##CameraMode", &s_SelectedCam, kCamModes, 4, kCamTips, 150.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true /* wrap */)) {
     UpdateCamera(s_SelectedCam);
-}
-
-// 2. Upward Blossoming Pulldown (Status Bars & Bottom Docks):
-static int s_PowerMode = 0;
-const char* const kPowerModes[] = { "Battery", "APU", "External Power" };
-if (ImGui::SelectPulldown("##PowerMode", &s_PowerMode, kPowerModes, 3, nullptr, 140.0f, ImGuiPopupAnchor_AboveItem)) {
-    UpdatePowerSource(s_PowerMode);
 }
 ```
 
 ---
 
-### 10.8 In-Cockpit File Dialogs & Toolbar Pickers (`imgui_file_dialog.h`)
+### 10.8 Clickable Links, Cursor Affordances & Copy Buttons (`imgui_clickable_links.h` & `imgui_copy_button.h`)
+
+<img src="images/fig_clickable_links.png" align="right" width="380" alt="ButtonLink, TextLink, CheckboxLink, and RadioButtonLink with Hand cursor"/>
+
+Stock Dear ImGui leaves interactive buttons, checkboxes, and clickable labels on an inert `Arrow` cursor. `imgui_clickable_links.h` supplies drop-in `*Link` wrappers (`ButtonLink`, `TextLink`, `CheckboxLink`, `RadioButtonLink`, `MenuItemLink`) that set `ImGuiMouseCursor_Hand` automatically and return `LinkClickResult` -- executing actions when tested inside `if (...)`, or toggling a trailing `TimedTooltip` ON/OFF when called as a standalone info link.
+
+<br clear="all"/>
+
+<img src="images/fig_copy_button.png" align="left" width="380" alt="CopyButton and CopyLastItemButton with transient Copied! state"/>
+
+Alongside them, `imgui_copy_button.h` provides anti-twitch clipboard buttons (`CopyButton` for explicit buffers and `CopyLastItemButton` as an automatic chaser behind `InputText`) with procedural vector icons and `1.5s` transient `"Copied!"` confirmation.
+
+<br clear="all"/>
+
+```cpp
+if (ImGui::ButtonLink("Save Route")) SaveRoute();
+ImGui::TextLinkUnformatted("(i) Scroll-wheel tip");
+ImGui::TimedTooltip::TextMD("Click any `(i)` label to toggle its help card immediately.");
+
+ImGui::InputText("ICAO Route", s_RouteBuf, sizeof(s_RouteBuf));
+ImGui::SameLine();
+ImGui::CopyLastItemButton("##copy_icao_route");
+```
+
+---
+
+### 10.9 In-Cockpit File Dialogs & Toolbar Pickers (`imgui_file_dialog.h`)
 
 Native OS file dialogs block the main render thread, stall Vulkan/Metal drivers, and are invisible inside VR headsets. ImGee provides pure C++11, non-blocking, in-viewport file browsers using native POSIX (`opendir`/`readdir`) and Win32 (`FindFirstFileW`) APIs with zero shell/console spawning:
 
@@ -614,15 +646,17 @@ if (ImGui::FilePickerCombo("Checklist", &s_ActiveChecklist, "Resources/checklist
 // 2. Full in-window Open / Save modals (with breadcrumb bar, search filter & overwrite guard):
 static bool s_ShowOpen = false;
 static std::string s_ChosenPath;
-if (ImGui::Button("Load Flight Plan...")) s_ShowOpen = true;
+if (ImGui::ButtonLink("Load Flight Plan...")) s_ShowOpen = true;
 if (ImGui::OpenFileDialog("Select Flight Plan", &s_ShowOpen, &s_ChosenPath, "Output/FMS plans", ".fms;.pln")) {
     ImportFlightPlan(s_ChosenPath);
 }
 ```
 
+![Non-Blocking In-Viewport File Dialogs & FilePickerCombo](images/fig_file_dialog.png)
+
 ---
 
-### 10.9 Curated Studio & Cockpit Themes (`themes/imgui_styles.h`)
+### 10.10 Curated Studio & Cockpit Themes (`themes/imgui_styles.h`)
 
 Stock `ImGui::StyleColorsDark()` uses a harsh 2015 electric-blue developer palette. ImGee includes refined, high-contrast palettes engineered for legible cockpit typography:
 
@@ -631,6 +665,8 @@ ImGui::ApplyDefaultTheme();   // Applies Charcoal Slate (canonical ImGee default
 ImGui::StyleColorsCharcoal(); // Understated studio graphite & cool platinum accents
 ImGui::StyleColorsRusty();    // Warm aviation bronze / terracotta with ivory text
 ```
+
+![Curated Themes Comparison: Charcoal Slate default and Rusty Aviation Bronze side-by-side](images/fig_themes_comparison.png)
 
 ---
 

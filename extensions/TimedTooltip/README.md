@@ -11,6 +11,8 @@ Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, o
 
 ## Key Features
 
+<img src="../../docs/images/fig_timed_tooltips.png" align="right" width="390" alt="Stationary TimedTooltip with dwell delay and embedded status pills"/>
+
 * **Configurable Delay & Lifetime:**
   * **Low Watermark (Hover Delay):** Prevents tooltip spam by waiting for the user to pause over a widget before showing.
   * **Active Input Low-Water Reset:** Spinning the mouse wheel (`io.MouseWheel` / `io.MouseWheelH`) or dragging (`IsMouseDragging`) over any widget immediately slams the hover timer back to 0 and dismisses any active tooltip, preventing tooltips from popping up or obstructing adjustments during continuous wheel scrolling or slider interaction.
@@ -33,6 +35,8 @@ Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, o
 * **Plain Text & Markdown Support (Order-Independent):**
   * Native auto-wrapping plain-text via `Text(...)`, single-line non-wrapping plain-text via `TextUnformatted(...)`, rich auto-wrapping Markdown via `TextMD(...)`, and single-line non-wrapping Markdown via `TextUnformattedMD(...)`.
   * `imgui_tooltip_ext.h` and `imgui_markdown_ext.h` can be `#include`d in **either order** and the `TextMD` / `TextUnformattedMD` bridge is synthesized automatically.
+
+<br clear="all"/>
 
 ---
 

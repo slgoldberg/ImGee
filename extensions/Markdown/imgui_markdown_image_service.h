@@ -641,6 +641,7 @@ struct MarkdownImageModifiers {
     std::string alt_text;
     int lightbox_mode = 0;        // 0 = default, 1 = force enable, -1 = force disable (nolightbox)
     ImGui::MarkdownImageFloat float_mode = ImGui::MarkdownImageFloat::None;
+    bool has_explicit_float = false;
     float float_gap_x = -1.0f;
     float float_gap_y = -1.0f;
 };
@@ -816,23 +817,29 @@ inline bool ApplySingleMarkdownImageModifier(MarkdownImageModifiers& mods, const
     // Text-wrapping image floats: float=left|right, float-left|right, wrap=left|right, gap=..., margin=...
     if (!has_eq && (key == "float-left" || key == "float_left" || key == "wrap-left" || key == "wrap_left")) {
         mods.float_mode = ImGui::MarkdownImageFloat::Left;
+        mods.has_explicit_float = true;
         return true;
     }
     if (!has_eq && (key == "float-right" || key == "float_right" || key == "wrap-right" || key == "wrap_right")) {
         mods.float_mode = ImGui::MarkdownImageFloat::Right;
+        mods.has_explicit_float = true;
         return true;
     }
     if (!has_eq && (key == "nofloat" || key == "no-float" || key == "no_float" || key == "nowrap" || key == "no-wrap")) {
         mods.float_mode = ImGui::MarkdownImageFloat::None;
+        mods.has_explicit_float = true;
         return true;
     }
     if (key == "float" || key == "wrap") {
         if (vlow == "left") {
             mods.float_mode = ImGui::MarkdownImageFloat::Left;
+            mods.has_explicit_float = true;
         } else if (vlow == "right") {
             mods.float_mode = ImGui::MarkdownImageFloat::Right;
+            mods.has_explicit_float = true;
         } else if (vlow == "none" || vlow == "off" || vlow == "false" || vlow == "0") {
             mods.float_mode = ImGui::MarkdownImageFloat::None;
+            mods.has_explicit_float = true;
         }
         return true;
     }
@@ -926,9 +933,18 @@ inline MarkdownImageModifiers ParseMarkdownImageModifiers(const std::string& raw
     if (s.empty()) return mods;
 
     // 1. HTML <img ... /> attribute string containing "src=" (synthesized by imgui_markdown_ext.h)
-    size_t src_pos = s.find("src=");
+    const std::string s_low = LowerAsciiCopy(s);
+    size_t src_pos = s_low.find("src=");
     if (src_pos != std::string::npos && (src_pos == 0 || s[src_pos - 1] == ' ' || s[src_pos - 1] == '\t')) {
         ParseMarkdownImageModifierList(s, mods, true);
+        // Match HTML4 / GitHub GFM <img align="left|right"> float semantics unless explicitly overridden:
+        if (!mods.has_explicit_float) {
+            if (mods.align == ImGui::MarkdownImageAlign::Left) {
+                mods.float_mode = ImGui::MarkdownImageFloat::Left;
+            } else if (mods.align == ImGui::MarkdownImageAlign::Right) {
+                mods.float_mode = ImGui::MarkdownImageFloat::Right;
+            }
+        }
         return mods;
     }
 

@@ -2,32 +2,31 @@
 
 This directory contains lightweight, reusable, immediate-mode **Widgets** extending Dear ImGui as part of the **ImGee** UI toolkit.
 
-Unlike **Extensions** (which manage their own complex background subsystems, registries, and configuration structures), **Widgets** are self-contained immediate-mode controls. They hook directly into Dear ImGui's ambient context (`GImGui`, ID stack, `ImGuiStorage`, and window draw lists) and live directly in the root `ImGui::` namespace to feel completely native.
+Unlike **Extensions** (which manage stateful subsystems, syntax parsers, or font registries), **Widgets** are self-contained immediate-mode controls. They hook directly into Dear ImGui's ambient context (`GImGui`, ID stack, `ImGuiStorage`, and window draw lists) and live in the root `ImGui::` namespace so they read just like built-in controls.
 
 ---
 
 ## Architecture & Inclusion Strategy
 
 ### 1. Root `ImGui::` Namespacing
-All widgets in this directory are injected directly into `namespace ImGui { ... }`. You call `ImGui::Knob(...)`, `ImGui::ToggleButton(...)`, `ImGui::SliderWithReset(...)`, `ImGui::Badge(...)`, `ImGui::Icon(...)`, and `ImGui::SelectPulldown(...)` just like Dear ImGui's built-in `ImGui::Checkbox` or `ImGui::SliderFloat`.
+All widgets in this directory live directly inside `namespace ImGui { ... }`. You call `ImGui::Knob(...)`, `ImGui::ToggleButton(...)`, `ImGui::SliderWithReset(...)`, `ImGui::Badge(...)`, `ImGui::Icon(...)`, and `ImGui::SelectPulldown(...)` alongside standard `ImGui::Checkbox` or `ImGui::SliderFloat`.
 
 ### 2. Inclusion Models
 
 | Pattern | Usage | Benefit |
 | :--- | :--- | :--- |
-| **Master ImGee Suite (Recommended)** | `#include "imgee.h"` *(or `"ImgWindow/contrib/imgee.h"` via ImgWindow)* | Includes **all** ImGee extensions (`TimedTooltip`, `Markdown`, `Typography`), themes, and widgets in one line. |
+| **Master ImGee Suite (Recommended)** | `#include "imgee.h"` *(or `"ImgWindow/contrib/imgee.h"` via ImgWindow)* | Includes **all** ImGee extensions (`TimedTooltip`, `Markdown`, `Typography`, `Viewport`, `DocViewer`), themes, and widgets in one line. |
 | **ImGee Widgets Roll-Up** | `#include "widgets.h"` *(or `"ImGee/widgets.h"`)* | Instant access to the entire widget collection in one line. |
 | **A-la-Carte Widget** | `#include "widgets/imgui_knobs.h"` *(or `"ImGee/widgets/imgui_knobs.h"`)* | Include only the specific control family you need, in any include order. |
 
 #### Opt-Out Configuration Flags
-If your project defines a symbol with the same name, define any of the following `IMGEE_*` macros *before* including `imgee.h` (pre-v1.0 legacy opt-out macros remain honored automatically):
+Define any of the following `IMGEE_*` macros *before* including `imgee.h` if you want to exclude individual widget families (pre-v1.0 `CONTRIB_*` defines remain mapped automatically):
 
 ```cpp
 #define IMGEE_DISABLE_WIDGETS                 // Disables all ImGee widgets
 #define IMGEE_DISABLE_KNOBS                   // Disables avionics rotary knobs, dimmer dials & detents
-#define IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS    // Disables all wheel sliders, drags, cyclers & combos
+#define IMGEE_DISABLE_MOUSE_WHEEL_CONTROLS    // Disables wheel sliders, drags, cyclers & combos
 #define IMGEE_DISABLE_TOGGLE_BUTTONS          // Disables ToggleButton & ToggleButtons
-#define IMGEE_DISABLE_TOGGLE_MOUSE_WHEEL      // Disables mouse-wheel support on ToggleButton
 #define IMGEE_DISABLE_BADGES                  // Disables Badge, Pill, PillNamed & Kbd widgets
 #define IMGEE_DISABLE_POPUP_MENUS             // Disables SelectPulldown, OpenPopupAtItem & BeginAnchoredPopup
 #define IMGEE_DISABLE_ICONS                   // Disables procedural vector icon engine & ImGui::Icon
@@ -36,16 +35,6 @@ If your project defines a symbol with the same name, define any of the following
 #define IMGEE_DISABLE_SPINNERS                // Disables Spinner, RadialTimer & CountdownTimer
 #define IMGEE_DISABLE_COPY_BUTTON             // Disables CopyButton & CopyLastItemButton
 #define IMGEE_DISABLE_FILE_DIALOG             // Disables FilePickerCombo, OpenFileDialog & SaveFileDialog
-#define IMGEE_DISABLE_GET_MOUSE_WHEEL         // Disables GetMouseWheel* primitives
-#define IMGEE_DISABLE_ADJUST_MOUSE_WHEEL      // Disables AdjustItemOnMouseWheel()
-#define IMGEE_DISABLE_CYCLE_MOUSE_WHEEL       // Disables CycleItemOnMouseWheel()
-#define IMGEE_DISABLE_PERCENT_SLIDER          // Disables PercentSlider() & SliderPercent()
-#define IMGEE_DISABLE_MOUSE_WHEEL_COMBO       // Disables MouseWheelCombo & ComboWithReset
-
-// Optional runtime icon & chevron style customization (during startup):
-ImGui::SetDefaultResetButtonLabel(ICON_FA_UNDO, ICON_FA_REDO);            // Custom reset/restore icons (default: vector ↺ / ↻)
-ImGui::SetDefaultComboArrowStyle(ImGui::ComboArrowStyle_RightWhenClosed); // Combo chevron polarity
-ImGui::SetDefaultPulldownCaret(ICON_FA_CHEVRON_DOWN, ICON_FA_CHEVRON_UP); // Custom pulldown carets (default: vector ▼ / ▲)
 ```
 
 ---
@@ -54,611 +43,307 @@ ImGui::SetDefaultPulldownCaret(ICON_FA_CHEVRON_DOWN, ICON_FA_CHEVRON_UP); // Cus
 
 ### 1. Toggle Controls (`imgui_toggle_buttons.h`)
 
+<img src="../docs/images/fig_toggle_switches.png" align="right" width="380" alt="Animated ToggleButton rocker switches and segmented ToggleButtons"/>
+
 #### A. Animated Toggle Switch (`ImGui::ToggleButton`)
-A modern, iOS / Material-design rounded pill switch with a smoothly sliding circular thumb. Accepts both `bool*` and `int*` state variables.
+A rounded pill switch with a smooth `io.DeltaTime`-driven thumb animation stored per widget ID in `ImGuiStorage`. Accepts `bool*`, `int*`, `bool&`, or `int&` (`0` = Off, non-zero = On).
+
+* **Clamped Mouse-Wheel Support:** Rolling the scroll wheel up/right over the pill track turns it **On** and clamps there; rolling down/left turns it **Off** and clamps there. Hovering the text label ignores the wheel so parent panels scroll freely.
+* **Per-State Tooltips & DPI Scaling:** Accepts optional `(off_tooltip, on_tooltip)` strings (or a 2-element array) routed through `TimedTooltip`, scales automatically with ambient font size, and shows `ImGuiMouseCursor_Hand` on hover.
+
+<br clear="all"/>
 
 ```cpp
 static bool s_ExpertMode = false;
-static int  s_SmoothTransitions = 1;
+static bool s_HudActive  = true;
 
-// 1. Standard switch with clickable label on the right:
+// 1. Standard switch with clickable right-side label:
 ImGui::ToggleButton("Expert Mode", &s_ExpertMode);
 
-// 2. Direct reference syntax (no & required):
-ImGui::ToggleButton("Expert Mode", s_ExpertMode);
-
-// 3. Compact switch without visible label (uses ID only):
-ImGui::ToggleButton("##hud_switch", &s_HudActive);
-
-// 4. Direct dual-string per-state tooltips (Off tooltip, On tooltip):
+// 2. Per-state Markdown tooltips (Off tooltip, On tooltip):
 ImGui::ToggleButton("HUD Overlay", &s_HudActive,
-                    "HUD is currently **OFF**.\n- Click to enable overlay.",
-                    "HUD is currently **ON**.\n- Click to disable overlay.");
+                    "HUD is **OFF**. Click or scroll up to enable.",
+                    "HUD is **ON**. Click or scroll down to disable.");
 
-// 5. Array-based per-state tooltips ({ Off tooltip, On tooltip }):
-static const char* const kTransitionTooltips[] = {
-    "Smooth transitions are **OFF** (instant snap).\n- Click or scroll **up** on the switch to enable.",
-    "Smooth transitions are **ON** (animated).\n- Click or scroll **down** on the switch to disable."
-};
-ImGui::ToggleButton("Smooth Transitions", &s_SmoothTransitions, ImVec2(0, 0), kTransitionTooltips);
-
-// Optional: Customize switch active track & thumb colors globally:
-ImGui::SetDefaultToggleButtonColors(ImVec4(0.26f, 0.59f, 0.98f, 1.0f)); // Active track color
-// Or via ImU32:
+// Optional global active-track tint:
 ImGui::SetDefaultToggleButtonColors(IM_COL32(66, 150, 250, 255));
 ```
 
-* **Features:**
-  * Frame-rate independent sliding animation powered by `io.DeltaTime` and stored per-widget in `ImGuiStorage`.
-  * **Flexible Types & Syntax:** Accepts `bool*`, `int*`, `bool&`, or `int&` (`0` = Off, non-zero = On).
-  * **Global Theme Integration (`SetDefaultToggleButtonColors`):** Easily set the switch track/thumb colors globally via `ImVec4` or `ImU32`. Defaults to your theme's active highlight color (`ImGuiCol_ButtonActive`).
-  * **Built-In Clamped Mouse-Wheel Support (`allow_mouse_wheel = true`):** Spinning the scroll wheel up/right over the pill switch turns it **On** and clamps there; spinning down/left turns it **Off** and clamps there (never wraps). Hovering over the text label does *not* capture the mouse wheel, preventing accidental toggles when scrolling windows.
-  * **Per-State Tooltips:** Supports both direct dual-string parameters (`off_tooltip`, `on_tooltip`) and 2-element string arrays (`{ off_tooltip, on_tooltip }`) automatically rendered via `TimedTooltip::TextMDProxy` (or standard `SetTooltip` fallback).
-  * **Responsive Auto-Scaling:** Switch dimensions scale naturally with the ambient font size (0.78x ambient frame height for standard switches, 0.60x for compact switches), looking crisp on standard, Retina, and 4K displays, with support for explicit `ImVec2 size` overrides.
-  * Automatic hand pointer cursor (`ImGuiMouseCursor_Hand` by default, customizable via `hover_cursor` or `IMGUI_EXTRA_TOGGLE_DEFAULT_CURSOR`).
-
 #### B. Segmented Dual-Button Pair (`ImGui::ToggleButtons`)
-Joined side-by-side buttons for explicit binary selections (`Off` / `On`, `Solid Opaque` / `Glass Translucent`). Accepts both `int*` and `bool*`.
+Joined side-by-side buttons for explicit two-way mode choices (`Solid Opaque` / `Glass Translucent`). Supports an optional clickable right-side title (`"Surface Style##style_pair"`), clamped mouse-wheel toggling, and wheel-selection tooltip latching (`out_hovered_item`) when spinning the wheel over a stationary cursor.
 
 ```cpp
 static int s_WindowStyle = 0; // 0 = Solid Opaque, 1 = Glass Translucent
-
-// 1. Compact pair without a right-side label (starts with "##"):
-if (ImGui::ToggleButtons("##style_toggle", &s_WindowStyle, "Solid Opaque", "Glass Translucent")) {
-    ApplyStyleChange();
+if (ImGui::ToggleButtons("Surface Style##style_pair", &s_WindowStyle, "Solid Opaque", "Glass Translucent")) {
+    ApplyStyleChange(s_WindowStyle);
 }
-
-// 2. With clickable right-side title ("Surface Style") and wheel-latched hover index:
-int hovered_idx = -1;
-ImGui::ToggleButtons("Surface Style##style_pair", &s_WindowStyle, "Solid Opaque", "Glass Translucent",
-                     ImVec2(130.0f, 0.0f), nullptr /* item_tooltips */, &hovered_idx);
 ```
-
-* **Features:**
-  * **Optional Right-Side Clickable Title:** Following standard Dear ImGui `"Title##id"` semantics, if `label` contains text before `"##"`, it is drawn to the right of the button pair, shows a Hand cursor on hover, toggles the state on click, and ignores the mouse wheel.
-  * **Clamped Mouse-Wheel Toggling:** Scrolling up/right over either button selects `1` (`label_on`); scrolling down/left selects `0` (`label_off`).
-  * **Per-Button Tooltips (`item_tooltips`) & Wheel-Selection Tooltip Latch (`out_hovered_item`):** When the user spins the mouse wheel over either button to change the state, tooltip targeting (and `*out_hovered_item`) automatically latches onto the newly selected button (`0` or `1`) -- even if the stationary mouse cursor is still parked over the unselected button -- until the mouse moves (`> 1.5px`).
 
 ---
 
 ### 2. Mouse-Wheel Sliders, Drag Boxes, Cyclers & Combos (`imgui_mouse_wheel_controls.h`)
 
-#### A. Core Mouse-Wheel Primitives (`ImGui::GetMouseWheel` / `GetMouseWheelV` / `GetMouseWheelH` / `GetMouseWheelEither`)
-Queries vertical (`GetMouseWheel` / `GetMouseWheelV`), horizontal (`GetMouseWheelH`), or either-axis (`GetMouseWheelEither`, alias `GetMouseWheelAny`) scroll-wheel deltas for the current frame. Passing `consume = true` zeroes out `io.MouseWheel` / `io.MouseWheelH` so parent scrollable windows do not scroll while adjusting a hovered control.
+#### A. Chasers for Stock ImGui Controls (`AdjustItemOnMouseWheel` / `CycleItemOnMouseWheel`)
+Attach mouse-wheel stepping to any preceding Dear ImGui slider, drag box, button, or combo. `AdjustItemOnMouseWheel` shows `ResizeEW` strictly over the physical control track (never over the text label), while `CycleItemOnMouseWheel` steps discrete indices (`wrap = false` by default):
 
 ```cpp
-float clicks = ImGui::GetMouseWheelEither(true /* consume event */);
-```
-
-#### B. Continuous Range Chaser (`ImGui::AdjustItemOnMouseWheel`)
-Attaches to **any** preceding continuous range item (`SliderFloat`, `SliderInt`, `DragFloat`, `DragInt`, etc.) via `ImGui::IsItemHovered()`. Overloaded for both `float*` and `int*`, it interprets vertical/horizontal mouse-wheel clicks, consumes the wheel event, and clamps boundaries.
-* **Track-Only Cursor Precision:** Switches the cursor to East-West resize arrows (`ImGuiMouseCursor_ResizeEW` by default) strictly when hovering over the physical control track/box, preserving standard arrow cursors over text labels.
-
-```cpp
-// Attach mouse-wheel adjustment to any standard ImGui slider or drag box:
 ImGui::SliderFloat("Text Zoom", &fontZoom, 0.75f, 1.75f);
 ImGui::AdjustItemOnMouseWheel(&fontZoom, 0.75f, 1.75f, 0.01f);
 
-ImGui::DragInt("Altitude", &alt, 10.0f, 0, 40000);
-ImGui::AdjustItemOnMouseWheel(&alt, 0, 40000, 100.0f);
-```
-
-#### C. Discrete Choice Chaser (`ImGui::CycleItemOnMouseWheel`)
-Attaches to **any** preceding widget (`Button`, `Text`, `Combo`, `Selectable`) to step an integer index forward or backward one item per scroll gesture. Overloaded for both `(int* idx, int item_count, ...)` and `(int* idx, int min_idx, int max_idx, ...)`.
-* **Clamped by Default (`wrap = false`):** Stops cleanly at the first and last items so a fast flick of the scroll wheel never accidentally wraps from minimum to maximum.
-* **Directional Hover Cursor:** Defaults to `ImGuiMouseCursor_ResizeNS` (`↕`) on hover, and can be overridden per-call (e.g., `ImGuiMouseCursor_ResizeEW` `↔` for horizontal button cycling or `ImGuiMouseCursor_Hand`).
-
-```cpp
-// 1. Attach wheel-cycling to a popup-menu opener button with an East-West scroll cursor:
 if (ImGui::ButtonLink(kDensityLabels[s_DensityIdx])) {
     ImGui::OpenPopup("##density_menu");
 }
-if (ImGui::CycleItemOnMouseWheel(&s_DensityIdx, 5 /* item_count */, false /* wrap */,
-                                 true /* natural_list_order */, true /* consume */,
-                                 ImGuiMouseCursor_ResizeEW)) {
-    ApplyDensity(s_DensityIdx);
-}
-
-// 2. Standalone wheel-cycled ButtonLink paired with an abutting ResetButton:
-//    Evaluating `(is_mod || can_restore) && static_cast<bool>(btn)` resets/restores on click
-//    when actionable, and automatically falls back to click-to-toggle tooltip when idle at default!
-const bool is_mod      = (s_DensityIdx != 2);
-const bool can_restore = (!is_mod && s_LastDensityIdx != 2);
-auto btn = ImGui::ButtonLink(kDensityLabels[s_DensityIdx], ImVec2(110.0f, 0.0f));
-bool btn_clicked = (is_mod || can_restore) && static_cast<bool>(btn);
-if (ImGui::CycleItemOnMouseWheel(&s_DensityIdx, 5, false, true, true, ImGuiMouseCursor_ResizeEW)) {
-    if (s_DensityIdx == 2) s_LastDensityIdx = 2;
-}
-ImGui::SameLine(0.0f, 0.0f);
-bool rst_clicked = ImGui::ResetButton("##density_reset", is_mod, 0.0f, true /* abutting */, nullptr, can_restore);
-if (btn_clicked || rst_clicked) {
-    if (is_mod) { s_LastDensityIdx = s_DensityIdx; s_DensityIdx = 2; }
-    else if (can_restore) { s_DensityIdx = s_LastDensityIdx; }
-    ImGui::TimedTooltip::ClearActiveTooltip();
-}
+ImGui::CycleItemOnMouseWheel(&s_DensityIdx, 5 /* count */, false /* wrap */);
 ```
 
-#### D. Turnkey Mouse-Wheel Sliders & Drag Boxes (`MouseWheelSlider` / `PercentSlider` / `MouseWheelDrag`)
-Drop-in replacements for standard sliders and drag boxes that respond to mouse-wheel scrolling out of the box. `MouseWheelSlider` and `MouseWheelDrag` are overloaded for both `float*` and `int*` so you never have to type `Float` or `Int` in the function name!
+#### B. Turnkey Sliders, Drag Boxes & Reset-with-Undo (`SliderWithReset` / `PercentSliderWithReset` / `DragWithReset`)
+Drop-in replacements overloaded for both `float*` and `int*` (`MouseWheelSlider`, `PercentSlider`, `MouseWheelDrag`), plus compound `*WithReset` variants with a flush abutting vector reset/undo button (`0`-gap shared frame border):
+
+* **1-Click A/B Comparison ("Reset with Undo"):** When modified (`*v != v_default`), clicking `↺` saves your custom value into per-ID session memory (or an optional `float* v_last` pointer), resets `*v = v_default`, and flips the glyph to **`↻`**. Clicking **`↻`** swaps right back to your custom setting so you can A/B test changes in one click.
+* **Automatic 3-State Tooltips:** Formats `"Click to revert to default (85%)."`, `"At default (85%). Click to restore previous (42%)."`, and `"Already at default (85%)."` automatically from your `format` string.
 
 ```cpp
-static float s_Heading = 180.0f;
-static int   s_Fov     = 80;
-ImGui::MouseWheelSlider("Heading", &s_Heading, 0.0f, 360.0f, "%.0f°", 0, 1.0f);
-ImGui::MouseWheelSlider("FOV",     &s_Fov,     40,   120,    "%d°",   0, 1.0f);
-
-static float s_PitchOffset = 0.0f;
-ImGui::MouseWheelDrag("Pitch Offset", &s_PitchOffset, 0.5f /* speed & default wheel step */, -45.0f, 45.0f, "%.1f°");
-
+static float s_Heading = 215.0f;
 static float s_Opacity = 0.85f;
-ImGui::PercentSlider("Window Opacity", &s_Opacity, 0.1f, 1.0f); // (alias: ImGui::SliderPercent)
+static float s_Pitch   = -1.5f;
+
+ImGui::SliderWithReset("Heading",      &s_Heading, 180.0f /* default */, 0.0f, 360.0f, "%.0f°");
+ImGui::PercentSliderWithReset("Alpha", &s_Opacity, 0.80f  /* default */, 0.1f, 1.0f);
+ImGui::DragWithReset("Pitch Trim",     &s_Pitch,   0.0f   /* default */, 0.1f, -15.0f, 15.0f, "%+.1f°");
 ```
 
-#### E. Composite Sliders & Drag Boxes with Reset & Undo (`SliderWithReset` / `PercentSliderWithReset` / `DragWithReset`)
-Full-featured compound controls (overloaded for `float*` and `int*`, also aliased as `ResettableSlider`, `ResettablePercentSlider`, and `ResettableDrag`) with built-in mouse-wheel support, a flush abutting vector undo/reset button (`0`-gap seam), smart width reservation, hover isolation, active input lockout, and **Reset-with-Undo** (1-click A/B toggle between default and previous value).
-* Sits cleanly in a single line: `[ Control Track/Box | ↺ / ↻ ]  Label Text`
-* **"Reset with Undo" (1-Click A/B Comparison):**
-  * When modified (`*v != v_default`), clicking the Reset button saves the current non-default value (`last_val`), resets `*v = v_default`, and flips the button into **Restore/Redo Mode** (`↻`).
-  * Clicking the button again in Restore mode swaps `*v` right back to `last_val`, letting users click back and forth effortlessly to A/B compare their custom setting against the default!
-  * **Automatic Session Memory + Optional Persistent Pointer (`v_last`):** Works automatically with **zero extra arguments** via internal per-ID session memory (`##reset_undo`), or accepts an optional trailing `float* v_last = nullptr` / `int* v_last = nullptr` pointer if you want to persist the pre-reset value in your own variable/dataref across sessions.
-* **Automatic 3-State Default Tooltips:** When `reset_tooltip` is `nullptr`, automatically formats the default and previous values using the control's `format` string:
-  * **Modified:** `"Click to revert to default (85%)."`
-  * **After Reset (Restore Mode):** `"At default (85%). Click to restore previous (42%)."`
-  * **At Default (Idle):** `"Already at default (85%)."` (Clicking the dimmed button or right-side label immediately toggles the status/help `TimedTooltip` ON/OFF!)
-* **Dual Icon Configuration & Procedural Vector Default:**
-  * With zero font configuration, draws crisp, DPI-scaled procedural vector arrows directly in `ImDrawList`: counter-clockwise **`↺`** for Reset, and clockwise **`↻`** for Restore-Previous.
-  * Or configure custom FontAwesome / icon-font strings via `ImGui::SetDefaultResetButtonLabel(reset_label, restore_label)` at startup. Button width is automatically sized across both glyphs so the control never shifts by 1px when toggling states.
-* **Seamless Abutting Frame Borders:** When abutting an active control (`abutting == true`), `ResetButton` automatically suppresses redundant internal frame borders (`FrameBorderSize > 0.0f`), ensuring the control track and reset button share a single clean outer frame without an unwanted vertical box seam between them.
+![Mouse-Wheel Sliders & Combos: Flush abutting 1-click A/B Reset-with-Undo chasers](../docs/images/fig_sliders_reset.png)
+
+#### C. Turnkey Mouse-Wheel Combos & Checkboxes (`MouseWheelCombo` / `ComboWithReset` / `MouseWheelCheckbox`)
+* **Split Preview vs. Chevron Zones:** In `MouseWheelCombo` and `ComboWithReset`, hovering the preview field shows `ResizeNS` and cycles items on wheel scroll, while hovering the right-hand `[▼]` chevron shows `Hand` and acts strictly as the popup opener. Inside the open dropdown, spinning the wheel latches per-item `TimedTooltip`s to `*current_item` ("Lens UI") until the mouse moves deliberately (`> 6 px`).
+* **Track-Only Wheel Checkboxes:** `MouseWheelCheckbox` (and `ToggleItemOnMouseWheel`) responds to wheel scrolling strictly over the square `[✓]` box while leaving the clickable text label scroll-safe.
+* **Scrollable Viewport Auto-Defeat:** All wheel controls inspect parent windows for active vertical scrolling (`ScrollMax.y > 0.0f`) and automatically pass wheel events through to window scrolling unless `bAllowMouseWheelOnScrollable = true` is requested.
 
 ```cpp
-static float s_Heading = 180.0f;
-static int   s_Fov     = 80;
-
-// Optional: configure custom Reset & Restore/Redo icons globally (or via #define before #include):
-// ImGui::SetDefaultResetButtonLabel(ICON_FA_UNDO, ICON_FA_REDO);
-
-// 1-line sliders (float* or int*) with built-in mouse-wheel and Reset-with-Undo:
-ImGui::SliderWithReset("Heading", &s_Heading, 180.0f /* default */, 0.0f, 360.0f, "%.0f°");
-ImGui::SliderWithReset("FOV",     &s_Fov,     80     /* default */, 40,   120,    "%d°");
-
-static float s_Opacity = 0.85f;
-ImGui::PercentSliderWithReset("Opacity", &s_Opacity, 0.85f /* default */, 0.1f, 1.0f);
-
-static float s_PitchOffset = 0.0f;
-ImGui::DragWithReset("Pitch Offset", &s_PitchOffset, 0.0f /* default */, 0.5f /* speed */, -45.0f, 45.0f, "%.1f°");
-```
-
-#### F. Turnkey Mouse-Wheel Combos (`MouseWheelCombo` / `ComboWithReset`)
-Dropdown combo boxes that work like standard `ImGui::Combo` when clicked, and support live mouse-wheel cycling both when **closed** and while the dropdown popup menu is **open**!
-* **Split Preview vs. Chevron `[▼]` Zones:**
-  * **Preview Text Zone (`[box_min.x .. box_max.x - GetFrameHeight()]`):** Shows `hover_cursor` (`ImGuiMouseCursor_ResizeNS` by default) and cycles items on mouse-wheel without falsely highlighting the right-hand chevron button.
-  * **Chevron Button Zone (`[box_max.x - GetFrameHeight() .. box_max.x]`):** Shows **`ImGuiMouseCursor_Hand`**, highlights strictly when the chevron itself is hovered (or when the popup is open), and **ignores mouse-wheel scrolling** so clicking/hovering the opener button feels like a dedicated dropdown button.
-* **Configurable Chevron Arrow Polarity (`ImGui::ComboArrowStyle`):**
-  Configure globally via `ImGui::SetDefaultComboArrowStyle(...)`:
-  * `ImGui::ComboArrowStyle_DownWhenClosed` (`0`, default): `▼` when closed → `▲` when open (or `▼` if the popup flipped upward near the bottom of the screen).
-  * `ImGui::ComboArrowStyle_RightWhenClosed` (`1`, disclosure style): `▶` when closed → `▼` (or `▲` if opened upward) when open.
-  * `ImGui::ComboArrowStyle_UpWhenClosed` (`2`): `▲` when closed → `▼` (or `▲` if opened upward) when open.
-  * `ImGui::ComboArrowStyle_StaticDown` (`3`): Vanilla ImGui's static `▼`.
-* **`ComboWithReset`** (also aliased as `ResettableCombo`) pairs the mouse-wheel combo with the flush abutting `↺` / `↻` reset-with-undo button (with automatic session memory or optional `int* last_item = nullptr` persistence).
-* **Per-Item Tooltips (`item_tooltips[]`) & Open-Menu Wheel Tooltip Latch ("Lens UI"):** Pass an optional array of tooltip strings (plain text, or rich Markdown when ImGee's `Markdown` extension is active) to attach a distinct tooltip to each item in the open dropdown list. When the user spins the mouse wheel while the dropdown menu is open, tooltip targeting automatically latches onto the **newly wheel-selected item** (`*current_item`) rather than whichever row the stationary mouse cursor happens to be parked over, and seamlessly returns to normal mouse hover targeting when the mouse moves (`> 6px`).
-
-```cpp
-static const char* const kCameraModes[] = { "Cockpit", "Chase", "Circle", "Tower", "Ride-Along" };
-static const char* const kCameraModeTooltips[] = {
-    "**Cockpit View**: Inside the 3-D flight deck.",
-    "**Chase View**: Locked behind the aircraft.",
-    "**Circle View**: Free exterior orbit around the aircraft.",
-    "**Tower View**: Stationary camera from the nearest ATC tower.",
-    "**Ride-Along**: Wing-mount or fuselage camera position."
-};
-static int s_CamMode = 1; // Default: Chase (1)
-
-// Optional: use disclosure chevron polarity (▶ when closed -> ▼ when open):
-// ImGui::SetDefaultComboArrowStyle(ImGui::ComboArrowStyle_RightWhenClosed);
-
-// Standard mouse-wheel-enabled dropdown with per-item tooltips:
-ImGui::MouseWheelCombo("Camera View", &s_CamMode, kCameraModes, IM_ARRAYSIZE(kCameraModes),
-                       -1, false /* wrap */, kCameraModeTooltips);
-
-// Compound mouse-wheel dropdown with abutting Reset-with-Undo (1 = Chase):
-ImGui::ComboWithReset("Camera Mode", &s_CamMode, 1 /* default */,
-                      kCameraModes, IM_ARRAYSIZE(kCameraModes),
-                      -1, false /* wrap */, nullptr /* auto 3-state reset/restore tooltip */,
-                      kCameraModeTooltips);
-```
-
-#### G. Mouse-Wheel Checkboxes (`MouseWheelCheckbox` / `ToggleItemOnMouseWheel` / `CycleItemOnMouseWheel(bool*)`)
-Allows standard checkboxes to be toggled with the mouse wheel strictly when hovering over the **square `[✓]` box on the left** (`[box_min.x .. box_min.x + GetFrameHeight()]`), while hovering over the **text label** shows `ImGuiMouseCursor_Hand` (still clickable to toggle) and **ignores** the mouse wheel!
-* By default (`wrap = false`), scrolling **up/right** checks the box (`true`) and scrolling **down/left** unchecks it (`false`), clamping cleanly at both ends (or pass `wrap = true` to flip on every wheel notch).
-* Includes convenience overloads accepting `ImGuiMouseCursor_` directly after `bool* v` so you can customize or suppress the hover cursor (`ImGuiMouseCursor_Hand` or `ImGuiMouseCursor_None`) without passing intermediate boolean parameters.
-
-```cpp
+static const char* const kCamModes[] = { "Cockpit", "Chase", "Circle", "Tower" };
+static int  s_CamMode  = 1;
 static bool s_AutoZoom = true;
 
-// Option 1: Single-call MouseWheelCheckbox (with optional cursor override right after &v):
+ImGui::ComboWithReset("Camera Mode", &s_CamMode, 1 /* default */, kCamModes, IM_ARRAYSIZE(kCamModes));
 ImGui::MouseWheelCheckbox("Enable Auto-Zoom", &s_AutoZoom);
-ImGui::MouseWheelCheckbox("Quiet Mode", &s_QuietMode, ImGuiMouseCursor_Hand);
-
-// Option 2: 1-line chaser attached to standard ImGui::Checkbox:
-ImGui::Checkbox("Expert Mode", &s_ExpertMode);
-ImGui::ToggleItemOnMouseWheel(&s_ExpertMode, ImGuiMouseCursor_None); // or CycleItemOnMouseWheel(&s_ExpertMode)
 ```
-
-#### H. Mouse-Wheel Auto-Defeat on Scrollable Viewports
-In windows or child panels with active vertical scrolling (`ScrollMax.y > 0.0f`), spinning the mouse wheel to scroll through content could inadvertently adjust sliders, cyclers, or toggle switches if the mouse cursor passes over them.
-
-To protect users against accidental setting changes while navigating long pages:
-* **Automatic Detection:** `AdjustItemOnMouseWheel`, `CycleItemOnMouseWheel`, `MouseWheelSlider`, `PercentSlider`, `MouseWheelCombo`, `MouseWheelCheckbox`, and `ToggleButton` inspect the active Dear ImGui window and parent hierarchy for vertical scrollability automatically.
-* **Zero Accidental Adjustments:** When vertical scrolling is active, in-widget mouse-wheel adjustments are **defeated automatically**, and wheel events pass directly through to window scrolling.
-* **Smart Cursor Hiding:** Resizing/adjustment hover cursors (`ImGuiMouseCursor_ResizeEW`, `ImGuiMouseCursor_ResizeNS`) are suppressed on scrollable viewports so users are not misled into expecting wheel adjustments.
-* **Per-Widget Override:** If you explicitly want mouse-wheel interaction on a widget within a scrollable panel (e.g. an embedded canvas or dedicated map zoomer), pass `bAllowMouseWheelOnScrollable = true` to the widget overload.
 
 ---
 
 ### 3. Clickable Link & Item Cursor Affordances (`imgui_clickable_links.h`)
 
-In standard Dear ImGui, buttons, menu items, and clickable text keep the default OS arrow cursor. The `imgui_clickable_links.h` header eliminates the boilerplate of writing `if (IsItemHovered()) SetMouseCursor(ImGuiMouseCursor_Hand);` on every interactive item, while providing automatic **click-to-toggle tooltip** ergonomics and **open-popup wheel-selection tooltip latching**.
+<img src="../docs/images/fig_clickable_links.png" align="right" width="380" alt="ButtonLink, TextLink, CheckboxLink, and RadioButtonLink with Hand cursor"/>
 
-* **Ambient Color Preservation on `ImGui::TextLink`:** In Dear ImGui 1.91+, the built-in `ImGui::TextLink(const char*)` forces `ImGuiCol_TextLink` (a bright sky-blue tint) with an underline. Our `imgui_clickable_links.h` overloads preserve your **ambient `ImGuiCol_Text` color** by default (or accept an explicit `const ImVec4* col_override` and `std::string`), while rendering a zero-frame clickable text item with a Hand cursor on hover (with Dear ImGui's native hyperlink preserved as `ImGui::NativeTextLink`).
-* **Smart Click-to-Toggle Tooltips (`ImGui::LinkClickResult`):** `ButtonLink`, `SmallButtonLink`, `TextLink`, `TextLinkUnformatted`, `MenuItemLink`, and `MD::TextLink` return `ImGui::LinkClickResult`:
-  * **Tested in `if (...)` (Action Link):** Evaluating `if (ImGui::ButtonLink("Save"))` invokes `operator bool()`, marking the click as handled by your action block and dismissing any open tooltip on click.
-  * **Standalone Statement (Info / Help Link):** Calling `ImGui::TextLink("(i) Help");` without testing its return value leaves the click unconsumed, so clicking the widget immediately toggles a trailing `ImGui::TimedTooltip::Text` / `TextMD` ON and OFF (without closing any enclosing `BeginPopup`!).
+Stock Dear ImGui leaves buttons, checkboxes, menu items, and clickable labels on the default OS `Arrow` cursor. `imgui_clickable_links.h` provides zero-boilerplate `*Link` wrappers (`ButtonLink`, `TextLink`, `CheckboxLink`, `RadioButtonLink`, `SelectableLink`, `MenuItemLink`) plus `AttachItemCursor()`.
+
+* **Ambient Color Preservation:** Unlike Dear ImGui 1.91+'s sky-blue underlined `TextLink`, `ImGui::TextLink` preserves your ambient `ImGuiCol_Text` color by default (with Dear ImGui's hyperlink preserved as `ImGui::NativeTextLink`).
+* **Smart Click-to-Toggle Tooltips (`LinkClickResult`):** Testing `if (ImGui::ButtonLink("Save"))` marks the click handled and dismisses any open tooltip; calling `ImGui::TextLink("(i) Help");` as a standalone statement leaves the click unconsumed so clicking toggles a trailing `TimedTooltip` ON and OFF immediately.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Action button (tested in `if` -> executes action & dismisses tooltip on click):
+// 1. Action button (tested in `if` -> runs action and dismisses tooltip on click):
 if (ImGui::ButtonLink("Save Flight Plan")) {
     SavePlan();
 }
 ImGui::TimedTooltip::TextMD("Saves the active flight plan to disk.");
 
-// 2. Standalone info link (return value ignored -> clicking toggles tooltip ON/OFF!):
-ImGui::TextLinkUnformatted("(i) Works with scroll-wheel!");
-ImGui::TimedTooltip::TextMD("Spin the **scroll-wheel** over this menu to step through options.");
+// 2. Standalone info link (return value ignored -> clicking toggles tooltip ON/OFF):
+ImGui::TextLinkUnformatted("(i) Scroll-wheel shortcut");
+ImGui::TimedTooltip::TextMD("Spin the **mouse wheel** over an open menu to step through items.");
 
-// 3. Checkboxes, radio buttons, selectables, and menu items with hand cursor:
+// 3. Form controls and arbitrary items with active cursor cues:
 ImGui::CheckboxLink("Enable Autothrottle", &s_Autothrottle);
 ImGui::RadioButtonLink("NAV 1", &s_NavSource, 1);
-ImGui::SelectableLink("Row Item", isSelected);
-ImGui::MenuItemLink("Compact Density", nullptr, isSelected);
-```
-
-#### Custom `BeginPopup` Menus with Mouse-Wheel Cycling & Per-Item Tooltips
-When building custom `ImGui::BeginPopup` menus (with custom titles, separators, or footers), wrap the popup contents in `BeginGroup()` / `EndGroup()`, use `ImGui::MenuItem` (or `ImGui::MenuItemLink` for a Hand cursor on each row) with per-item `TimedTooltip::TextMD` calls, and attach `ImGui::CycleItemOnMouseWheel` after `EndGroup()`:
-
-```cpp
-if (ImGui::BeginPopup("#density_menu")) {
-    ImGui::BeginGroup();
-    if (ImGui::TextLink("Choose tracking list density:")) {
-        ImGui::CloseCurrentPopup();
-    }
-    ImGui::Separator();
-
-    for (int i = 4; i >= 0; --i) {
-        bool isActive = (densityIdx == i);
-        if (ImGui::MenuItem(menus[i], nullptr, isActive)) {
-            gUserLinePadding = 4 + 2 * i;
-        }
-        ImGui::TimedTooltip::TextMD("Switch table spacing to **%s** density.", tipLabels[i]);
-    }
-
-    ImGui::Separator();
-    ImGui::TextLinkUnformatted("  (i) Works with scroll-wheel!  ");
-    ImGui::TimedTooltip::TextMD("Spin your scroll-wheel over this list to step through options.");
-    ImGui::EndGroup();
-
-    // Whole-menu mouse-wheel cycling (automatically latches per-item tooltips to `isActive`!):
-    if (ImGui::CycleItemOnMouseWheel(&densityIdx, 0, 4, /*wrap=*/false, /*natural_list_order=*/false,
-                                     /*consume=*/true, ImGuiMouseCursor_Hand)) {
-        gUserLinePadding = 4 + 2 * densityIdx;
-    }
-    ImGui::EndPopup();
-}
-```
-* **Automatic Wheel-Selection Tooltip Latch:** `ImGui::MenuItem` and `ImGui::MenuItemLink` register each item's `isActive` state. When the user spins the scroll wheel inside the open popup, `TimedTooltip` automatically switches from mouse-hover targeting to showing the tooltip for the **newly wheel-selected item** (`isActive`), returning to normal hover targeting as soon as the mouse moves (`> 6px`).
-
-#### Universal Item Hover-Cursor Chaser (`ImGui::AttachItemCursor`):
-```cpp
-// Attach default Hand cursor to any preceding item:
-ImGui::Image(textureId, ImVec2(64, 64));
-ImGui::AttachItemCursor();
-
-// Or attach any specific ImGuiMouseCursor on hover:
-ImGui::Button("Splitter");
-ImGui::AttachItemCursor(ImGuiMouseCursor_ResizeEW);
 ```
 
 ---
 
 ### 4. Badges, Pills & Key Caps (`imgui_badges.h`)
 
-Sleek, standalone C++ UI indicators designed for status tags, version numbers, notification counters, and keyboard shortcut chips without requiring any Markdown parsing.
+<img src="../docs/images/fig_pills_and_badges.png" align="left" width="380" alt="Semantic Badges, Pills, PillNamed annunciators, and 3D Kbd keycaps"/>
+
+Standalone immediate-mode status capsules, annunciators, and 3D keyboard shortcut chips -- usable directly in C++ panels with zero Markdown parsing overhead (and also backing Markdown's `<badge>`, `<pill>`, and `<kbd>` tags):
+
+* **Baseline-Centered Geometry:** Aligns capsule padding against TrueType `Ascent`/`Descent` so descenders (`p`, `g`, `y`) never clip or sag.
+* **Automatic ITU-R BT.601 Contrast:** Picks crisp dark or white foreground text automatically from background luminance whenever foreground color is omitted.
+* **Tactile Keycaps (`ImGui::Kbd`):** Draws rounded key borders with a subtle bottom bevel shadow.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Semantic Status Badges (Default, Primary, Success, Warning, Danger, Info):
 ImGui::Badge("ONLINE", ImGui::ImGuiBadgeVariant_Success);
 ImGui::SameLine();
-ImGui::Badge("EXPIRING", ImGui::ImGuiBadgeVariant_Warning);
+ImGui::Badge("FAULT",  ImGui::ImGuiBadgeVariant_Danger);
 ImGui::SameLine();
-ImGui::Badge("FAULT", ImGui::ImGuiBadgeVariant_Danger);
+ImGui::Pill("v1.1",    ImGui::ImGuiBadgeVariant_Primary);
 
-// 2. Fully-rounded Pills:
-ImGui::Pill("v1.92", ImGui::ImGuiBadgeVariant_Primary);
+ImGui::TextUnformatted("Toggle Autopilot:");
 ImGui::SameLine();
-ImGui::Pill("PRO", ImVec4(0.85f, 0.40f, 0.10f, 1.0f)); // Custom ImVec4 background
-
-// 3. Custom Hex or ImU32 Backgrounds with Automatic Contrast Calculation:
-ImGui::Badge("BETA", ImGui::GetColorU32(ImVec4(0.9f, 0.9f, 0.1f, 1.0f))); // Auto-selects dark text
-
-// 4. Keyboard Key Caps (<kbd>):
-ImGui::Text("Press");
-ImGui::SameLine();
-ImGui::Kbd("Ctrl+Shift+P");
-ImGui::SameLine();
-ImGui::Text("to open Command Palette.");
+ImGui::Kbd("Ctrl+Shift+Z");
 ```
-
-* **Features:**
-  * **Pixel-Balanced Rounded Geometry:** Uses TrueType baseline alignment and font-scale compensation so ascenders and descenders ('p', 'g', 'y') stay centered with identical visual margins.
-  * **Intelligent Auto-Contrast:** Computes ITU-R BT.601 perceptual luminance of the background color and automatically selects crisp dark (`#000000`) or light (`#FFFFFF`) text when foreground color is omitted.
-  * **3D Key Caps (`ImGui::Kbd`):** Renders tactile keyboard shortcut chips with rounded borders and a bottom bevel shadow.
-  * **Zero Markdown Overhead:** Standalone immediate-mode C++ functions usable anywhere in pure ImGui panels. Markdown's `<badge>`, `<pill>`, and `<kbd>` tags delegate directly to these widgets.
 
 ---
 
 ### 5. Procedural Spinners & Countdown Dials (`imgui_spinners.h`)
 
-Smooth, procedural immediate-mode activity indicators and radial timers rendered directly via `ImDrawList` antialiased paths. No texture assets, no font hacks, and zero memory allocations.
+<img src="../docs/images/fig_spinners_and_dials.png" align="right" width="385" alt="Activity Spinners, ProgressDial, and CountdownTimer dials"/>
+
+Antialiased `ImDrawList` activity indicators, progress rings, and radial countdown timers with zero texture assets and zero heap allocations.
+
+* **Breathing Arc Spinners (`ImGui::Spinner`):** Sinusoidal sweep expansion/contraction scaled automatically to `ImGui::GetFontSize()` when `radius == 0.0f`.
+* **12-O'Clock Radial Timers (`RadialTimer` / `CountdownTimer`):** Sweeps cleanly from `-90°` over a subtle track ring, supporting click-to-toggle `TimedTooltip` explanations on hover and click.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Organic Activity Spinner (loading / busy state):
-ImGui::Spinner("##loading"); // Auto-scales to font size
-ImGui::SameLine();
-ImGui::Text("Syncing telemetry...");
+ImGui::Spinner("Syncing airport navdata...");
 
-// With custom radius, thickness, color, and label:
-ImGui::Spinner("Downloading airport navdata", 14.0f, 3.0f, IM_COL32(0, 200, 255, 255));
+float remainingFrac = 0.65f;
+ImGui::RadialTimer("Auto-dismiss", remainingFrac);
 
-// 2. Radial Countdown Timer (fraction remaining: 0.0f .. 1.0f):
-float timeoutRemaining = GetRemainingFraction(); // e.g., 0.65f
-ImGui::RadialTimer("Auto-dismiss in 5s", timeoutRemaining);
-
-// 3. Countdown Timer Helper (current seconds vs max duration):
-float alertTimeLeft = 3.2f;
-float alertMaxTime  = 10.0f;
-ImGui::CountdownTimer("Alert Timeout", alertTimeLeft, alertMaxTime);
+ImGui::CountdownTimer("Approach Fix", 3.2f /* seconds left */, 10.0f /* total */);
 ```
-
-* **Features:**
-  * **Organic Breathing Arc Animation:** Rather than a rigid rotating stick, `ImGui::Spinner` uses a sinusoidal expansion-and-contraction cycle that mimics modern Material/Apple loading spinners.
-  * **Clockwise/Counter-Clockwise Dials:** `ImGui::RadialTimer` starts cleanly at 12 o'clock (`-90°`) with an ambient background track ring, sweeping smoothly around to indicate elapsed or remaining time.
-  * **True Ambient Scaling:** Radius and stroke thickness automatically scale to the ambient font size (`ImGui::GetFontSize()`) when left as `0.0f`, looking sharp on standard and high-DPI displays alike.
-  * **Built-in Text Label Affordance:** Labels without leading `##` automatically render beside the spinner or dial with standard item alignment and spacing.
 
 ---
 
-### 6. Universal Standalone & Chaser Copy Buttons (`imgui_copy_button.h`)
+### 6. Standalone & Chaser Copy Buttons (`imgui_copy_button.h`)
 
-Tactile, immediate-mode copy buttons featuring procedural vector icons, transient "Copied!" feedback, anti-twitch fixed width layouts, and seamless integration with `TimedTooltip` and `InputText`.
+<img src="../docs/images/fig_copy_button.png" align="right" width="390" alt="CopyButton and CopyLastItemButton with transient Copied! state"/>
+
+Immediate-mode clipboard buttons with procedural vector clipboard/checkmark icons, `1.5s` transient `"Copied!"` confirmation, and anti-twitch bounding width (`max("Copy", "Copied!")`) so neighboring toolbar items never jump.
+
+* **Standalone Buffer Mode (`CopyButton` / `CopyBufferButton`):** Copies any `const char*` or `std::string` payload directly.
+* **Zero-Redundancy Input Chaser (`CopyLastItemButton` / `CopyTextFieldButton`):** Placed right after an `ImGui::InputText`, inspects Dear ImGui's preceding item buffer automatically.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Standalone Proxy Form (CopyButton / CopyBufferButton):
-// Takes an explicit string, buffer, or std::string to copy to the clipboard:
-ImGui::CopyButton("##copy_apikey", myApiKeyString);
-// Or use the explicit semantic alias:
-ImGui::CopyBufferButton("##copy_buf", textBuffer);
+ImGui::CopyButton("##copy_key", apiKeyString);
 
-// 2. Chaser Form (CopyLastItemButton / CopyTextFieldButton):
-// Placed immediately after an ImGui::InputText / InputTextMultiline:
-static char s_LogBuffer[512] = "N450GA clearance delivered...";
-ImGui::InputText("Flight Plan", s_LogBuffer, sizeof(s_LogBuffer));
+static char s_RouteBuf[256] = "KSFO DCT RBL J1 KSEA";
+ImGui::InputText("Route", s_RouteBuf, sizeof(s_RouteBuf));
 ImGui::SameLine();
-ImGui::CopyLastItemButton("##copy_flightplan"); // Automatically copies s_LogBuffer!
-
-// 3. Querying transient state or custom duration:
-bool is_copied = false;
-if (ImGui::CopyButtonEx("##custom_copy", "Payload", 2.0f /* duration */, ImVec2(0, 0), &is_copied)) {
-    // Button was clicked this frame!
-}
+ImGui::CopyLastItemButton("##copy_route");
 ```
-
-* **Features:**
-  * **Procedural Vector Icons:** Renders a clean two-sheet overlapping clipboard vector icon that transitions smoothly into a green vector checkmark during the transient `Copied!` confirmation state.
-  * **Anti-Twitch Fixed Width Layout:** Automatically calculates the maximum bounding width across `"Copy"` and `"Copied!"` labels (`ImMax(normal_w, copied_w)`) so adjacent buttons and toolbars never twitch or jump when toggling states.
-  * **Independent `ImGuiStorage` Scoping:** Transient copied feedback is keyed to `ImGuiID` in the window's state storage, ensuring multiple copy buttons in the same window maintain their own timers and feedback independently.
-  * **Zero-Redundancy Chaser Mode (`CopyLastItemButton`):** Automatically queries Dear ImGui's internal `LastItemData` and `InputTextState` to retrieve the buffer pointer of the preceding input field with zero redundant buffer duplication.
-  * **Semantic Aliases:** Includes `ImGui::CopyBufferButton` and `ImGui::CopyTextFieldButton` to make developer intent clear at a glance.
-  * **Rich `TimedTooltip` Integration:** Automatically displays `"Copy to Clipboard"` on hover, switching to `"Copied!"` during the feedback duration, with an automatic `ImGuiMouseCursor_Hand` hover cursor.
 
 ---
 
 ### 7. Avionics Rotary Knobs & Dimmer Dials (`imgui_knobs.h`)
 
-Turnkey immediate-mode cockpit potentiometers, rotary dials, and lighting dimmer controls featuring an unmistakable 270° "Omega" arc, tactile two-step `OFF` detente switches, perimeter graduation ticks, and full mouse-wheel integration.
+Cockpit potentiometers and panel lighting dimmers built around an unmistakable 270° "Omega" arc (90° open deadband at 6 o'clock), perimeter graduation ticks, mouse-wheel + drag control, and tactile two-step `OFF` detents:
 
 ```cpp
-// 1. Avionics Potentiometer Dimmer with 2-Step OFF Detente:
-// Turning CCW dims smoothly from 100% down to 5% (minimum active floor).
-// An intentional extra downward notch while resting at 5% snaps across into "OFF"!
-// Turning CW from OFF snaps immediately back into active range (5%).
 static float s_FloodDimmer = 0.85f;
-ImGui::DimmerKnob("Floodlight Dimmer", &s_FloodDimmer, 0.05f /* v_min_active */, 1.0f /* v_max */, 1.0f /* default */, "%.0f%%");
+static float s_RadioVol    = 0.70f;
+static float s_XpndrGain   = 0.50f;
 
-// 2. Standard 270° Rotary Knob with 1-Click Vector Reset (↺):
-static float s_RadioVol = 0.70f;
-ImGui::KnobWithReset("Radio Volume", &s_RadioVol, 0.70f /* default */, 0.0f, 1.0f, "%.0f%%", 0.0f, 0.02f, "Reset volume to 70%");
+// 1. Lighting dimmer with 2-step OFF detente at 5% floor:
+ImGui::DimmerKnob("Floodlight", &s_FloodDimmer, 0.05f /* min active */, 1.0f, 1.0f /* default */, "%.0f%%");
 
-// 3. Compact / Percentage Dial:
-static float s_HeadingBug = 180.0f;
-ImGui::Knob("Heading Bug", &s_HeadingBug, 0.0f, 360.0f, "%.0f°", 14.0f /* radius */);
+// 2. Rotary knob paired with 1-click Reset-with-Undo:
+ImGui::KnobWithReset("COM1 Vol", &s_RadioVol, 0.70f /* default */, 0.0f, 1.0f, "%.0f%%");
 
-// 4. Vertical Stacked Avionics Gauge Unit:
-static float s_TransponderGain = 0.50f;
-ImGui::Knob("XPNDR", &s_TransponderGain, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f, ImGuiKnobFlags_ValueBelow | ImGuiKnobFlags_ShowTicks);
+// 3. Compact gauge unit with graduation ticks and digital readout below:
+ImGui::Knob("XPNDR", &s_XpndrGain, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f,
+            ImGuiKnobFlags_ValueBelow | ImGuiKnobFlags_ShowTicks);
 ```
 
-* **Features:**
-  * **Unmistakable Omega Potentiometer Geometry:** Features an authentic 270° arc with a 90° open deadband at 6 o'clock and a raised 3D knurled knob hub with a high-contrast rotating index needle/pip. Instantly disambiguated from 360° read-only timers or progress circles.
-  * **Tactile Two-Step Detente Switch:** Counter-clockwise rotation stops cleanly at the minimum active floor (e.g. 5%), preventing accidental power cutoffs in flight. A deliberate extra scroll step past the stop snaps across the detente gap directly into the powered-down `OFF` detente. Clockwise rotation from `OFF` snaps immediately back to minimum power.
-  * **State-Aware Text Readout:** Automatically displays `"OFF"` in warning amber when disarmed in detente, or the formatted percentage/value when active.
-  * **Dual-Mode Input Ergonomics:** Primary mouse-wheel rotation with automatic scroll-defeat prevents scrolling the parent window. Secondary vertical/horizontal click-dragging supports VR/touchscreen use, with `Shift` (fine 0.1x) and `Ctrl` (coarse 2.0x) speed modifiers.
-  * **Default `ResizeEW` (<-->) Cursor:** Shows horizontal range selection cursor by default on hover, confirming interactive status at a glance.
-  * **Double-Click Reset / Detente Toggle:** Double-clicking the knob restores calibrated baseline default (or toggles between `OFF` and default).
+![Avionics Rotary Knobs & Dimmer Dials: 270-degree Omega arc, two-step OFF detente, and 1-click Reset](../docs/images/fig_rotary_knobs.png)
+
+* **Two-Step `OFF` Detente Safety:** Rotating counter-clockwise stops cleanly at the minimum active floor (`5%`) so pilots never cut panel lighting by accident in turbulence. One deliberate extra downward wheel notch (or drag) snaps across the detente into amber `"OFF"`; rotating clockwise from `"OFF"` restores active power immediately.
+* **Precision Modifiers & Double-Click Reset:** Hold `Shift` (`0.1x` fine) or `Ctrl` (`2.0x` coarse), hover for `ResizeEW` cursor feedback, or double-click to restore baseline default.
 
 ---
 
 ### 8. Directional Popup Menus & Select Pulldowns (`imgui_popup_menus.h`)
 
-First-class popup anchoring and selection widgets solving directional placement, muscle-memory toggle protection, font-scale invariant alignment, and closed-state wheel pass-through:
+Item-anchored popup helpers (`OpenPopupAtItem` / `BeginAnchoredPopup`) and compact 1-line `SelectPulldown` selectors designed for dense settings panels and bottom-docked status bars:
+
+![Directional Anchored Popups & SelectPulldown: Scroll pass-through when closed and live wheel stepping when open](../docs/images/fig_popup_menus.png)
 
 ```cpp
-// 1. Directional Item Anchoring (Status Bars & HUDs):
-// Blossoms UP above the button with sub-pixel precision:
-if (ImGui::Button("View Mode")) {
-    ImGui::OpenPopupAtItem("##ViewModeMenu", ImGuiPopupAnchor_AboveItem, ImGuiPopupAlign_Auto);
-}
-
-// 2. Begin Anchored Popup:
-if (ImGui::BeginAnchoredPopup("##ViewModeMenu")) {
-    if (ImGui::MenuItem("Circle View")) { SetView(0); }
-    if (ImGui::MenuItem("Spot View"))   { SetView(1); }
-    if (ImGui::MenuItem("Tower View"))  { SetView(2); }
-    ImGui::EndPopup();
-}
-
-// 3. Headroom Query for Window Managers / Subclasses (e.g. WidgetImgWindow):
-// Returns exact measured height in pixels so XPLM window expansion has zero guessing:
-float headroom = ImGui::GetLastPopupHeight("##ViewModeMenu");
-
-// 4. SelectPulldown Widget (Settings Window 1-Line Dataref Selectors):
-// Closed: ignores mouse-wheel (smooth parent list scrolling without accidental edits).
-// Open: mouse-wheel cycles active selection dynamically without closing menu!
-// Caret: automatically renders crisp procedural vector arrows (▼ / ▲) without requiring Unicode font glyphs!
-// Lens UI: stationary wheel spinning latches rich tooltips directly to active selection!
+// 1. Compact 1-line selector (scroll pass-through when closed; live wheel cycling + Lens UI tooltips when open):
 static int s_SelectedCam = 1;
-const char* const kCamModes[] = { "Circle", "Spot", "Tower", "Cockpit" };
-const char* const kCamTips[]  = { "**Circle**\nFollow aircraft", "**Spot**\nFixed distance", "**Tower**\nTower view", "**Cockpit**\nPilot eye" };
-if (ImGui::SelectPulldownMD("##CameraMode", &s_SelectedCam, kCamModes, 4, kCamTips, 0.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true /* wrap */)) {
+const char* const kCamModes[] = { "Cockpit Pilot", "External Circle", "Control Tower", "Wing Spot" };
+const char* const kCamTips[]  = { "**Cockpit**\n3-D flight deck", "**Circle**\nExterior orbit",
+                                  "**Tower**\nNearest ATC tower", "**Wing**\nFuselage mount" };
+if (ImGui::SelectPulldownMD("##CamMode", &s_SelectedCam, kCamModes, 4, kCamTips, 180.0f,
+                            ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true /* wrap */)) {
     UpdateCamera(s_SelectedCam);
 }
 
-// 5. Upward Blossoming Pulldown (Status Bars & Screen-Bottom Docks):
-static int s_PowerMode = 0;
-const char* const kPowerModes[] = { "Battery", "APU", "External Power" };
-if (ImGui::SelectPulldown("##PowerMode", &s_PowerMode, kPowerModes, 3, nullptr, 140.0f, ImGuiPopupAnchor_AboveItem)) {
-    UpdatePowerSource(s_PowerMode);
+// 2. Upward-blossoming anchored popup for bottom docks (with measured pixel headroom query):
+if (ImGui::ButtonLink("Power Bus")) {
+    ImGui::OpenPopupAtItem("##BusMenu", ImGuiPopupAnchor_AboveItem);
 }
-
-// 6. Caret Customization & Procedural Vector Drawing:
-// Optional: Configure FontAwesome glyphs or custom ASCII strings globally at runtime:
-ImGui::SetDefaultPulldownCaret(ICON_FA_CHEVRON_DOWN, ICON_FA_CHEVRON_UP);
-
-// Or call the procedural vector arrow helper directly in custom controls:
-ImGui::DrawPulldownArrow(ImGui::GetWindowDrawList(), arrow_pos, text_col, ImGuiDir_Down, font_size);
+if (ImGui::BeginAnchoredPopup("##BusMenu")) {
+    if (ImGui::MenuItemLink("External Power")) SetBus(0);
+    if (ImGui::MenuItemLink("APU Generator"))  SetBus(1);
+    ImGui::EndPopup();
+}
 ```
 
-* **Features:**
-  * **"Lens UI" Selection-Latched Tooltips:** When spinning the mouse wheel inside an open pulldown menu, per-item tooltips dynamically latch onto the newly selected item (`*current_item`) instead of remaining frozen over whichever row the stationary cursor rests on. Deliberate mouse movement (`> 6 px`) cleanly breaks the latch and reverts to standard spatial hover.
-  * **Predictable Wheel Stepping & Circular Wrapping:** Supports optional `bool wrap = false` and `bool natural_list_order = true` parameters. When `wrap = true`, spinning past the ends wraps around smoothly; `natural_list_order = true` advances down the list on downward scroll (`clicks < 0.0f`).
-  * **Automatic Focus & Scroll-Into-View:** Wheel-selected items receive `SetItemDefaultFocus()` and automatically scroll into view (`SetScrollHereY()`) in long scrollable pulldowns.
-  * **Dynamic Cursor Cues:** Opener button displays `ImGuiMouseCursor_Hand` on hover; open menu options and background display `ImGuiMouseCursor_ResizeNS` to visually signal mouse-wheel responsiveness.
-  * **Rich Markdown Tooltip Aliases (`SelectPulldownMD` / `ImGui::MD::SelectPulldown`):** Full support for rich Markdown tooltips (`TimedTooltip::MD::TextProxy`), available via root and sub-namespace aliases.
-  * **Procedural Vector Caret Fallback:** Eliminates unmapped Unicode Geometric Shapes (`U+25BE`) missing-glyph issues. Defaults to crisp, antialiased procedural vector triangles rendered directly to `ImDrawList`, matching `ResetButton` vector rendering.
-  * **Configurable Font Carets & Runtime Setters:** Host applications with FontAwesome can call `ImGui::SetDefaultPulldownCaret(...)` at startup to use native icon-font glyphs instead of procedural vector carets.
-  * **Directional Blossoming (`ImGuiPopupAnchor`):** Supports `ImGuiPopupAnchor_AboveItem` for bottom status bars and docks, dynamically flipping caret directions between open and closed states.
-  * **Smooth TimedTooltip Integration:** Item hover tooltips automatically use `ImGui::TimedTooltip` (with fallback to `ImGui::SetTooltip`), preventing cursor jitter.
-  * **Broad In-Popup Hover Scope:** Mouse-wheel spinning anywhere inside the open popup window (including while hovering individual `Selectable` rows) cycles active options smoothly.
-  * **Font-Scale Invariant Placement:** Uses live `GetItemRectMin()` and `ItemSpacing.y` bounding geometry from the rendering frame, eliminating magic pixel offsets and text-zoom drift.
-  * **Muscle-Memory Toggle Safety:** Clicking the opener button while the popup is open cleanly toggles it closed without re-opening flicker.
-  * **Universal Widget Compatibility:** `OpenPopupAtItem()` anchors cleanly behind any widget: `ImGui::Button`, `ImGui::ButtonLink`, `ImGui::MD::ButtonMD`, `ImGui::Pill`, `ImGui::Badge`, or custom controls.
-  * **Exact Headroom Reporting:** `GetLastPopupHeight(str_id)` reports the measured pixel height for dynamic XPLM window expansion.
-  * **Scroll Pass-Through:** `SelectPulldown` never captures the mouse-wheel while closed, preventing unwanted dataref changes while scrolling settings.
+* **Scroll Pass-Through When Closed, Live Wheel Cycling When Open:** Closed `SelectPulldown` buttons never hijack parent window scrolling. Once clicked open, spinning the wheel anywhere over the popup list or opener button cycles items live (`ResizeNS` cursor) and latches `TimedTooltip`s to `*current_item` ("Lens UI" with `> 6 px` motion hysteresis).
+* **Font-Scale Invariant Anchoring & Caret Clipping:** Anchors directly to live `GetItemRectMin`/`Max` geometry (both `BelowItem` and upward `AboveItem`), draws zero-font procedural vector carets (`▼` / `▲`), clips long preview labels cleanly before the caret zone, and exposes `ImGui::GetLastPopupHeight(str_id)` for host window headroom queries.
 
 ---
 
 ### 9. In-Cockpit File Dialogs & Toolbar Pickers (`imgui_file_dialog.h`)
 
-Non-blocking, modal-free file browsers and single-click directory dropdown pickers rendered natively inside Dear ImGui -- safe for full-screen Vulkan/Metal viewports and VR headsets without stalling the render loop on OS-native modal dialogs:
+Non-blocking, modal-free file browsers and single-line directory pickers rendered natively inside Dear ImGui using POSIX (`opendir`/`readdir`) and Win32 (`FindFirstFileW`) APIs -- safe for full-screen Vulkan/Metal viewports and VR headsets without stalling the render thread on OS dialogs:
 
 ```cpp
-// 1. Compact Toolbar File Picker Combo (dropdown of matching files + Browse... item):
-static std::string s_ActiveRoute = "Resources/routes/KSFO_KLAX.fms";
-if (ImGui::FilePickerCombo("Route", &s_ActiveRoute, "Resources/routes", ".fms;.pln")) {
-    LoadFlightPlan(s_ActiveRoute);
+// 1. Compact toolbar dropdown of matching directory files (+ built-in "Browse..." item):
+static std::string s_ActiveProfile = "Aircraft_Profiles/A320_Night_Approach.json";
+if (ImGui::FilePickerCombo("Profile", &s_ActiveProfile, "Aircraft_Profiles", ".json;.ini")) {
+    LoadProfile(s_ActiveProfile);
 }
 
-// 2. Full Non-Blocking Open / Save File Dialogs:
+// 2. Full non-blocking Open / Save file browser popup:
 if (ImGui::ButtonLink("Import Checklist...")) {
     ImGui::OpenPopup("##ImportChecklistDlg");
 }
-static std::string s_ChecklistPath;
-if (ImGui::OpenFileDialog("##ImportChecklistDlg", "Select Checklist", &s_ChecklistPath, ".md;.txt")) {
-    LoadChecklist(s_ChecklistPath);
+static std::string s_ChosenPath;
+if (ImGui::OpenFileDialog("##ImportChecklistDlg", "Select Checklist", &s_ChosenPath, ".md;.txt")) {
+    LoadChecklist(s_ChosenPath);
 }
 ```
 
-* **Features:**
-  * **Zero Render-Thread Stalls:** Executes 100% inside immediate-mode Dear ImGui popups without spawning blocking Win32/Cocoa/GTK OS dialogs.
-  * **Breadcrumb Navigation & Extension Filtering:** Supports semicolon-delimited extension filters (`".fms;.pln;.txt"`), sortable directory listings, quick parent-folder traversal, and overwrite confirmation in `SaveFileDialog`.
-  * **Turnkey `FilePickerCombo`:** Combines a fast single-line directory dropdown with a built-in `"Browse..."` item that seamlessly opens the full `OpenFileDialog` browser.
+![Non-Blocking In-Viewport File Dialogs & FilePickerCombo](../docs/images/fig_file_dialog.png)
 
 ---
 
 ### 10. Procedural Vector Icons Engine (`imgui_icons.h`)
 
-A zero-texture, zero-font, zero-dependency procedural vector icon engine that actively renders crisp antialiased vector geometry directly to Dear ImGui's `ImDrawList`.
+<img src="../docs/images/fig_vector_icons.png" align="right" width="390" alt="Procedural Vector Icons, IconButton, and ButtonIcon"/>
 
-Completely eliminates missing-glyph diamond replacement characters (``) when host font atlases only bake standard ASCII/Latin-1 (`0x20..0xFF`) and lack extended Unicode blocks (such as Mathematical arrows `U+2190..U+21FF` or Geometric shapes `U+25A0..U+25FF`).
+A zero-texture, zero-font procedural vector engine that submits crisp antialiased geometry directly to `ImDrawList` -- eliminating missing-glyph `?` boxes when host font atlases only bake ASCII/Latin-1 (`0x20..0xFF`).
+
+* **Forgiving Name & Unicode Rescue:** Accepts `"undo"`, `":gear:"`, `"ICON_FA_UNDO"`, or raw UTF-8 symbols (`↺`, `↻`, `▲`, `▼`, `✓`, `⚙`, `✈`), scaling automatically with `ImGui::GetFontSize()` and baseline alignment.
+* **Markdown & `StyledText` Integration:** Works seamlessly in `<icon gear />` tags, `:plane:` shortcodes, raw Unicode text rescue, and `ButtonMD`.
+
+<br clear="all"/>
 
 ```cpp
-// 1. Direct Immediate-Mode Widget:
-// Scales automatically with ambient font size (GetFontSize() * 0.90f) and centers on text baseline:
-ImGui::Icon("undo");
-ImGui::Icon("caret-up", 18.0f);
-ImGui::Icon("gear", 16.0f, &ImVec4(1.0f, 0.6f, 0.0f, 1.0f));
+// 1. Inline baseline-aligned vector icons:
+ImGui::Icon("plane");
+ImGui::SameLine();
+ImGui::Icon("gear", 16.0f, &ImVec4(0.96f, 0.77f, 0.41f, 1.0f));
 
-// 2. Procedural Vector Push-Buttons:
-// IconButton: square button with centered vector icon, hand cursor, and optional tooltip:
-if (ImGui::IconButton("##zoom_up", "caret-up", ImVec2(0, 0), "Zoom In")) {
+// 2. Square icon-only and icon + label push buttons (with Hand cursor & TimedTooltip):
+if (ImGui::IconButton("##zoom_in", "plus", ImVec2(0, 0), "Zoom In")) {
     ZoomIn();
 }
-
-// ButtonIcon: dual icon + text button (or text + icon if icon_on_right = true):
-if (ImGui::ButtonIcon("Settings", "gear", ImVec2(0, 0), false, "Open avionics configuration")) {
+if (ImGui::ButtonIcon("Settings", "gear", ImVec2(0, 0), false, "Open configuration")) {
     OpenSettings();
 }
-if (ImGui::ButtonIcon("Next Page", "caret-right", ImVec2(0, 0), true)) {
-    AdvancePage();
-}
-
-// 3. Direct DrawList Procedural Vector Path Rendering:
-ImGui::DrawVectorIcon(ImGui::GetWindowDrawList(), pos, size, col_u32, "search");
-
-// 4. Forgiving Name Normalization:
-// Accepts any format: "undo", ":undo:", "ICON_FA_UNDO", "ICON_UNDO", "reset", or raw UTF-8:
-ImGui::Icon("ICON_FA_UNDO");
-ImGui::Icon(":gear:");
-ImGui::Icon("\xE2\x86\xBA"); // ↺
 ```
-
-#### Markdown & Typography Integration
-The icon engine is deeply integrated into `ImGui::MarkdownExt` and `ImGui::TextStyled`, offering 5 authoring modes:
-
-1. **Inline HTML Tag:** `<icon caret-up />`, `<icon orange undo />`, `<icon name=gear size=16 />`
-2. **Emoji Shortcodes:** `:undo:`, `:reset:`, `:caret_up:`, `:caret-down:`, `:gear:`, `:check:`, `:star:`, `:plane:`
-3. **Steven's Raw-Fallback Link Macro:** `#[^](ICON_CARET_UP)` or `#[↺](ICON_UNDO)`
-4. **Automatic Raw Unicode Glyph Rescue:** Raw symbols like `↺`, `↻`, `▲`, `▼`, `✓`, `⚙` outside code blocks are automatically intercepted and rendered as crisp vector icons with zero missing-glyph diamonds!
-5. **Backtick Rescue:** Single symbols wrapped in backticks (`` `↺` ``) are rescued and rendered as vector icons.
-
-#### Universal Icon Catalog
-* **Navigation:** `caret-up` (▲), `caret-down` (▼), `caret-left` (◀), `caret-right` (▶)
-* **History:** `undo` / `reset` (↺), `redo` / `restore` (↻)
-* **Actions & State:** `check` (✓), `cross` (✗), `plus` (+), `minus` (-), `gear` (⚙), `search` (🔍)
-* **Indicators & Badges:** `info` (ℹ), `warning` (⚠), `star` (★), `plane` (✈), `circle` (●), `square` (■)
 
 ---
 
 ## Credits & Upstream Lineage
 
-* **Author & Architect**: Steven L. Goldberg ([@slgoldberg](https://github.com/slgoldberg))
-* **SliderPercent Upstream Inspiration**: Birger Hoppe ([LiveTraffic](https://github.com/bhoppe/LiveTraffic))
-* **License**: BSD 3-Clause (see [LICENSE](../LICENSE))
+* **Author & Architect:** Steven L. Goldberg ([@slgoldberg](https://github.com/slgoldberg))
+* **SliderPercent Upstream Inspiration:** Birger Hoppe ([LiveTraffic](https://github.com/bhoppe/LiveTraffic))
+* **License:** BSD 3-Clause (see [LICENSE](../LICENSE))

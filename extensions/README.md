@@ -1,76 +1,63 @@
 # ImGee Extensions Suite
 
-This directory contains standalone, feature-complete **Extensions** for Dear ImGui within the **ImGee** suite.
+This directory contains standalone, self-contained **Extensions** for Dear ImGui within the **ImGee** suite.
 
 ---
 
 ## What is an Extension?
 
-In ImGee, an **Extension** is a self-contained subsystem providing substantial functionality beyond standard UI widgets. Extensions typically:
-* Maintain internal or persistent state between frames.
-* Require custom configuration structs or setup steps.
-* Encapsulate complex algorithms (e.g., text parsing, layout pre-calculation, delayed timers).
-* May integrate or adapt third-party libraries.
+In ImGee, an **Extension** is a subsystem providing stateful or structural capabilities beyond single immediate-mode controls. Extensions typically:
+* Maintain frame-to-frame timing, scroll, or zoom state (`ImGuiContext`-isolated or caller-owned state structs).
+* Accept optional configuration structs and callbacks.
+* Encapsulate layout pre-calculation, CommonMark/GFM parsing, or semantic font resolution.
 
 ### Namespacing Philosophy: Omar Cornut's Standard & Sub-Namespaces
 
-A common question from newcomers is: *"Why not invent a separate root namespace like `extgui::`, `eximgui::`, or `extimgui::` to distinguish extension code?"*
+A common question from newcomers is: *"Why not invent a separate root namespace like `extgui::` or `eximgui::` to distinguish extension code?"*
 
-The answer lies in **Dear ImGui's official architectural philosophy**:
+The answer comes down to **Dear ImGui's ecosystem conventions**:
 
 #### 1. Omar Cornut's Ecosystem Standard (Single Point of Discovery)
-In official Dear ImGui extensions and ecosystem projects (such as `implot`, `imgui_club`, and `imnodes`), Omar Cornut explicitly advocates extending `namespace ImGui { ... }`. 
-* **Autocomplete & Discoverability:** Modern C++ developers rely heavily on IDE autocomplete. When a developer types `ImGui::`, they expect to discover every capability available within their GUI framework in one place.
-* **Zero Cognitive Overhead:** Creating detached root namespaces (`extgui::`) forces developers to remember which feature lives in which foreign namespace, requires scattered `using namespace` declarations, and creates awkward syntax when passing native ImGui types across boundaries.
+In official Dear ImGui extensions and ecosystem projects (such as `implot`, `imgui_club`, and `imnodes`), Omar Cornut advocates extending `namespace ImGui { ... }`.
+* **Autocomplete & Discoverability:** When typing `ImGui::`, developers discover every capability available across their UI framework in one place.
+* **Zero Cognitive Overhead:** Detached root namespaces force developers to memorize which feature lives where and juggle scattered `using namespace` declarations.
 
-#### 2. The Power of Second-Level Sub-Namespaces
-While extending `namespace ImGui` is essential, dumping heavy packages directly into the root namespace risks colliding with current or future Dear ImGui core functions. 
-
-The elegant solution is **second-level sub-namespaces** (`ImGui::<PackageName>::`):
+#### 2. Second-Level Sub-Namespaces
+To keep the root `ImGui::` namespace free of collisions on common function names like `Text` or `Config`, multi-function subsystems encapsulate their APIs inside **second-level sub-namespaces** (`ImGui::<PackageName>::`):
 
 ```cpp
-namespace ImGui {
-    namespace <PackageName> {
-        // Functions mirror familiar ImGui patterns
-    }
-}
+ImGui::Markdown::TextWrapped("Configure your **settings** below.");
+ImGui::TimedTooltip::Text("Hover-delayed stationary tooltip.");
 ```
 
-* **Zero Root Pollution:** The root `ImGui::` namespace stays clean, pristine, and safe from symbol collisions.
-* **Mirroring Native ImGui Vocabulary:** Sub-namespaces allow us to reuse Dear ImGui's standard vocabulary (`Text`, `TextWrapped`, `CalcTextSize`):
-  ```cpp
-  ImGui::Markdown::TextWrapped("Configure your **settings** below.");
-  ImGui::TimedTooltip::Text("Hover-delayed stationary tooltip.");
-  ```
-
 > [!TIP]
-> **Forgiving Aliases ("It Just Works"):** Prefer shorter names or don't want to think about namespaces?
-> * **`ImGui::MD::`** is an official, zero-overhead shorthand alias for **`ImGui::Markdown::`**.
-> * Root shorthands like **`ImGui::TextMD(...)`** and cross-extension bridges like **`ImGui::TimedTooltip::MD::Text`** work seamlessly.
-> * Want to skip `ImGui::` entirely? `#define IMGEE_ENABLE_GLOBAL_NAMESPACES` publishes `Markdown::`, `MD::`, and `TimedTooltip::` directly to the global scope.
+> **Forgiving Shorthands:**
+> * **`ImGui::MD::`** is an official shorthand alias for **`ImGui::Markdown::`**.
+> * Root shorthands such as **`ImGui::TextMD(...)`**, **`ImGui::ButtonMD(...)`**, **`ImGui::BeginZoomedViewport(...)`**, and **`ImGui::DocumentViewer(...)`** work directly under `ImGui::`.
+> * Defining `#define IMGEE_ENABLE_GLOBAL_NAMESPACES` publishes `Markdown::`, `MD::`, and `TimedTooltip::` to the global scope.
 
 ---
 
 ## Current Extensions
 
-| Extension | Directory | Canonical Namespace | Shorthand Alias | Description |
+| Extension | Directory | Primary Namespace / Entrypoint | Opt-Out Macro | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Markdown** | [`Markdown/`](Markdown/) | `ImGui::Markdown::` | `ImGui::MD::` | Markdown parser and renderer based on `enkisoftware/imgui_markdown`, enhanced with dynamic font scaling, token lookahead, true hanging indents, rich parameterized styling tags (`<color>`, `<backdrop>`, `<badge>`), procedural vector icons (`<icon ...>`), and native vector button faces (`ButtonMD`). |
-| **TimedTooltip** | [`TimedTooltip/`](TimedTooltip/) | `ImGui::TimedTooltip::` | *(Root & Bridge)* | Advanced stationary and delayed tooltip engine with automatic bounding box pre-calculation, viewport edge-clamping, and support for both plain-text and Markdown tooltips. |
-| **Typography** | [`Typography/`](Typography/) | `ImGui::Typography::` | `ImGui::` *(Root)* | Semantic font role hierarchy (`ImFontRole`), commutative scoped font guards (`ScopedFontRole`), and the inline `StyledText` engine with continuous baseline alignment for badges, pills, and textures. |
+| **TimedTooltip** | [`TimedTooltip/`](TimedTooltip/README.md) | `ImGui::TimedTooltip::` | `IMGEE_DISABLE_TIMED_TOOLTIP` | Stationary, dwell-delayed tooltip engine with bounding-box pre-calculation, screen-edge clamping, click-to-toggle support, and plain-text + Markdown bridges. |
+| **Markdown** | [`Markdown/`](Markdown/README.md) | `ImGui::Markdown::` / `ImGui::MD::` | `IMGEE_DISABLE_MARKDOWN` | CommonMark + GFM tables with tristate sorting and drag-resizing, GFM callouts (`> [!NOTE]` .. `[!CAUTION]`), 3-tier images with text-wrapping floats and same-context lightboxes, inline styling tags, and `ButtonMD`. |
+| **Typography** | [`Typography/`](Typography/README.md) | `ImGui::Typography::` / `ImGui::` | `IMGEE_DISABLE_TYPOGRAPHY` | 9-slot semantic font role hierarchy (`ImFontRole`), RAII `ScopedFontRole` guards, and inline `StyledText` with continuous baseline alignment. |
+| **Viewport** | [`Viewport/`](Viewport/README.md) | `ImGui::BeginZoomedViewport` | `IMGEE_DISABLE_ZOOMABLE_VIEWPORT` | Two-layer zoom container keeping outer window toolbars and footers sharp at `1.0x` while scaling scrollable inner content across `50%..250%` via `Ctrl`/`Cmd + MouseWheel`. |
+| **DocViewer** | [`DocViewer/`](DocViewer/README.md) | `ImGui::DocumentViewer` | `IMGEE_DISABLE_DOC_VIEWER` | Turnkey standalone Markdown manual viewer with two-row `1.0x` header chrome, auto-parsed ATX TOC section jumper, `#heading-slug` links, HUD opacity slider, and 5-preset theme picker. |
+
+![Standalone DocumentViewer: Combining Viewport, Markdown, TimedTooltip, Typography, and Themes in a single call](../docs/images/fig_doc_viewer.png)
 
 ---
 
-## Contribution Guidelines for Extensions
+## Authoring Guidelines for Extensions
 
-When creating or porting a new extension:
+When adding or extending an ImGee subsystem:
 
-1. **Self-Contained Folder:** Place all headers, implementation files, and assets in a dedicated folder under `ImGee/extensions/<ExtensionName>/`.
-2. **Single Header Entrypoint:** Provide a primary header (e.g. `<extension_name>_ext.h` or `<extension_name>.h`) that consumers can include with one `#include` directive.
-3. **No Mandatory Global State:** Avoid requiring global mutable state where possible. If state is needed, manage it within an explicit context struct or provide clean default fallbacks.
-4. **ImGui Version Compatibility:** Gate version-specific ImGui calls using `#if IMGUI_VERSION_NUM >= ...` so the extension builds cleanly across supported Dear ImGui versions.
-5. **Documentation:** Every extension folder must include a comprehensive `README.md` containing:
-   * Architecture and features.
-   * Minimal copy-pasteable usage example.
-   * Configuration options and callbacks.
-   * Any licensing or upstream credit.
+1. **Self-Contained Folder:** Place headers and documentation in `extensions/<ExtensionName>/`.
+2. **Header-Only Entrypoint:** Provide a self-contained `.h` entrypoint with order-independent `#include` guards and `#pragma push_macro("min")` / `max` protection for MSVC `<windows.h>` compatibility.
+3. **Context & Caller-Owned State:** Isolate ambient state per `ImGuiContext*` or accept an explicit caller-owned state struct (such as `ZoomableViewportState` or `DocumentViewerState`).
+4. **Dear ImGui Version Range:** Guard version-specific internals with `#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= ...)` so every header builds cleanly under `-Wall -Wextra -Werror -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS` across Dear ImGui `v1.84.2` through `v1.92.8+`.
+5. **Documentation:** Include a clear `README.md` with copy-pasteable C++ examples, configuration tables, and preprocessor opt-out flags.

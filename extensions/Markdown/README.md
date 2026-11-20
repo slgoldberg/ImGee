@@ -121,10 +121,10 @@ The Markdown system is structured as a clean two-layer architecture:
 
 You are responsible for loading your own fonts into your `ImgFontAtlas` during plugin startup (e.g., in `InitializeImGui()`). There is no runtime font synthesization in Dear ImGui -- if you want Markdown to render distinct headers, bold text, or italics, you must load those fonts into your atlas.
 
-As demonstrated in [`sample-code/InitializeImGui.cpp`](../../../../sample-code/InitializeImGui.cpp), each sequential, non-merged font added increments an index in `ImGui::GetIO().Fonts->Fonts[i]`. We recommend defining macro aliases for these slots:
+Each sequential, non-merged font added to `ImGui::GetIO().Fonts` increments an index in `ImGui::GetIO().Fonts->Fonts[i]`. Defining named slot macros (or registering roles via `ImGui::SetFontRole`) keeps configuration clean:
 
 ```cpp
-// Example font slot definitions (from sample-code/InitializeImGui.cpp):
+// Example 9-slot font definitions:
 #define IM_FONT_SLOT(i)       ImGui::GetIO().Fonts->Fonts[i]
 #define IM_NORMAL_FONT        IM_FONT_SLOT(0) // Regular base font (14px)
 #define IMG_TITLE_FONT        IM_FONT_SLOT(1) // Large header font
@@ -284,6 +284,8 @@ void Initialize() {
 ```
 ````
 
+![Fenced Code Containers: Shaded blocks with language chips, animated Raw/Preview toggle, and 1-click clipboard copy](../../docs/images/fig_code_blocks.png)
+
 * **Features:**
   * **Automatic Monospace Typography:** Uses `mdConfig.monoFont` (or ambient monospace font) line-by-line without word-wrapping or accidental markup parsing.
   * **Responsive Width Clamping & Soft-Wrapping:** Dynamically hugs content lines while clamping maximum container width to available window space (`avail_width`). Wrapped continuation lines flow naturally without horizontal overflow.
@@ -325,6 +327,8 @@ Explicit tag form with custom header title (aliases: `<alert>`, `<notice>`, and 
 </callout>
 ```
 
+![GFM Alert Callout Cards: All five callout variants with procedural vector icons and tinted underlays](../../docs/images/fig_callout_cards.png)
+
 * **Supported GFM Variants (case-insensitive):** `[!NOTE]` (alias `[!INFO]`), `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, and `[!CAUTION]`.
 * **Fence & Indented-Code Safe:** `> ...` lines inside ```` ``` ```` / `~~~` fenced blocks or 4-space indented code blocks remain literal code.
 * **Arbitrary Nesting:** Uses a splitter-free `ImDrawList` underlay pass, allowing callouts and blockquotes to contain fenced code blocks, interactive GFM tables, and nested `> >` blockquotes to any depth.
@@ -342,6 +346,8 @@ Standard CommonMark pipe tables render as full-featured, interactive Dear ImGui 
 <!-- table-preset: width=450 sort="Waypoint" asc -->
 <!-- table-state: width=329 cols=51,72,94,75 sort="Waypoint" asc -->
 ```
+
+![Interactive GFM Tables: Tristate column sorting, drag-resizable dividers, and inline status badges](../../docs/images/fig_gfm_tables.png)
 
 * **Features:**
   * **CommonMark Syntax & Cell Alignment:** Parses headers, separator row, and data rows with cell text alignments (`:---` left, `:---:` center, `---:` right).
@@ -669,19 +675,23 @@ Both inline angle-bracket modifiers (`![Alt](<diagram.png =68% center>)`), Pando
 ![Strict 1:1 Annunciator](annunciator.png){width=120 height=40 nozoom align=right caption="Master **Warning** Lamp"}
 ```
 
-#### 6.3 Text-Wrapping Image Floats (`float=left` / `float=right`) & Float Clearing
-Add `float=left` (aliases `float-left`, `wrap=left`) or `float=right` (aliases `float-right`, `wrap=right`) in inline URL modifiers, `{...}` attribute blocks, or `<img ... float="left" />` tags so subsequent paragraphs, headings, and lists flow cleanly alongside the figure and automatically expand back out to the full container width mid-paragraph as soon as text advances past the bottom of the floated figure:
+#### 6.3 Text-Wrapping Image Floats (`float=left` / `float=right` & HTML `<img align="...">`)
+Add `float=left` (aliases `float-left`, `wrap=left`) or `float=right` (aliases `float-right`, `wrap=right`) in inline URL modifiers, `{...}` attribute blocks, or standard GitHub/HTML `<img src="..." align="right|left" width="380" alt="..."/>` tags so subsequent paragraphs, headings, and lists flow cleanly alongside the figure and automatically expand back out to the full container width mid-paragraph once text clears the bottom of the floated figure:
+* **3-Way `<img align="left|right">` Parity:** In HTML `<img src=...>` tags, `align="left"` and `align="right"` automatically enable text-wrapping floats (matching GitHub.com and HTML4 layout rules) unless explicitly overridden with `nofloat` / `float=none`. Standard Markdown `![Alt](<url align=right>)` retains non-floating block alignment unless `float=right` is specified.
 * **Custom Float Margins:** Optional `gap=16` / `margin=16` (or `gap=16x8` / `hgap=16` / `vgap=8`) overrides the default scaled horizontal (`~12px`) and bottom (`~6px`) breathing room around the floated figure.
 * **Explicit & Automatic Clearing:** Use `<clear/>`, `<clear />`, `<br clear="all"/>`, or `<!-- clear -->` (plus optional `left` / `right` targets such as `<clear=left/>` or `<!-- clear: right -->`) to advance below active floats on demand. Horizontal rules (`---`), GFM tables, and fenced code blocks automatically clear active floats, and each `Markdown::Render` scope (including `<callout>` / `<blockquote>` cards and `MD::CalcMarkdownSize`) automatically clears its own floats before returning so tall floated figures never overlap subsequent widgets.
 * **Responsive Narrow-Viewport Fallback:** Percentage widths (`=35%`) resolve against the full container width before placing the float. If the remaining text column beside the float would be narrower than a readable minimum (`~90px * scale`), the image automatically degrades to a standard non-floated block figure.
 
 ```markdown
-![Cockpit Callout](<overhead_bus.png =35% float=right caption="Bus Tie Panel" lightbox>)
+<!-- Works identically across GitHub.com, ImGui::DocumentViewer, and PDF manuals: -->
+<img src="images/overhead_bus.png" align="right" width="380" alt="Bus Tie Panel"/>
 
 Primary electrical buses automatically isolate faulted generators while preserving essential avionics power...
 
-<clear/>
+<br clear="all"/>
 ```
+
+![Text-Wrapping Image Floats & Figure Captions: Mid-paragraph reflow around a floated schematic with lightbox affordance](../../docs/images/fig_markdown_floats_captions.png)
 
 #### 6.4 Two-Layer Chrome (`1.0x`) + Zoomed Content (`Nx`) Viewport Helper
 When building in-app manuals or briefing viewers, `ImGui::ZoomableViewportState` and `ImGui::BeginZoomedViewport` / `ImGui::EndZoomedViewport` (`extensions/Viewport/imgui_zoomable_viewport.h`, included automatically by `imgee.h` and `imgui_markdown_ext.h`) keep window toolbars and footers at crisp `1.0x` while zooming the scrollable inner document body across `[0.50x .. 2.50x]` with `Ctrl+MouseWheel` (and `Cmd+MouseWheel` on macOS):
@@ -840,98 +850,23 @@ Below is a complete real-world example illustrating how the **Markdown** and **T
 
 To appreciate what the extensions handle behind the scenes, consider what is required to build a mixed-format settings card with highlight backdrops, colored status pills, bullet lists with hanging indents, and a stationary clamped tooltip:
 
-#### The Hard Way: Vanilla Dear ImGui (Without Extensions)
+#### Without Extensions (Manual `ImDrawList` & Hover State)
+In stock Dear ImGui, mixing an inline highlight capsule, hanging bullet indents, and a dwell-delayed clamped tooltip requires manual `CalcTextSizeA` coordinate math, custom `AddRectFilled` draw-list calls (which break across line wraps), manual `Indent()`/`Unindent()` bookkeeping, and per-widget hover frame counters:
+
 ```cpp
-// -----------------------------------------------------------------------------
-// VANILLA IMGUI: ~70+ lines of low-level boilerplate, manual geometry math,
-// and state storage just for a single header, backdrop pill, and timed tooltip!
-// -----------------------------------------------------------------------------
-void RenderSettingsPanelVanilla()
-{
-    ImGui::Begin("Plugin Settings & Reference");
+ImGui::PushFont(IMG_TITLE_FONT);
+ImGui::TextUnformatted("Welcome to Avionics Manager");
+ImGui::PopFont();
+ImGui::Separator();
 
-    // 1. Header: Manual font push, separator, and manual pop
-    ImGui::PushFont(IMG_TITLE_FONT);
-    ImGui::TextUnformatted("Welcome to Avionics Manager");
-    ImGui::PopFont();
-    ImGui::Separator();
-
-    // 2. Mixed Bold Text + Background Highlight Pill:
-    // In vanilla ImGui, you cannot wrap text across lines if you embed custom drawn rectangles.
-    // You have to manually calculate draw list coordinates, text sizes, and padding:
-    ImGui::TextUnformatted("Configure your autopilot, navigation modes, and ");
-    ImGui::SameLine(0.0f, 0.0f);
-    
-    ImVec2 p0 = ImGui::GetCursorScreenPos();
-    ImVec2 text_sz = IM_BOLD_FONT->CalcTextSizeA(IM_BOLD_FONT->FontSize, FLT_MAX, 0.0f, "expert features");
-    ImVec2 p1 = ImVec2(p0.x + text_sz.x + 8.0f, p0.y + text_sz.y + 2.0f);
-    
-    // Draw background pill manually:
-    ImGui::GetWindowDrawList()->AddRectFilled(p0, p1, IM_COL32(255, 230, 60, 255), 4.0f);
-    
-    // Position text inside pill and draw in dark contrast color:
-    ImGui::SetCursorScreenPos(ImVec2(p0.x + 4.0f, p0.y + 1.0f));
-    ImGui::PushFont(IM_BOLD_FONT);
-    ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(20, 20, 20, 255));
-    ImGui::TextUnformatted("expert features");
-    ImGui::PopStyleColor();
-    ImGui::PopFont();
-    
-    // Resume following text:
-    ImGui::SetCursorScreenPos(ImVec2(p1.x, p0.y));
-    ImGui::TextUnformatted(" below.");
-
-    ImGui::Spacing();
-
-    // 3. Bullet List:
-    // Vanilla ImGui::BulletText does NOT support hanging indents when text wraps.
-    // Continuation lines wrap directly beneath the bullet circle instead of indenting cleanly.
-    // Fixing this requires manual ImGui::Indent() / ImGui::Unindent() bookkeeping.
-    ImGui::Bullet();
-    ImGui::SameLine(0.0f, 4.0f);
-    ImGui::TextWrapped("autopilot: Controls automated flight guidance (LNAV, VNAV, FLCH).");
-
-    ImGui::Spacing();
-
-    // 4. Reset Button with Stationary Clamped Tooltip:
-    // Vanilla ImGui::SetTooltip moves with the mouse, has no hover delay, and lacks screen clamping.
-    // Building a stationary tooltip with a 1-second delay and viewport boundary clamping requires
-    // querying frame counters, ImGuiStorage, and calculating display boundary math:
-    ImGui::Button("Reset to Defaults");
-    
-    static int s_HoverFrames = 0;
-    if (ImGui::IsItemHovered()) {
-        s_HoverFrames++;
-        if (s_HoverFrames > 60) { // ~1.0 second delay
-            ImVec2 mousePos = ImGui::GetIO().MousePos;
-            ImVec2 dispSize = ImGui::GetIO().DisplaySize;
-            ImVec2 tipSize(260.0f, 80.0f); // Guessed height!
-            
-            // Manual screen boundary clamping:
-            ImVec2 tipPos = ImVec2(mousePos.x, mousePos.y + 20.0f);
-            if (tipPos.y + tipSize.y > dispSize.y) tipPos.y = mousePos.y - tipSize.y - 10.0f;
-            if (tipPos.x + tipSize.x > dispSize.x) tipPos.x = dispSize.x - tipSize.x - 10.0f;
-            
-            ImGui::SetNextWindowPos(tipPos);
-            ImGui::PushStyleColor(ImGuiCol_PopupBg, IM_COL32(255, 242, 153, 255));
-            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(0, 0, 0, 255));
-            if (ImGui::BeginTooltip()) {
-                ImGui::TextUnformatted("Restores all settings to factory defaults.");
-                ImGui::EndTooltip();
-            }
-            ImGui::PopStyleColor(2);
-        }
-    } else {
-        s_HoverFrames = 0;
-    }
-
-    ImGui::End();
-}
+// Manual capsule coordinates (cannot soft-wrap across lines) + manual frame-count tooltip:
+ImVec2 p0 = ImGui::GetCursorScreenPos();
+ImVec2 sz = IM_BOLD_FONT->CalcTextSizeA(14.0f, FLT_MAX, 0.0f, "expert features");
+ImGui::GetWindowDrawList()->AddRectFilled(p0, ImVec2(p0.x + sz.x + 8, p0.y + sz.y + 2), IM_COL32(255, 230, 60, 255), 4.0f);
+// ... plus manual SetCursorScreenPos, Indent/Unindent, and 25 lines of hover-frame + screen-clamp math
 ```
 
----
-
-#### The Clean Way: With ImGee (`MD` + `TimedTooltip`)
+#### With ImGee (`MD` + `TimedTooltip`)
 ```cpp
 // -----------------------------------------------------------------------------
 // WITH IMGEE: Clean, declarative, expressive code.

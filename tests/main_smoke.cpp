@@ -2418,6 +2418,57 @@ int main(int argc, char** argv) {
         renderViewerFrame();
         IMGEE_TEST_CHECK(docState.last_scroll_y <= 5.0f);
         IMGEE_TEST_CHECK(docState.active_toc_index == 0);
+
+        // 5. Verify HTML <img src="..." align="right|left"> float parity & <br clear="all"/> termination:
+        {
+            const auto htmlRight = ImGui::MarkdownImageService::ParseMarkdownImageModifiers(
+                "src=\"imgee_ci_test_pixel.png\" align=\"right\" width=\"380\" alt=\"Toggle Card\"");
+            IMGEE_TEST_CHECK(htmlRight.clean_url == "imgee_ci_test_pixel.png");
+            IMGEE_TEST_CHECK(htmlRight.float_mode == ImGui::MarkdownImageFloat::Right);
+            IMGEE_TEST_CHECK(std::fabs(htmlRight.width - 380.0f) <= 0.01f);
+            IMGEE_TEST_CHECK(htmlRight.alt_text == "Toggle Card");
+
+            const auto htmlLeft = ImGui::MarkdownImageService::ParseMarkdownImageModifiers(
+                "src=\"imgee_ci_test_pixel.png\" align=\"left\" width=\"360\"");
+            IMGEE_TEST_CHECK(htmlLeft.float_mode == ImGui::MarkdownImageFloat::Left);
+
+            // Explicit nofloat / float=none overrides HTML align="right":
+            const auto htmlNoFloat = ImGui::MarkdownImageService::ParseMarkdownImageModifiers(
+                "src=\"imgee_ci_test_pixel.png\" align=\"right\" nofloat width=\"380\"");
+            IMGEE_TEST_CHECK(htmlNoFloat.float_mode == ImGui::MarkdownImageFloat::None);
+            IMGEE_TEST_CHECK(htmlNoFloat.align == ImGui::MarkdownImageAlign::Right);
+
+            // Standard Markdown angle-bracket ![alt](<url align=right>) keeps non-floating block alignment:
+            const auto mdBlockRight = ImGui::MarkdownImageService::ParseMarkdownImageModifiers(
+                "<imgee_ci_test_pixel.png align=right width=200>");
+            IMGEE_TEST_CHECK(mdBlockRight.float_mode == ImGui::MarkdownImageFloat::None);
+            IMGEE_TEST_CHECK(mdBlockRight.align == ImGui::MarkdownImageAlign::Right);
+
+            // Live render: <img ... align="right" .../> wraps adjacent prose and <br clear="all"/> clears past float bottom:
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(520.0f, 300.0f), ImGuiCond_Always);
+            ImGui::Begin("HtmlImgFloatWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot hfSnap = StackSnapshot::Capture();
+
+            const float startY = ImGui::GetCursorScreenPos().y;
+            const std::string htmlFloatMd =
+                "<img src=\"test_logo\" align=\"right\" width=\"140\" height=\"110\" alt=\"Compact Card\"/>\n\n"
+                "Short wrapped text beside right-floated HTML image.\n\n"
+                "<br clear=\"all\"/>";
+            ImGui::MD::TextWrapped(htmlFloatMd);
+            const float endY = ImGui::GetCursorScreenPos().y;
+            ImVec2 imgMin(0.0f, 0.0f), imgMax(0.0f, 0.0f);
+            ImGui::GetLastMarkdownImageRect(&imgMin, &imgMax);
+            // Right-floated image sits near the right edge of the 520px window while <br clear="all"/> advances Y >= 110px:
+            IMGEE_TEST_CHECK(imgMin.x > 300.0f);
+            IMGEE_TEST_CHECK(endY >= startY + 110.0f);
+
+            hfSnap.VerifyBalanced("HtmlImgFloatWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+        }
     }
 
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture
