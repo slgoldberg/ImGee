@@ -1608,7 +1608,6 @@ def parse_markdown_to_flowables(md_content: str, styles, is_first_doc: bool = Fa
                     cell_elements = [rl_img]
                     if caption_text:
                         cap_fmt = sanitize_inline_markdown(caption_text)
-                        cap_fmt = cap_fmt.replace('color="#1E40AF"', 'color="#93C5FD"')
                         try:
                             cell_elements.append(Paragraph(f"<i>{cap_fmt}</i>", styles['FigCaption']))
                         except Exception:
@@ -1619,13 +1618,12 @@ def parse_markdown_to_flowables(md_content: str, styles, is_first_doc: bool = Fa
                     fig_tbl = Table([[cell_elements]], colWidths=[fig_box_w], spaceBefore=4, spaceAfter=6)
                     fig_tbl.hAlign = 'CENTER'
                     fig_tbl.setStyle(TableStyle([
-                        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor("#334155")),
-                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#0F172A")),
                         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('TOPPADDING', (0, 0), (-1, -1), 2),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-                        ('LEFTPADDING', (0, 0), (-1, -1), 2),
-                        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('TOPPADDING', (0, 0), (-1, -1), 0),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
                     ]))
 
                     if float_side in ('left', 'right'):
