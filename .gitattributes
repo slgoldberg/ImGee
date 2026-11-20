@@ -1,0 +1,19 @@
+# Auto-detect text files and normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Explicit binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary
+*.ttf binary
+*.otf binary
+*.ttc binary
+
+# Git archive export-ignore rules (keeps downstream release tarballs lightweight)
+/.gitattributes export-ignore
+/.github        export-ignore
+/tools          export-ignore
+/tests          export-ignore
+/build          export-ignore
+/out            export-ignore

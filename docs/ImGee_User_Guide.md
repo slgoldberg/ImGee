@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.0.0)
+## Comprehensive Developer & User Manual (v1.1.0)
 
 ---
 
@@ -712,4 +712,4 @@ ImGui::StyleColorsRusty();    // Warm low-glare bronze / terracotta with soft iv
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.0.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.1.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

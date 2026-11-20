@@ -396,7 +396,7 @@ inline bool FetchRemoteBytesCurl(const std::string& url, std::vector<uint8_t>& o
     outBuffer.clear();
     p_setopt(curl, IMGEE_CURLOPT_URL, url.c_str());
     p_setopt(curl, IMGEE_CURLOPT_FOLLOWLOCATION, 1L);
-    p_setopt(curl, IMGEE_CURLOPT_USERAGENT, "ImGee/1.0.0");
+    p_setopt(curl, IMGEE_CURLOPT_USERAGENT, "ImGee/1.1.0");
     p_setopt(curl, IMGEE_CURLOPT_TIMEOUT, 10L);
     p_setopt(curl, IMGEE_CURLOPT_WRITEFUNCTION, CurlWriteCallback);
     p_setopt(curl, IMGEE_CURLOPT_WRITEDATA, &outBuffer);
@@ -452,7 +452,7 @@ inline bool FetchRemoteBytesWin(const std::string& url, std::vector<uint8_t>& ou
         return false;
     }
 
-    void* hInternet = p_Open("ImGee/1.0.0", 0, nullptr, nullptr, 0);
+    void* hInternet = p_Open("ImGee/1.1.0", 0, nullptr, nullptr, 0);
     if (!hInternet) {
         FreeLibrary(hWinINet);
         return false;
