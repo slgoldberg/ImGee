@@ -5115,7 +5115,7 @@ namespace ImGui
                         if( close_pressed ) {
                             should_close = true;
                         }
-                        MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_close_tip" ), close_hovered, "Close Lightbox (Esc or click outside)" );
+                        MarkdownDetail::ShowImageLightboxTooltip( mdConfig_, ImGui::GetID( "##imgee_lb_close_tip" ), close_hovered, "Close Lightbox (or click outside)" );
 
                         // 1b. Top-right hover zoom control strip docked immediately to the LEFT of [X]:
                         //     [-]  [100%]  [+]  [Reset/Restore]
