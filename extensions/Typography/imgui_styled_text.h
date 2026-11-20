@@ -283,8 +283,28 @@ namespace ImGui {
 
             // 3. Normal plain text segment before next tag or escape
             if (*cur != '<') {
+#if defined(IMGUI_STYLED_TEXT_HAS_ICONS)
+                if (cur + 3 < text_end &&
+                    (unsigned char)cur[0] == 0xF0 &&
+                    (unsigned char)cur[1] == 0x9F &&
+                    (unsigned char)cur[2] == 0x90 &&
+                    ((unsigned char)cur[3] == 0x89 || (unsigned char)cur[3] == 0xB2)) {
+                    if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
+                    ImGui::Icon(((unsigned char)cur[3] == 0x89) ? "ouroboros" : "ouroboros-alt");
+                    needSameLine = true;
+                    cur += 4;
+                    continue;
+                }
+#endif
                 const char* seg_start = cur;
                 while (cur < text_end && *cur != '<' && *cur != '\n' && *cur != '\\') {
+#if defined(IMGUI_STYLED_TEXT_HAS_ICONS)
+                    if ((unsigned char)*cur == 0xF0 && cur + 3 < text_end &&
+                        (unsigned char)cur[1] == 0x9F && (unsigned char)cur[2] == 0x90 &&
+                        ((unsigned char)cur[3] == 0x89 || (unsigned char)cur[3] == 0xB2)) {
+                        break;
+                    }
+#endif
                     cur++;
                 }
                 if (cur > seg_start) {

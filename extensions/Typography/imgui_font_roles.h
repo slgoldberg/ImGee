@@ -277,6 +277,32 @@ using ImFontRole = ImGui::ImFontRole;
 
 #define IMGUI_FONT_ROLES_READY 1
 
+#if defined(IMGUI_MARKDOWN_READY) && !defined(IMGUI_MARKDOWN_CAPTION_FONT_BRIDGE_DEFINED)
+#define IMGUI_MARKDOWN_CAPTION_FONT_BRIDGE_DEFINED
+namespace ImGui {
+namespace MarkdownDetail {
+    inline ImFont* ResolveCaptionFontViaTypographyRole() {
+        if (ImFont* explicit_small = ImGui::Detail::GetFontRoleSlot(ImGui::ImFontRole::Small)) {
+            return explicit_small;
+        }
+        if (ImGui::GetCurrentContext()) {
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.Fonts && (int)ImGui::ImFontRole::Small < io.Fonts->Fonts.Size) {
+                return io.Fonts->Fonts[(int)ImGui::ImFontRole::Small];
+            }
+        }
+        return nullptr;
+    }
+    struct MarkdownCaptionFontBridgeRunner {
+        MarkdownCaptionFontBridgeRunner() {
+            GetCaptionFontResolver() = &ResolveCaptionFontViaTypographyRole;
+        }
+    };
+    static MarkdownCaptionFontBridgeRunner s_MarkdownCaptionFontBridgeRunner;
+} // namespace MarkdownDetail
+} // namespace ImGui
+#endif
+
 #if defined(IMGUI_TOOLTIP_EXT_READY) && !defined(IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED)
 #define IMGUI_TIMED_TOOLTIP_TYPOGRAPHY_BRIDGE_DEFINED
 namespace ImGui {

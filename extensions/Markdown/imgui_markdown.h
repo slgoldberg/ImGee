@@ -187,6 +187,21 @@ namespace MarkdownDetail {
         return font->CalcWordWrapPositionA(scale, text, text_end, wrap_width);
 #endif
     }
+
+    inline float& GetActiveCaptionFontSizeOverride() {
+        static float s_Override = 0.0f;
+        return s_Override;
+    }
+
+    inline void PushMarkdownFont(ImFont* font) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19200)
+        const float ovr = GetActiveCaptionFontSizeOverride();
+        const float target_sz = (ovr > 0.0f) ? ovr : (font ? font->LegacySize : 0.0f);
+        ImGui::PushFont(font, target_sz);
+#else
+        ImGui::PushFont(font);
+#endif
+    }
 } // namespace MarkdownDetail
 } // namespace ImGui
 #endif // IMGUI_MARKDOWN_DETAIL_DEFINED
@@ -601,6 +616,7 @@ namespace ImGui
         ImFont*                 boldItalicFont = nullptr;           // If nullptr, falls back to boldFont or italicFont
         ImFont*                 monoFont = nullptr;                 // If nullptr, falls back to ambient window font
         ImFont*                 regularFont = nullptr;              // If nullptr, falls back to ambient window font
+        ImFont*                 captionFont = nullptr;              // Optional font override for image/lightbox captions (defaults to ImFontRole::Small or 0.875x scale)
         const char*             baseDir = nullptr;                  // Optional base directory for resolving relative Markdown image paths
         bool                    showImageCaptions = false;          // If true, renders [alt] text as a centered figure caption beneath images by default
         bool                    enableImageLightbox = false;        // If true, clicking rendered images opens an in-context zoom lightbox overlay by default
@@ -723,6 +739,21 @@ namespace ImGui
             if( !top || top->window != ImGui::GetCurrentWindow() ) return nullptr;
             return top;
         }
+
+        struct ScopedSuspendFloatScope
+        {
+            ScopedSuspendFloatScope()
+            {
+                GetFloatScopeStack().push_back( nullptr );
+            }
+            ~ScopedSuspendFloatScope()
+            {
+                std::vector<FloatLayoutScope*>& st = GetFloatScopeStack();
+                if( !st.empty() && st.back() == nullptr ) {
+                    st.pop_back();
+                }
+            }
+        };
 
         inline std::vector<MarkdownRenderedLineSpan>& GetRenderedLineSpans()
         {
@@ -1542,6 +1573,8 @@ namespace ImGui
         typedef void (*TableTooltipFn)( ImGuiID id, bool hovered, const char* markdownText, bool is_clicked );
         typedef float (*MeasureInlineWidthFn)( const char* text, size_t len, const MarkdownConfig* config );
         typedef void (*RenderInlineCaptionFn)( const char* text, size_t len, const MarkdownConfig* config );
+        typedef ImFont* (*CaptionFontResolverFn)();
+        typedef bool (*DrawVectorIconFn)( ImDrawList* dl, ImVec2 pos, float size, ImU32 col, const char* name );
 
         inline CodeBlockTooltipFn& GetCodeBlockTooltipFn() {
             static CodeBlockTooltipFn s_Fn = nullptr;
@@ -1575,6 +1608,16 @@ namespace ImGui
 
         inline RenderInlineCaptionFn& GetRenderInlineCaptionFn() {
             static RenderInlineCaptionFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
+        inline CaptionFontResolverFn& GetCaptionFontResolver() {
+            static CaptionFontResolverFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
+        inline DrawVectorIconFn& GetDrawVectorIconFn() {
+            static DrawVectorIconFn s_Fn = nullptr;
             return s_Fn;
         }
 
@@ -2982,7 +3025,7 @@ namespace ImGui
             ImVec2 sz;
             if( chosen_font )
             {
-                ImGui::ImGeeCompat::PushFont( chosen_font );
+                MarkdownDetail::PushMarkdownFont( chosen_font );
                 sz = ImGui::CalcTextSize( s, e );
                 ImGui::PopFont();
             }
@@ -4464,6 +4507,106 @@ namespace ImGui
 
     namespace MarkdownDetail
     {
+        struct ScopedCaptionTypography
+        {
+            ImGuiWindow* win = nullptr;
+            float        prevRawWinScale = 1.0f;
+            float        prevClampOverride = 0.0f;
+            bool         pushedCapFont = false;
+            bool         changedWinScale = false;
+
+            ScopedCaptionTypography( const MarkdownConfig& srcCfg, MarkdownConfig& outCapCfg )
+            {
+                outCapCfg = srcCfg;
+                outCapCfg.showImageCaptions = false;
+                outCapCfg.enableImageLightbox = false;
+                outCapCfg.h1Font = nullptr;
+                outCapCfg.h2Font = nullptr;
+                outCapCfg.h3Font = nullptr;
+                for( int hi = 0; hi < MarkdownConfig::NUMHEADINGS; ++hi ) {
+                    outCapCfg.headingFormats[hi].font = nullptr;
+                    outCapCfg.headingFormats[hi].separator = false;
+                }
+
+                win = ImGui::GetCurrentWindow();
+                if( win ) {
+                    prevRawWinScale = win->FontWindowScale;
+                }
+                prevClampOverride = GetActiveCaptionFontSizeOverride();
+
+                ImFont* reg_font = srcCfg.regularFont ? srcCfg.regularFont : ImGui::GetFont();
+                ImFont* cap_font = srcCfg.captionFont
+                                       ? srcCfg.captionFont
+                                       : ( GetCaptionFontResolver() ? GetCaptionFontResolver()() : nullptr );
+
+                if( !srcCfg.captionFont && cap_font && reg_font ) {
+                    const float cap_nat = GetNativeFontPixelSize( cap_font );
+                    const float reg_nat = GetNativeFontPixelSize( reg_font );
+                    if( cap_font == reg_font || ( cap_nat > 0.0f && reg_nat > 0.0f && cap_nat >= reg_nat - 0.1f ) ) {
+                        cap_font = nullptr;
+                    }
+                }
+
+                if( cap_font ) {
+                    const float cap_nat = GetNativeFontPixelSize( cap_font );
+                    if( cap_nat > 0.0f ) {
+                        GetActiveCaptionFontSizeOverride() = cap_nat;
+                    }
+                    PushMarkdownFont( cap_font );
+                    pushedCapFont = true;
+                    outCapCfg.regularFont = cap_font;
+                    outCapCfg.captionFont = cap_font;
+#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM < 19200)
+                    if( cap_nat > 0.0f ) {
+                        auto fitOrClear = [&]( ImFont*& slot ) {
+                            if( slot && GetNativeFontPixelSize( slot ) > cap_nat + 0.5f ) {
+                                slot = nullptr;
+                            }
+                        };
+                        fitOrClear( outCapCfg.boldFont );
+                        fitOrClear( outCapCfg.italicFont );
+                        fitOrClear( outCapCfg.boldItalicFont );
+                        fitOrClear( outCapCfg.monoFont );
+                    }
+#endif
+                } else {
+                    const float reg_nat = GetNativeFontPixelSize( reg_font );
+                    if( reg_nat > 0.0f ) {
+                        GetActiveCaptionFontSizeOverride() = reg_nat;
+                    }
+#if !defined(IMGUI_VERSION_NUM) || (IMGUI_VERSION_NUM < 19200)
+                    if( reg_nat > 0.0f ) {
+                        auto fitOrClear = [&]( ImFont*& slot ) {
+                            if( slot && GetNativeFontPixelSize( slot ) > reg_nat + 0.5f ) {
+                                slot = nullptr;
+                            }
+                        };
+                        fitOrClear( outCapCfg.boldFont );
+                        fitOrClear( outCapCfg.italicFont );
+                        fitOrClear( outCapCfg.boldItalicFont );
+                        fitOrClear( outCapCfg.monoFont );
+                    }
+#endif
+                    if( win ) {
+                        const float eff_scale = ImGui::GetFontScale( false );
+                        ImGui::ImGeeCompat::SetWindowFontScale( eff_scale * 0.875f );
+                        changedWinScale = true;
+                    }
+                }
+            }
+
+            ~ScopedCaptionTypography()
+            {
+                if( pushedCapFont ) {
+                    ImGui::PopFont();
+                }
+                if( changedWinScale && win ) {
+                    ImGui::ImGeeCompat::SetWindowFontScale( prevRawWinScale );
+                }
+                GetActiveCaptionFontSizeOverride() = prevClampOverride;
+            }
+        };
+
         inline float MeasureCaptionWidthFallback( const char* text, size_t len, const MarkdownConfig& cfg )
         {
             if( !text || len == 0 ) return 0.0f;
@@ -4479,6 +4622,7 @@ namespace ImGui
         inline void RenderCaptionInlineMarkdown( const char* text, size_t len, const MarkdownConfig& cfg )
         {
             if( !text || len == 0 ) return;
+            ScopedSuspendFloatScope suspend_floats;
             if( GetRenderInlineCaptionFn() ) {
                 GetRenderInlineCaptionFn()( text, len, &cfg );
                 return;
@@ -4716,62 +4860,64 @@ namespace ImGui
                 float scale = vis_scale;
                 const float cap_gap_y = std::round( 4.0f * scale );
 
-                MarkdownConfig cap_cfg = mdConfig_;
-                cap_cfg.showImageCaptions = false;
-                cap_cfg.enableImageLightbox = false;
+                {
+                    MarkdownConfig cap_cfg;
+                    ScopedCaptionTypography cap_typo( mdConfig_, cap_cfg );
+                    ScopedSuspendFloatScope cap_no_floats;
 
-                const float cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), cap_cfg );
-                const float img_center_x = ( res.imageRectMin.x + res.imageRectMax.x ) * 0.5f;
-                const float min_readable_w = ( effective_float != MarkdownImageFloat::None )
-                                                 ? render_size.x
-                                                 : ImMin( cap_single_w, 180.0f * scale );
-                const float max_cap_w = ( full_avail_w > 10.0f )
-                                            ? ImMin( full_avail_w, ImMax( render_size.x, min_readable_w ) )
-                                            : ImMax( render_size.x, cap_single_w );
+                    const float cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), cap_cfg );
+                    const float img_center_x = ( res.imageRectMin.x + res.imageRectMax.x ) * 0.5f;
+                    const float min_readable_w = ( effective_float != MarkdownImageFloat::None )
+                                                     ? render_size.x
+                                                     : ImMin( cap_single_w, 180.0f * scale );
+                    const float max_cap_w = ( full_avail_w > 10.0f )
+                                                ? ImMin( full_avail_w, ImMax( render_size.x, min_readable_w ) )
+                                                : ImMax( render_size.x, cap_single_w );
 
-                const ImVec4 base_txt = ImGui::GetStyle().Colors[ImGuiCol_Text];
-                const ImVec4 cap_col( base_txt.x, base_txt.y, base_txt.z, base_txt.w * 0.75f );
+                    const ImVec4 base_txt = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                    const ImVec4 cap_col( base_txt.x, base_txt.y, base_txt.z, base_txt.w * 0.75f );
 
-                if( cap_single_w <= max_cap_w + 0.5f ) {
-                    float cap_x = std::round( img_center_x - cap_single_w * 0.5f );
-                    if( full_avail_w > 10.0f && !parent_aligned ) {
-                        if( cap_x + cap_single_w > margin_left_screen_x + full_avail_w ) {
-                            cap_x = margin_left_screen_x + full_avail_w - cap_single_w;
+                    if( cap_single_w <= max_cap_w + 0.5f ) {
+                        float cap_x = std::round( img_center_x - cap_single_w * 0.5f );
+                        if( full_avail_w > 10.0f && !parent_aligned ) {
+                            if( cap_x + cap_single_w > margin_left_screen_x + full_avail_w ) {
+                                cap_x = margin_left_screen_x + full_avail_w - cap_single_w;
+                            }
+                            if( cap_x < margin_left_screen_x ) {
+                                cap_x = margin_left_screen_x;
+                            }
                         }
-                        if( cap_x < margin_left_screen_x ) {
-                            cap_x = margin_left_screen_x;
+                        const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
+                        ImGui::SetCursorScreenPos( cap_pos );
+                        cap_cfg.wrapWidth = -1.0f;
+                        ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
+                        ScopedFullLineWidth cap_w_scope( cap_single_w, true );
+                        RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
+                        ImGui::PopStyleColor();
+                        telem.lastCaptionMin = cap_pos;
+                        telem.lastCaptionMax = ImVec2( cap_pos.x + cap_single_w, ImMax( cap_pos.y + ImGui::GetTextLineHeight(), ImGui::GetItemRectMax().y ) );
+                    } else {
+                        float cap_x = std::round( img_center_x - max_cap_w * 0.5f );
+                        if( full_avail_w > 10.0f && !parent_aligned ) {
+                            if( cap_x + max_cap_w > margin_left_screen_x + full_avail_w ) {
+                                cap_x = margin_left_screen_x + full_avail_w - max_cap_w;
+                            }
+                            if( cap_x < margin_left_screen_x ) {
+                                cap_x = margin_left_screen_x;
+                            }
                         }
+                        const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
+                        ImGui::SetCursorScreenPos( cap_pos );
+                        cap_cfg.wrapWidth = max_cap_w;
+                        ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
+                        ImGui::BeginGroup();
+                        ScopedFullLineWidth cap_w_scope( max_cap_w, true );
+                        RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
+                        ImGui::EndGroup();
+                        ImGui::PopStyleColor();
+                        telem.lastCaptionMin = ImGui::GetItemRectMin();
+                        telem.lastCaptionMax = ImGui::GetItemRectMax();
                     }
-                    const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
-                    ImGui::SetCursorScreenPos( cap_pos );
-                    cap_cfg.wrapWidth = -1.0f;
-                    ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
-                    ScopedFullLineWidth cap_w_scope( cap_single_w, true );
-                    RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
-                    ImGui::PopStyleColor();
-                    telem.lastCaptionMin = cap_pos;
-                    telem.lastCaptionMax = ImVec2( cap_pos.x + cap_single_w, ImMax( cap_pos.y + ImGui::GetTextLineHeight(), ImGui::GetItemRectMax().y ) );
-                } else {
-                    float cap_x = std::round( img_center_x - max_cap_w * 0.5f );
-                    if( full_avail_w > 10.0f && !parent_aligned ) {
-                        if( cap_x + max_cap_w > margin_left_screen_x + full_avail_w ) {
-                            cap_x = margin_left_screen_x + full_avail_w - max_cap_w;
-                        }
-                        if( cap_x < margin_left_screen_x ) {
-                            cap_x = margin_left_screen_x;
-                        }
-                    }
-                    const ImVec2 cap_pos( cap_x, res.imageRectMax.y + cap_gap_y );
-                    ImGui::SetCursorScreenPos( cap_pos );
-                    cap_cfg.wrapWidth = max_cap_w;
-                    ImGui::PushStyleColor( ImGuiCol_Text, cap_col );
-                    ImGui::BeginGroup();
-                    ScopedFullLineWidth cap_w_scope( max_cap_w, true );
-                    RenderCaptionInlineMarkdown( caption_text.c_str(), caption_text.size(), cap_cfg );
-                    ImGui::EndGroup();
-                    ImGui::PopStyleColor();
-                    telem.lastCaptionMin = ImGui::GetItemRectMin();
-                    telem.lastCaptionMax = ImGui::GetItemRectMax();
                 }
 
                 ImGui::EndGroup();
@@ -4983,15 +5129,17 @@ namespace ImGui
                         int max_cap_w_px = 0;
 
                         if( has_lb_caption ) {
-                            MarkdownConfig lb_cap_cfg = mdConfig_;
-                            lb_cap_cfg.showImageCaptions = false;
-                            lb_cap_cfg.enableImageLightbox = false;
+                            MarkdownConfig lb_cap_cfg;
+                            ScopedCaptionTypography lb_cap_typo( mdConfig_, lb_cap_cfg );
+                            ScopedSuspendFloatScope lb_cap_no_floats;
+
+                            const float target_lb_cap_w = ImMin( max_cap_text_w, ImMax( 520.0f, avail_lb_w * 0.68f ) );
                             const float lb_cap_single_w = MeasureCaptionWidthFallback( caption_text.c_str(), caption_text.size(), lb_cap_cfg );
-                            const float clamped_cap_w = ImMin( max_cap_text_w, lb_cap_single_w );
-                            lb_cap_cfg.wrapWidth = ( lb_cap_single_w <= max_cap_text_w + 0.5f ) ? -1.0f : max_cap_text_w;
+                            const float clamped_cap_w = ImMin( target_lb_cap_w, lb_cap_single_w );
+                            lb_cap_cfg.wrapWidth = ( lb_cap_single_w <= target_lb_cap_w + 0.5f ) ? -1.0f : target_lb_cap_w;
 
                             cap_hash = ImHashData( caption_text.c_str(), caption_text.size(), 0x9E3779B9u );
-                            max_cap_w_px = static_cast<int>( std::round( max_cap_text_w ) );
+                            max_cap_w_px = static_cast<int>( std::round( target_lb_cap_w ) );
 
                             ImVec2 initial_cap_pos(
                                 std::round( host_min.x + ( host_size.x - clamped_cap_w ) * 0.5f ),
@@ -5246,28 +5394,55 @@ namespace ImGui
                             drawStripPill( bx_rst, z_rst_w, z_rst_hov, z_rst_act, rst_enabled );
                             const ImVec2 c_rst( bx_rst + z_rst_w * 0.5f, cy );
                             const ImU32 rst_col = rst_enabled ? fg_on : fg_dim;
-                            const float ar = 5.4f;
-                            lb_dl->PathClear();
-                            if( can_z_restore ) {
-                                // Clockwise restore arc + right-pointing upper arrowhead
-                                lb_dl->PathArcTo( c_rst, ar, -2.55f, 2.15f, 16 );
-                            } else {
-                                // Counter-clockwise reset arc + left-pointing upper arrowhead
-                                lb_dl->PathArcTo( c_rst, ar, -0.59f, 4.11f, 16 );
-                            }
-#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
-                            lb_dl->PathStroke( rst_col, 1.65f, 0 );
+                            const float icon_sz = 13.0f;
+                            bool drew_vec_icon = false;
+#if defined(IMGUI_ICONS_H) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS) && !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS)
+                            drew_vec_icon = ImGui::DrawVectorIcon(
+                                lb_dl,
+                                ImVec2( c_rst.x - icon_sz * 0.5f, c_rst.y - icon_sz * 0.5f ),
+                                icon_sz,
+                                rst_col,
+                                can_z_restore ? "redo" : "undo" );
 #else
-                            lb_dl->PathStroke( rst_col, 0, 1.65f );
+                            if( GetDrawVectorIconFn() ) {
+                                drew_vec_icon = GetDrawVectorIconFn()(
+                                    lb_dl,
+                                    ImVec2( c_rst.x - icon_sz * 0.5f, c_rst.y - icon_sz * 0.5f ),
+                                    icon_sz,
+                                    rst_col,
+                                    can_z_restore ? "redo" : "undo" );
+                            }
 #endif
-                            if( can_z_restore ) {
-                                const ImVec2 tip( c_rst.x + std::cos( -0.59f ) * ar, c_rst.y + std::sin( -0.59f ) * ar );
-                                const ImVec2 ah[3] = { ImVec2( tip.x - 3.6f, tip.y - 1.2f ), tip, ImVec2( tip.x - 0.8f, tip.y + 3.4f ) };
-                                StrokePolylineCompat( lb_dl, ah, 3, rst_col, 1.6f, 0 );
-                            } else {
-                                const ImVec2 tip( c_rst.x + std::cos( -2.55f ) * ar, c_rst.y + std::sin( -2.55f ) * ar );
-                                const ImVec2 ah[3] = { ImVec2( tip.x + 3.6f, tip.y - 1.2f ), tip, ImVec2( tip.x + 0.8f, tip.y + 3.4f ) };
-                                StrokePolylineCompat( lb_dl, ah, 3, rst_col, 1.6f, 0 );
+                            if( !drew_vec_icon ) {
+                                const ImVec2 arc_c(
+                                    c_rst.x + ( can_z_restore ? -icon_sz * 0.02f : icon_sz * 0.02f ),
+                                    c_rst.y + icon_sz * 0.02f );
+                                const float ar = icon_sz * 0.25f;
+                                const float th = ImMax( 1.2f, icon_sz * 0.095f );
+                                const float a_min = can_z_restore ? -5.49f : -2.30f;
+                                const float a_max = can_z_restore ? -0.84f :  2.35f;
+                                lb_dl->PathClear();
+                                lb_dl->PathArcTo( arc_c, ar, a_min, a_max, 16 );
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+                                lb_dl->PathStroke( rst_col, th, 0 );
+#else
+                                lb_dl->PathStroke( rst_col, 0, th );
+#endif
+                                const float a_head = can_z_restore ? a_max : a_min;
+                                const float cos_a = std::cos( a_head );
+                                const float sin_a = std::sin( a_head );
+                                const float tx = can_z_restore ? -sin_a :  sin_a;
+                                const float ty = can_z_restore ?  cos_a : -cos_a;
+                                const float nx = cos_a;
+                                const float ny = sin_a;
+                                const ImVec2 base( arc_c.x + ar * cos_a, arc_c.y + ar * sin_a );
+                                const float arrow_len = ar * 0.95f;
+                                const float arrow_w   = ar * 0.68f;
+                                const ImVec2 tip( base.x + tx * ( arrow_len * 0.65f ), base.y + ty * ( arrow_len * 0.65f ) );
+                                const ImVec2 back( base.x - tx * ( arrow_len * 0.35f ), base.y - ty * ( arrow_len * 0.35f ) );
+                                const ImVec2 p1( back.x + nx * arrow_w, back.y + ny * arrow_w );
+                                const ImVec2 p2( back.x - nx * arrow_w, back.y - ny * arrow_w );
+                                lb_dl->AddTriangleFilled( tip, p1, p2, rst_col );
                             }
                         }
 
@@ -6831,7 +7006,7 @@ namespace ImGui
         case MarkdownFormatType::ORDERED_LIST:
             if( markdownFormatInfo_.config && markdownFormatInfo_.config->regularFont )
             {
-                if( start_ ) ImGui::ImGeeCompat::PushFont( markdownFormatInfo_.config->regularFont );
+                if( start_ ) MarkdownDetail::PushMarkdownFont( markdownFormatInfo_.config->regularFont );
                 else         ImGui::PopFont();
             }
             break;
@@ -6843,7 +7018,7 @@ namespace ImGui
                 ImFont* mono_font = markdownFormatInfo_.config ? markdownFormatInfo_.config->monoFont : nullptr;
                 if( mono_font )
                 {
-                    if( start_ ) ImGui::ImGeeCompat::PushFont( mono_font );
+                    if( start_ ) MarkdownDetail::PushMarkdownFont( mono_font );
                     else         ImGui::PopFont();
                 }
                 break;
@@ -6885,7 +7060,7 @@ namespace ImGui
                 ImFont* italic_font = markdownFormatInfo_.config ? markdownFormatInfo_.config->italicFont : nullptr;
                 if( italic_font )
                 {
-                    if( start_ ) ImGui::ImGeeCompat::PushFont( italic_font );
+                    if( start_ ) MarkdownDetail::PushMarkdownFont( italic_font );
                     else         ImGui::PopFont();
                 }
                 else
@@ -6910,7 +7085,7 @@ namespace ImGui
                 {
                     if( bi_font )
                     {
-                        ImGui::ImGeeCompat::PushFont( bi_font );
+                        MarkdownDetail::PushMarkdownFont( bi_font );
                     }
                 }
                 else
@@ -6933,7 +7108,7 @@ namespace ImGui
 			    {
 				    if( bold_font )
 				    {
-					    ImGui::ImGeeCompat::PushFont( bold_font );
+					    MarkdownDetail::PushMarkdownFont( bold_font );
 				    }
 			    }
                 else
@@ -7218,6 +7393,46 @@ namespace ImGui
 #endif
 
 #define IMGUI_MARKDOWN_READY 1
+
+#if defined(IMGUI_FONT_ROLES_H) && !defined(IMGUI_MARKDOWN_CAPTION_FONT_BRIDGE_DEFINED)
+#define IMGUI_MARKDOWN_CAPTION_FONT_BRIDGE_DEFINED
+namespace ImGui {
+namespace MarkdownDetail {
+    inline ImFont* ResolveCaptionFontViaTypographyRole() {
+        if( ImFont* explicit_small = ImGui::Detail::GetFontRoleSlot( ImGui::ImFontRole::Small ) ) {
+            return explicit_small;
+        }
+        if( ImGui::GetCurrentContext() ) {
+            ImGuiIO& io = ImGui::GetIO();
+            if( io.Fonts && (int)ImGui::ImFontRole::Small < io.Fonts->Fonts.Size ) {
+                return io.Fonts->Fonts[(int)ImGui::ImFontRole::Small];
+            }
+        }
+        return nullptr;
+    }
+    struct MarkdownCaptionFontBridgeRunner {
+        MarkdownCaptionFontBridgeRunner() {
+            GetCaptionFontResolver() = &ResolveCaptionFontViaTypographyRole;
+        }
+    };
+    static MarkdownCaptionFontBridgeRunner s_MarkdownCaptionFontBridgeRunner;
+} // namespace MarkdownDetail
+} // namespace ImGui
+#endif
+
+#if defined(IMGUI_ICONS_H) && defined(CONTRIB_ICONS_AVAILABLE) && !defined(IMGUI_MARKDOWN_ICONS_BRIDGE_DEFINED)
+#define IMGUI_MARKDOWN_ICONS_BRIDGE_DEFINED
+namespace ImGui {
+namespace MarkdownDetail {
+    struct MarkdownVectorIconBridgeRunner {
+        MarkdownVectorIconBridgeRunner() {
+            GetDrawVectorIconFn() = &ImGui::DrawVectorIcon;
+        }
+    };
+    static MarkdownVectorIconBridgeRunner s_MarkdownVectorIconBridgeRunner;
+} // namespace MarkdownDetail
+} // namespace ImGui
+#endif
 
 #if defined(IMGUI_CLICKABLE_LINKS_READY) && !defined(IMGUI_MARKDOWN_AUTO_LINK_BRIDGED)
 #if defined(__has_include)

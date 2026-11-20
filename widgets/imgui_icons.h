@@ -322,6 +322,8 @@ namespace ImGui {
         if (s == "\xE2\x9A\xA0") return "warning";     // ⚠ U+26A0
         if (s == "\xE2\x98\x85") return "star";        // ★ U+2605
         if (s == "\xE2\x9C\x88") return "plane";       // ✈ U+2708
+        if (s == "\xF0\x9F\x90\x89") return "ouroboros";     // 🐉 U+1F409
+        if (s == "\xF0\x9F\x90\xB2") return "ouroboros-alt"; // 🐲 U+1F432
 
         for (char& c : s) {
             c = (char)tolower((unsigned char)c);
@@ -357,6 +359,8 @@ namespace ImGui {
         if (s == "magnifier" || s == "find") return "search";
         if (s == "aircraft" || s == "airplane") return "plane";
         if (s == "dot") return "circle";
+        if (s == "ouroboros" || s == "dragon" || s == "gee-crest") return "ouroboros";
+        if (s == "ouroboros-alt" || s == "dragon-alt") return "ouroboros-alt";
 
         return s;
     }
@@ -370,7 +374,8 @@ namespace ImGui {
                 n == "check" || n == "cross" || n == "plus" || n == "minus" ||
                 n == "gear" || n == "info" || n == "lightbulb" || n == "important" ||
                 n == "warning" || n == "caution" || n == "star" ||
-                n == "search" || n == "plane" || n == "circle" || n == "square");
+                n == "search" || n == "plane" || n == "circle" || n == "square" ||
+                n == "ouroboros" || n == "ouroboros-alt");
     }
 
     // -------------------------------------------------------------------------
@@ -709,6 +714,43 @@ namespace ImGui {
             return true;
         }
 
+        if (id == "ouroboros" || id == "ouroboros-alt") {
+            // House of Gee Ouroboros Chinese Dragons (born from swapped Lightbox arc/jaw radians!)
+            const float ar = size * 0.38f;
+            const float u  = ar / 5.4f;
+            const float stroke_arc = Detail::IconMax(1.15f, 1.65f * u);
+            const float stroke_jaw = Detail::IconMax(1.10f, 1.60f * u);
+            draw_list->PathClear();
+            if (id == "ouroboros") {
+                draw_list->PathArcTo(center, ar, -0.59f, 4.11f, 20);
+            } else {
+                draw_list->PathArcTo(center, ar, -2.55f, 2.15f, 20);
+            }
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            draw_list->PathStroke(col, stroke_arc, 0);
+#else
+            draw_list->PathStroke(col, 0, stroke_arc);
+#endif
+            if (id == "ouroboros") {
+                const ImVec2 tip(center.x + std::cos(-2.55f) * ar, center.y + std::sin(-2.55f) * ar);
+                const ImVec2 jaws[3] = {
+                    ImVec2(tip.x + 3.6f * u, tip.y - 1.2f * u),
+                    tip,
+                    ImVec2(tip.x + 0.8f * u, tip.y + 3.4f * u)
+                };
+                Detail::StrokeIconPolyline(draw_list, jaws, 3, col, stroke_jaw, 0);
+            } else {
+                const ImVec2 tip(center.x + std::cos(-0.59f) * ar, center.y + std::sin(-0.59f) * ar);
+                const ImVec2 jaws[3] = {
+                    ImVec2(tip.x - 3.6f * u, tip.y - 1.2f * u),
+                    tip,
+                    ImVec2(tip.x - 0.8f * u, tip.y - 0.0f + 3.4f * u)
+                };
+                Detail::StrokeIconPolyline(draw_list, jaws, 3, col, stroke_jaw, 0);
+            }
+            return true;
+        }
+
         return false;
     }
 
@@ -889,6 +931,20 @@ namespace ImGui {
 } // namespace ImGui
 
 #endif // !CONTRIB_DISABLE_ICONS
+
+#if defined(IMGUI_MARKDOWN_READY) && defined(CONTRIB_ICONS_AVAILABLE) && !defined(IMGUI_MARKDOWN_ICONS_BRIDGE_DEFINED)
+#define IMGUI_MARKDOWN_ICONS_BRIDGE_DEFINED
+namespace ImGui {
+namespace MarkdownDetail {
+    struct MarkdownVectorIconBridgeRunner {
+        MarkdownVectorIconBridgeRunner() {
+            GetDrawVectorIconFn() = &ImGui::DrawVectorIcon;
+        }
+    };
+    static MarkdownVectorIconBridgeRunner s_MarkdownVectorIconBridgeRunner;
+} // namespace MarkdownDetail
+} // namespace ImGui
+#endif
 
 #if defined(_MSC_VER) || defined(__GNUC__) || defined(__clang__)
 #pragma pop_macro("max")

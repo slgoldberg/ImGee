@@ -2388,14 +2388,18 @@ int main(int argc, char** argv) {
             IMGEE_TEST_CHECK(parsedToc[5].level == 2 && parsedToc[5].slug == "3-emergency-procedures");
         }
 
-        // 3. Verify ApplyDocumentViewerTheme preserves window_opacity when transparent_hud is enabled:
+        // 3. Verify ApplyDocumentViewerTheme preserves window_opacity when transparent_hud is enabled,
+        //    and enforces 100% solid WindowBg.w == 1.0f & Border.w == 1.0f across all 5 presets when false:
         ImGuiStyle savedStyle = ImGui::GetStyle();
         ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Rusty, true, 0.72f);
         IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w - 0.72f) <= 0.005f);
         ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Light, true, 0.65f);
         IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w - 0.65f) <= 0.005f);
-        ImGui::ApplyDocumentViewerTheme(ImGui::DocumentViewerTheme_Charcoal, false, 0.65f);
-        IMGEE_TEST_CHECK(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w > 0.90f);
+        for (int s6ThemeIdx = 0; s6ThemeIdx < ImGui::DocumentViewerTheme_COUNT; ++s6ThemeIdx) {
+            ImGui::ApplyDocumentViewerTheme(s6ThemeIdx, false, 0.65f);
+            IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w - 1.0f) <= 0.001f);
+            IMGEE_TEST_CHECK(std::fabs(ImGui::GetStyle().Colors[ImGuiCol_Border].w - 1.0f) <= 0.001f);
+        }
         ImGui::GetStyle() = savedStyle;
 
         // 4. Multi-frame headless DocumentViewer render, zoom A/B toggle, & anchor jump verification:
@@ -2518,6 +2522,134 @@ int main(int argc, char** argv) {
             ImGui::End();
             ImGui::Render();
             CompleteHeadlessRenderTextures();
+        }
+
+        // 6. Verify Small caption height (< Regular), float-scope isolation on captions beneath floated figures,
+        //    balanced wide-window Lightbox caption reading width, and Ouroboros Easter-egg vector icons:
+        {
+            // 6a. Ouroboros Easter-egg aliases, raw 4-byte UTF-8 glyphs, & DrawVectorIcon / MD / StyledText vertex emission:
+            IMGEE_TEST_CHECK(ImGui::NormalizeIconName("\xF0\x9F\x90\x89") == "ouroboros");
+            IMGEE_TEST_CHECK(ImGui::NormalizeIconName("\xF0\x9F\x90\xB2") == "ouroboros-alt");
+            IMGEE_TEST_CHECK(ImGui::NormalizeIconName(":ouroboros:") == "ouroboros");
+            IMGEE_TEST_CHECK(ImGui::NormalizeIconName("gee-crest") == "ouroboros");
+            IMGEE_TEST_CHECK(ImGui::NormalizeIconName("dragon-alt") == "ouroboros-alt");
+            IMGEE_TEST_CHECK(ImGui::IsVectorIcon("\xF0\x9F\x90\x89"));
+            IMGEE_TEST_CHECK(ImGui::IsVectorIcon("\xF0\x9F\x90\xB2"));
+            IMGEE_TEST_CHECK(ImGui::IsVectorIcon(":ouroboros:"));
+            IMGEE_TEST_CHECK(ImGui::IsVectorIcon("ouroboros-alt"));
+
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(640.0f, 420.0f), ImGuiCond_Always);
+            ImGui::Begin("CaptionAndOuroborosSmokeWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+            StackSnapshot s6Snap = StackSnapshot::Capture();
+
+            ImDrawList* s6Dl = ImGui::GetWindowDrawList();
+            const int s6Vtx0 = s6Dl->VtxBuffer.Size;
+            IMGEE_TEST_CHECK(ImGui::DrawVectorIcon(s6Dl, ImGui::GetCursorScreenPos(), 18.0f, IM_COL32_WHITE, "\xF0\x9F\x90\x89"));
+            const int s6Vtx1 = s6Dl->VtxBuffer.Size;
+            IMGEE_TEST_CHECK(s6Vtx1 > s6Vtx0);
+            IMGEE_TEST_CHECK(ImGui::DrawVectorIcon(s6Dl, ImVec2(ImGui::GetCursorScreenPos().x + 24.0f, ImGui::GetCursorScreenPos().y), 18.0f, IM_COL32_WHITE, "\xF0\x9F\x90\xB2"));
+            const int s6Vtx2 = s6Dl->VtxBuffer.Size;
+            IMGEE_TEST_CHECK(s6Vtx2 > s6Vtx1);
+            ImGui::Dummy(ImVec2(48.0f, 20.0f));
+
+            const int s6VtxMd0 = s6Dl->VtxBuffer.Size;
+            ImGui::MD::Text("\xF0\x9F\x90\x89 :ouroboros-alt: `<icon gee-crest/>`");
+            IMGEE_TEST_CHECK(s6Dl->VtxBuffer.Size > s6VtxMd0);
+
+            const int s6VtxSt0 = s6Dl->VtxBuffer.Size;
+            ImGui::StyledText("Crest \xF0\x9F\x90\x89 \xF0\x9F\x90\xB2");
+            IMGEE_TEST_CHECK(s6Dl->VtxBuffer.Size > s6VtxSt0);
+
+            // 6b. Inline figure caption height (including **bold** and `code`) is strictly smaller than Regular line height:
+            const float s6RegLineH = ImGui::GetTextLineHeight();
+            ImGui::MD::TextWrapped("![**Fig 1:** Compact `V_MO` caption](test_logo){width=240 height=60 caption}");
+            ImVec2 s6CapMin(0.0f, 0.0f), s6CapMax(0.0f, 0.0f);
+            ImGui::GetLastMarkdownCaptionRect(&s6CapMin, &s6CapMax);
+            const float s6CapH = s6CapMax.y - s6CapMin.y;
+            IMGEE_TEST_CHECK(s6CapH > 4.0f && s6CapH < s6RegLineH - 0.25f);
+
+            // 6c. Float-scope non-interference: active left float must NOT shift or narrow a right-floated figure's caption:
+            const std::string s6DualFloatMd =
+                "![Left Card](test_logo){width=160 height=120 float=left}\n\n"
+                "![Right Card Multi-Word Wrapped Caption Text Under Figure](test_logo){width=160 height=70 float=right caption}\n\n"
+                "<br clear=\"all\"/>";
+            ImGui::MD::TextWrapped(s6DualFloatMd);
+            ImVec2 s6RightImgMin(0.0f, 0.0f), s6RightImgMax(0.0f, 0.0f);
+            ImVec2 s6RightCapMin(0.0f, 0.0f), s6RightCapMax(0.0f, 0.0f);
+            ImGui::GetLastMarkdownImageRect(&s6RightImgMin, &s6RightImgMax);
+            ImGui::GetLastMarkdownCaptionRect(&s6RightCapMin, &s6RightCapMax);
+            IMGEE_TEST_CHECK(s6RightCapMin.x >= s6RightImgMin.x - 1.5f);
+            IMGEE_TEST_CHECK(s6RightCapMax.x <= s6RightImgMax.x + 1.5f);
+
+            s6Snap.VerifyBalanced("CaptionAndOuroborosSmokeWin");
+            ImGui::End();
+            ImGui::Render();
+            CompleteHeadlessRenderTextures();
+
+            // 6d. Balanced Lightbox caption reading measure on wide windows (clamped to ~0.68 * avail_lb_w):
+            const std::string s6WideLbMd =
+                "![Wide Window Lightbox](test_logo){width=120 height=80 lightbox caption=\""
+                "**Balanced Reading Measure:** On wide desktop viewports, lightbox captions wrap comfortably around "
+                "sixty-eight percent of the available overlay width so multi-clause technical descriptions form "
+                "even, readable lines instead of stretching edge-to-edge with a two-word orphan tail.\"}";
+            ImVec2 s6ThumbCenter(0.0f, 0.0f);
+            auto renderWideLbFrame = [&](bool captureThumb) {
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(1100.0f, 480.0f), ImGuiCond_Always);
+                ImGui::Begin("WideLightboxCaptionMeasureWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                ImGui::MD::TextWrapped(s6WideLbMd);
+                if (captureThumb) {
+                    ImVec2 mMin(0.0f, 0.0f), mMax(0.0f, 0.0f);
+                    ImGui::GetLastMarkdownImageRect(&mMin, &mMax);
+                    s6ThumbCenter = ImVec2((mMin.x + mMax.x) * 0.5f, (mMin.y + mMax.y) * 0.5f);
+                }
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            };
+
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+            auto setS6Mouse = [&](float mx, float my, bool down) {
+                io.AddMousePosEvent(mx, my);
+                io.AddMouseButtonEvent(0, down);
+            };
+#else
+            auto setS6Mouse = [&](float mx, float my, bool down) {
+                io.MousePos = ImVec2(mx, my);
+                io.MouseDown[0] = down;
+            };
+#endif
+            setS6Mouse(5.0f, 5.0f, false);
+            renderWideLbFrame(true);
+            setS6Mouse(s6ThumbCenter.x, s6ThumbCenter.y, false);
+            renderWideLbFrame(false);
+            setS6Mouse(s6ThumbCenter.x, s6ThumbCenter.y, true);
+            renderWideLbFrame(false);
+            setS6Mouse(s6ThumbCenter.x, s6ThumbCenter.y, false);
+            renderWideLbFrame(false);
+            IMGEE_TEST_CHECK(ImGui::IsMarkdownLightboxOpen());
+
+            ImVec2 s6PlateMin(0.0f, 0.0f), s6PlateMax(0.0f, 0.0f);
+            IMGEE_TEST_CHECK(ImGui::GetActiveMarkdownLightboxCaptionPlateRect(&s6PlateMin, &s6PlateMax));
+            const float s6AvailLbW = 1100.0f - 40.0f;
+            const float s6TargetCapW = s6AvailLbW * 0.68f;
+            const float s6PlateW = s6PlateMax.x - s6PlateMin.x;
+            const float s6PlateH = s6PlateMax.y - s6PlateMin.y;
+            IMGEE_TEST_CHECK(s6PlateW <= s6TargetCapW + 26.0f);
+            IMGEE_TEST_CHECK(s6PlateH >= s6RegLineH * 1.45f);
+
+            // Close via [X] close button click:
+            ImVec2 s6CloseMin(0.0f, 0.0f), s6CloseMax(0.0f, 0.0f);
+            ImGui::GetActiveMarkdownLightboxCloseRect(&s6CloseMin, &s6CloseMax);
+            const ImVec2 s6CloseCenter((s6CloseMin.x + s6CloseMax.x) * 0.5f, (s6CloseMin.y + s6CloseMax.y) * 0.5f);
+            setS6Mouse(s6CloseCenter.x, s6CloseCenter.y, true);
+            renderWideLbFrame(false);
+            setS6Mouse(s6CloseCenter.x, s6CloseCenter.y, false);
+            renderWideLbFrame(false);
+            IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
         }
     }
 

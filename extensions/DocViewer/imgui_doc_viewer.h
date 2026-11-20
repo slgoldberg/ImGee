@@ -900,6 +900,9 @@ inline void ApplyDocumentViewerTheme(
         const float alpha = (window_opacity < 0.10f) ? 0.10f : ((window_opacity > 1.0f) ? 1.0f : window_opacity);
         style->Colors[ImGuiCol_WindowBg].w = alpha;
         style->Colors[ImGuiCol_Border].w   = (std::min)(1.0f, alpha * 0.8f + 0.2f);
+    } else {
+        style->Colors[ImGuiCol_WindowBg].w = 1.0f;
+        style->Colors[ImGuiCol_Border].w   = 1.0f;
     }
 }
 

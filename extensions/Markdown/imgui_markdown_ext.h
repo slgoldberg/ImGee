@@ -405,7 +405,7 @@ namespace ImGui {
             }
 #endif
             if (mono) {
-                ImGui::ImGeeCompat::PushFont(mono);
+                MarkdownDetail::PushMarkdownFont(mono);
                 return;
             }
         }
@@ -428,7 +428,7 @@ namespace ImGui {
 #endif
         }
         if (fontToPush) {
-            ImGui::ImGeeCompat::PushFont(fontToPush);
+            MarkdownDetail::PushMarkdownFont(fontToPush);
             return;
         }
 
@@ -626,7 +626,10 @@ namespace ImGui {
                             }
                             std::string norm = NormalizeIconName(query.c_str());
                             if (IsVectorIcon(norm.c_str())) {
-                                bool is_raw_glyph = (query.length() == 3 && (unsigned char)query[0] == 0xE2);
+                                bool is_raw_glyph = (query.length() == 3 && (unsigned char)query[0] == 0xE2) ||
+                                                    (query.length() == 4 && (unsigned char)query[0] == 0xF0 &&
+                                                     (unsigned char)query[1] == 0x9F && (unsigned char)query[2] == 0x90 &&
+                                                     ((unsigned char)query[3] == 0x89 || (unsigned char)query[3] == 0xB2));
                                 if (is_raw_glyph || query == "^" || query == "v") {
                                     if (has_brackets) out.push_back('[');
                                     out.append("<icon ");
@@ -749,6 +752,21 @@ namespace ImGui {
                 }
             }
 
+            // 4b. Raw 4-byte UTF-8 House of Gee Ouroboros glyphs outside code blocks:
+            if (i + 3 < len && (unsigned char)text[i] == 0xF0 &&
+                (unsigned char)text[i + 1] == 0x9F && (unsigned char)text[i + 2] == 0x90) {
+                unsigned char c3 = (unsigned char)text[i + 3];
+                const char* dragon_icon = (c3 == 0x89) ? "ouroboros" : ((c3 == 0xB2) ? "ouroboros-alt" : nullptr);
+                if (dragon_icon) {
+                    out.append("<icon ");
+                    out.append(dragon_icon);
+                    out.append(" />");
+                    any_replaced = true;
+                    i += 4;
+                    continue;
+                }
+            }
+
             out.push_back(text[i++]);
         }
 
@@ -844,13 +862,14 @@ namespace ImGui {
         float total_w = 0.0f;
         std::string seg;
 
+        const float clamp_ovr = MarkdownDetail::GetActiveCaptionFontSizeOverride();
         auto flush_seg = [&](ImFont* seg_font) {
             if (!seg.empty()) {
                 ImFont* f = seg_font ? seg_font : base_font;
                 if (!f) f = ImGui::GetFont();
                 float seg_sz = font_size;
                 if (f != base_font) {
-                    const float f_native = MarkdownDetail::GetNativeFontPixelSize(f);
+                    const float f_native = (clamp_ovr > 0.0f) ? clamp_ovr : MarkdownDetail::GetNativeFontPixelSize(f);
                     if (f_native > 0.0f) seg_sz = f_native * zoom_ratio;
                 }
                 ImVec2 sz = f->CalcTextSizeA(seg_sz, FLT_MAX, 0.0f, seg.c_str(), seg.c_str() + seg.size());
@@ -1061,7 +1080,7 @@ namespace ImGui {
                         if (!tf) tf = ImGui::GetFont();
                         float tf_size = font_size;
                         if (tf != base_font) {
-                            const float tf_native = MarkdownDetail::GetNativeFontPixelSize(tf);
+                            const float tf_native = (clamp_ovr > 0.0f) ? clamp_ovr : MarkdownDetail::GetNativeFontPixelSize(tf);
                             if (tf_native > 0.0f) tf_size = tf_native * zoom_ratio;
                         }
                         ImVec2 inner_sz = tf->CalcTextSizeA(tf_size, FLT_MAX, 0.0f, style.clean_text.c_str(), style.clean_text.c_str() + style.clean_text.size());
@@ -4237,7 +4256,7 @@ namespace ImGui {
             InlineCaptionMarkdownBridgeRunner() {
                 GetMeasureInlineWidthFn() = &MeasureMarkdownLineWidth;
                 GetRenderInlineCaptionFn() = [](const char* text, size_t len, const MarkdownConfig* cfg) {
-                    MarkdownExt(text, len, cfg);
+                    MarkdownExt(text, len, cfg, false);
                 };
             }
         };
