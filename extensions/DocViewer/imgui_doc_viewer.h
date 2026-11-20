@@ -367,7 +367,7 @@ namespace DocViewerDetail {
     !defined(IMGEE_DISABLE_MARKDOWN) && !defined(CONTRIB_DISABLE_MARKDOWN)
         ImGui::TimedTooltip::TextMDProxy(item_id, hovered, "%s", md_fmt);
 #elif defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP)
-        ImGui::TimedTooltip::TextProxy(item_id, hovered, nullptr, false, false, "%s", md_fmt);
+        ImGui::TimedTooltip::TextProxy(item_id, hovered, "%s", md_fmt);
 #else
         (void)item_id;
         if (hovered) {
