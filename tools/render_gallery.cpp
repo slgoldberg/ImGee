@@ -91,7 +91,7 @@ static bool WriteRgbaPngTopDown(const std::string& outPath, const uint8_t* rgbaT
         32,
         static_cast<size_t>(width) * 4u,
         colorSpace,
-        static_cast<CGBitmapInfo>(kCGImageAlphaNoneSkipLast) | static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Big),
+        static_cast<CGBitmapInfo>(kCGImageAlphaPremultipliedLast) | static_cast<CGBitmapInfo>(kCGBitmapByteOrder32Big),
         provider,
         nullptr,
         false,
@@ -475,8 +475,8 @@ struct OffscreenGlContext {
         glBindFramebuffer(GL_FRAMEBUFFER, msaaFbo);
         glViewport(0, 0, fbW, fbH);
         glDisable(GL_SCISSOR_TEST);
-        // Deep studio slate backdrop (#0E1117)
-        glClearColor(0.055f, 0.067f, 0.090f, 1.0f);
+        // Clean transparent backdrop (alpha = 0.0)
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glEnable(GL_BLEND);
@@ -600,16 +600,13 @@ struct OffscreenGlContext {
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
         glReadPixels(rx, glBottomY, rw, rh, GL_RGBA, GL_UNSIGNED_BYTE, bottomUp.data());
 
-        // Flip rows bottom-up -> top-down and force opaque alpha = 255
+        // Flip rows bottom-up -> top-down, preserving rendered alpha & transparent margins (alpha = 0)
         std::vector<uint8_t> topDown(static_cast<size_t>(rw * rh * 4));
         const size_t rowBytes = static_cast<size_t>(rw) * 4u;
         for (int row = 0; row < rh; ++row) {
             const uint8_t* srcRow = bottomUp.data() + static_cast<size_t>(rh - 1 - row) * rowBytes;
             uint8_t* dstRow = topDown.data() + static_cast<size_t>(row) * rowBytes;
             std::memcpy(dstRow, srcRow, rowBytes);
-            for (int col = 0; col < rw; ++col) {
-                dstRow[static_cast<size_t>(col) * 4u + 3u] = 255;
-            }
         }
 
         outPxW = rw;
@@ -927,8 +924,19 @@ static void DrawShowcaseCursor(ImDrawList* dl, ImVec2 tipPos, ImGuiMouseCursor c
     }
 }
 
+static bool s_GalleryLightPass = false;
+
+static void ApplyGalleryTheme() {
+    if (s_GalleryLightPass) {
+        ImGui::StyleColorsPaperLight();
+    } else {
+        ImGui::StyleColorsCharcoal();
+    }
+}
+
 // Subtle card header helper for visual polish across widget showcase cards
 static void BeginShowcaseCard(const char* winId, const char* title, const char* subtitle, float cardWidth) {
+    ApplyGalleryTheme();
     ImGui::SetNextWindowPos(ImVec2(70.0f, 65.0f), ImGuiCond_Always);
     ImGui::SetNextWindowSizeConstraints(ImVec2(cardWidth, 20.0f), ImVec2(cardWidth, 2000.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0f, 16.0f));
@@ -1013,6 +1021,7 @@ int main(int argc, char** argv) {
     std::string fontDir    = "/Users/brat/Documents/imgui4xp-pg-test/imgui4xp/fonts";
     std::string outDir     = "docs/images";
     std::string previewMd  = "build/Gallery_Preview.md";
+    std::string themeMode  = "all";
 
     for (int i = 1; i + 1 < argc; ++i) {
         if (std::strcmp(argv[i], "--font-dir") == 0) {
@@ -1021,6 +1030,8 @@ int main(int argc, char** argv) {
             outDir = argv[++i];
         } else if (std::strcmp(argv[i], "--preview-md") == 0) {
             previewMd = argv[++i];
+        } else if (std::strcmp(argv[i], "--theme") == 0) {
+            themeMode = argv[++i];
         }
     }
 
@@ -1126,21 +1137,24 @@ int main(int argc, char** argv) {
 
     gl.UploadLegacyFontAtlasIfNeeded(io);
 
-    std::vector<SceneReport> reports;
-    reports.reserve(17);
+    auto runAllScenes = [&](bool isLight, const std::string& currentOutDir, std::vector<SceneReport>& currentReports) {
+        s_GalleryLightPass = isLight;
+        EnsureDirExists(currentOutDir);
+        ApplyGalleryTheme();
+        currentReports.reserve(18);
 
-    auto finishAndExportScene = [&](SceneReport rep) {
-        ImDrawData* dd = ImGui::GetDrawData();
-        gl.RenderImDrawData(dd);
-        const std::string fullPng = outDir + "/" + rep.fileName;
-        if (!gl.ExportCroppedPng(dd, fullPng, 16, rep.pxW, rep.pxH, rep.logicalSize)) {
-            std::fprintf(stderr, "[ERROR] Failed exporting '%s'\n", fullPng.c_str());
-            std::exit(1);
-        }
-        reports.push_back(rep);
-        ImGui::TimedTooltip::ClearActiveTooltip();
-        SetSimMouse(io, 2.0f, 2.0f, false);
-    };
+        auto finishAndExportScene = [&](SceneReport rep) {
+            ImDrawData* dd = ImGui::GetDrawData();
+            gl.RenderImDrawData(dd);
+            const std::string fullPng = currentOutDir + "/" + rep.fileName;
+            if (!gl.ExportCroppedPng(dd, fullPng, 4, rep.pxW, rep.pxH, rep.logicalSize)) {
+                std::fprintf(stderr, "[ERROR] Failed exporting '%s'\n", fullPng.c_str());
+                std::exit(1);
+            }
+            currentReports.push_back(rep);
+            ImGui::TimedTooltip::ClearActiveTooltip();
+            SetSimMouse(io, 2.0f, 2.0f, false);
+        };
 
     // ========================================================================
     // SCENE 1: Toggle Switches & Segmented Rockers (fig_toggle_switches.png)
@@ -1156,7 +1170,6 @@ int main(int argc, char** argv) {
         for (int f = 0; f < 3; ++f) {
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
-            ImGui::StyleColorsCharcoal();
             BeginShowcaseCard("##sc1", "Toggle Switches & Dual-State Rockers",
                               "Animated pill switches and segmented binary rockers with clamped mouse-wheel support", 500.0f);
 
@@ -1706,6 +1719,7 @@ int main(int argc, char** argv) {
         for (int f = 0; f < 4; ++f) {
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
+            ApplyGalleryTheme();
             ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 
             ImGui::SetNextWindowPos(ImVec2(dlgX, modalTopY - 58.0f), ImGuiCond_Always);
@@ -1800,24 +1814,35 @@ int main(int argc, char** argv) {
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
 
-            ImGui::StyleColorsCharcoal();
-            renderMiniControlPanel("Control Strip -- Charcoal", "ImGui::StyleColorsCharcoal() (Default)", ImVec2(65.0f, 65.0f));
+            if (s_GalleryLightPass) {
+                ImGui::StyleColorsPaperLight();
+                renderMiniControlPanel("Control Strip -- Paper Light", "ImGui::StyleColorsPaperLight() (Publication)", ImVec2(65.0f, 65.0f));
 
-            ImGui::StyleColorsRusty();
-            renderMiniControlPanel("Control Strip -- Rusty", "ImGui::StyleColorsRusty() (Warm Bronze)", ImVec2(378.0f, 65.0f));
+                ImGui::StyleColorsCharcoal();
+                renderMiniControlPanel("Control Strip -- Charcoal", "ImGui::StyleColorsCharcoal() (Studio Slate)", ImVec2(378.0f, 65.0f));
+            } else {
+                ImGui::StyleColorsCharcoal();
+                renderMiniControlPanel("Control Strip -- Charcoal", "ImGui::StyleColorsCharcoal() (Default)", ImVec2(65.0f, 65.0f));
 
-            ImGui::StyleColorsCharcoal();
+                ImGui::StyleColorsRusty();
+                renderMiniControlPanel("Control Strip -- Rusty", "ImGui::StyleColorsRusty() (Warm Bronze)", ImVec2(378.0f, 65.0f));
+            }
+
+            ApplyGalleryTheme();
             ImGui::Render();
         }
 
         finishAndExportScene({
             11,
-            "Curated Color Themes (`Charcoal` vs. `Rusty`)",
+            s_GalleryLightPass ? "Curated Color Themes (`Paper Light` vs. `Charcoal`)" : "Curated Color Themes (`Charcoal` vs. `Rusty`)",
             "themes/imgui_styles.h",
-            "`ImGui::StyleColorsCharcoal`, `ImGui::StyleColorsRusty`, `ImGui::ApplyDefaultTheme`",
+            "`ImGui::StyleColorsCharcoal`, `ImGui::StyleColorsRusty`, `ImGui::StyleColorsPaperLight`, `ImGui::ApplyDefaultTheme`",
             "fig_themes_comparison.png",
-            "ImGui::StyleColorsCharcoal(); // Cool studio slate & platinum accents\n"
-            "ImGui::StyleColorsRusty();    // Warm low-glare bronze & ivory text",
+            s_GalleryLightPass ?
+                "ImGui::StyleColorsPaperLight(); // Crisp publication high-contrast light\n"
+                "ImGui::StyleColorsCharcoal();   // Cool studio slate & platinum accents" :
+                "ImGui::StyleColorsCharcoal(); // Cool studio slate & platinum accents\n"
+                "ImGui::StyleColorsRusty();    // Warm low-glare bronze & ivory text",
             ImVec2(0, 0), 0, 0
         });
     }
@@ -1838,7 +1863,6 @@ int main(int argc, char** argv) {
             }
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
-            ImGui::StyleColorsCharcoal();
             BeginShowcaseCard("##sc12", "Stationary Delayed Tooltips (TimedTooltip::TextMD)",
                               "Anti-flicker hover delay, click-to-toggle support, and automatic light-palette callout adaptation", 500.0f);
 
@@ -1887,15 +1911,15 @@ int main(int argc, char** argv) {
     // ========================================================================
     {
         const char* kCalloutsMd =
-            "> Standard blockquote -- ideal for SOP excerpts, ATIS transcripts, and subtle reference notes.\n\n"
+            "> Standard blockquote -- ideal for SOP excerpts, ATIS transcripts, and subtle reference notes.\n"
             "> [!NOTE]\n"
-            "> **Dual-Sim Profiles:** Store separate presets for X-Plane 11 and X-Plane 12 photometric lighting.\n\n"
+            "> **Dual-Sim Profiles:** Store separate presets for X-Plane 11 and X-Plane 12 photometric lighting.\n"
             "> [!TIP]\n"
-            "> Roll the mouse wheel over header `Zoom` controls to scale prose while keeping chrome at `1.0x`.\n\n"
+            "> Roll the mouse wheel over header `Zoom` controls to scale prose while keeping chrome at `1.0x`.\n"
             "> [!IMPORTANT]\n"
-            "> Verify `MarkdownConfig::baseDir` points to your plugin documentation folder for relative assets.\n\n"
+            "> Verify `MarkdownConfig::baseDir` points to your plugin documentation folder for relative assets.\n"
             "> [!WARNING]\n"
-            "> Cabin altitude exceeding **10,000 ft** triggers supplemental oxygen deployment advisories.\n\n"
+            "> Cabin altitude exceeding **10,000 ft** triggers supplemental oxygen deployment advisories.\n"
             "> [!CAUTION]\n"
             "> Disengaging both integrated drive generators (`IDG 1` & `IDG 2`) requires maintenance reset on ground.";
 
@@ -2158,9 +2182,9 @@ int main(int argc, char** argv) {
 
         ImGui::DocumentViewerState dvState;
         dvState.viewport.SetZoom(1.15f);
-        dvState.window_opacity = 0.85f;
-        dvState.transparent_hud = true;
-        dvState.theme_index = ImGui::DocumentViewerTheme_Charcoal;
+        dvState.window_opacity = s_GalleryLightPass ? 1.0f : 0.85f;
+        dvState.transparent_hud = !s_GalleryLightPass;
+        dvState.theme_index = s_GalleryLightPass ? ImGui::DocumentViewerTheme_Light : ImGui::DocumentViewerTheme_Charcoal;
 
         ImGui::DocumentViewerConfig dvCfg;
         dvCfg.title                 = "User Manual & Reference";
@@ -2175,6 +2199,7 @@ int main(int argc, char** argv) {
         for (int f = 0; f < 3; ++f) {
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
+            ApplyGalleryTheme();
 
             ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
@@ -2208,6 +2233,19 @@ int main(int argc, char** argv) {
         });
     }
 
+    }; // runAllScenes
+
+    std::vector<SceneReport> darkReports;
+    std::vector<SceneReport> lightReports;
+
+    if (themeMode == "dark" || themeMode == "all") {
+        runAllScenes(false, outDir, darkReports);
+    }
+    if (themeMode == "light" || themeMode == "all") {
+        const std::string lightOutDir = (themeMode == "light") ? outDir : (outDir + "/light");
+        runAllScenes(true, lightOutDir, lightReports);
+    }
+
     // Exercise ImGee::Shutdown() end-to-end and verify GPU texture cleanup
     ImGee::Shutdown();
     if (gl.hostCreated <= 0 || gl.hostDeleted != gl.hostCreated) {
@@ -2224,58 +2262,70 @@ int main(int argc, char** argv) {
     const double elapsedMs = std::chrono::duration<double, std::milli>(tEnd - tStart).count();
 
     // ========================================================================
-    // Emit Annotated Visual Review Sheet: build/Gallery_Preview.md
+    // Emit Annotated Visual Review Sheet(s)
     // ========================================================================
-    {
-        const size_t slashPos = previewMd.find_last_of("/\\");
+    auto emitPreviewMd = [&](const std::string& mdPath, const std::string& currentOutDir,
+                             const std::vector<SceneReport>& currentReports, bool isLight) {
+        if (currentReports.empty()) return true;
+        const size_t slashPos = mdPath.find_last_of("/\\");
         if (slashPos != std::string::npos) {
-            EnsureDirExists(previewMd.substr(0, slashPos));
+            EnsureDirExists(mdPath.substr(0, slashPos));
         }
 
         const std::string imgRelPrefix =
-            (previewMd.compare(0, 5, "docs/") == 0) ? "images/" : ("../" + outDir + "/");
+            (mdPath.compare(0, 5, "docs/") == 0) ? (isLight ? "images/light/" : "images/") : ("../" + currentOutDir + "/");
 
-        std::ofstream md(previewMd.c_str(), std::ios::trunc);
+        std::ofstream md(mdPath.c_str(), std::ios::trunc);
         if (!md.good()) {
-            std::fprintf(stderr, "[ERROR] Could not open '%s' for writing.\n", previewMd.c_str());
-            return 1;
+            std::fprintf(stderr, "[ERROR] Could not open '%s' for writing.\n", mdPath.c_str());
+            return false;
         }
 
-        md << "# ImGee 2x Retina Widget & Extension Visual Gallery\n\n";
+        md << "# ImGee 2x Retina Widget & Extension Visual Gallery (" << (isLight ? "Paper Light" : "Dark Studio") << ")\n\n";
         md << "> [!NOTE]\n";
         md << "> Auto-generated headlessly by `tools/render_gallery.cpp` via offscreen macOS `CGL` + 4x MSAA OpenGL `2x` Retina FBO (`DisplayFramebufferScale = 2.0x`) in **"
-           << static_cast<int>(std::round(elapsedMs)) << " ms** (" << reports.size()
+           << static_cast<int>(std::round(elapsedMs)) << " ms** (" << currentReports.size()
            << " scenes, `HostBackend` textures created/freed: `" << gl.hostCreated << "/" << gl.hostDeleted << "`).\n\n";
 
         md << "### Complete Showcase Catalog\n\n";
         md << "| # | Showcase Scene | Source Header | Retina PNG |\n";
         md << "| :---: | :--- | :--- | :---: |\n";
-        for (size_t i = 0; i < reports.size(); ++i) {
-            const SceneReport& r = reports[i];
+        for (size_t i = 0; i < currentReports.size(); ++i) {
+            const SceneReport& r = currentReports[i];
             md << "| " << r.index << " | **" << r.title << "** | `" << r.sourceHeader
                << "` | `" << r.pxW << " x " << r.pxH << "` |\n";
         }
         md << "\n<!-- pagebreak -->\n\n";
 
-        for (size_t i = 0; i < reports.size(); ++i) {
-            const SceneReport& r = reports[i];
+        for (size_t i = 0; i < currentReports.size(); ++i) {
+            const SceneReport& r = currentReports[i];
             md << "<!-- keep-together -->\n";
             md << "## " << r.index << ". " << r.title << "\n\n";
             md << "* **Header:** `" << r.sourceHeader << "`  \n";
             md << "* **Primary Symbols:** " << r.symbols << "  \n";
-            md << "* **Output File:** `" << outDir << "/" << r.fileName << "` -- Logical `"
+            md << "* **Output File:** `" << currentOutDir << "/" << r.fileName << "` -- Logical `"
                << static_cast<int>(r.logicalSize.x) << " x " << static_cast<int>(r.logicalSize.y)
                << "` -> Retina **`" << r.pxW << " x " << r.pxH << " px`** (`144 DPI`)\n\n";
             md << "```cpp\n" << r.snippet << "\n```\n\n";
             md << "![" << r.title << "](" << imgRelPrefix << r.fileName << ")\n";
             md << "<!-- /keep-together -->\n\n";
-            if (i + 1 < reports.size()) {
+            if (i + 1 < currentReports.size()) {
                 md << "---\n\n";
             }
         }
+        return true;
+    };
+
+    if (!darkReports.empty()) {
+        emitPreviewMd(previewMd, outDir, darkReports, false);
+    }
+    if (!lightReports.empty()) {
+        const std::string lightPreviewMd = (themeMode == "light") ? previewMd : "build/Gallery_Preview_Light.md";
+        const std::string lightOutDir = (themeMode == "light") ? outDir : (outDir + "/light");
+        emitPreviewMd(lightPreviewMd, lightOutDir, lightReports, true);
     }
 
-    std::printf("[OK] Rendered %zu 2x Retina gallery scenes + '%s' in %.1f ms (HostBackend textures %d/%d freed).\n",
-                reports.size(), previewMd.c_str(), elapsedMs, gl.hostCreated, gl.hostDeleted);
+    std::printf("[OK] Rendered %zu dark + %zu light 2x Retina gallery scenes in %.1f ms (HostBackend textures %d/%d freed).\n",
+                darkReports.size(), lightReports.size(), elapsedMs, gl.hostCreated, gl.hostDeleted);
     return 0;
 }

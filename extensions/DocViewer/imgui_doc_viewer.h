@@ -885,7 +885,11 @@ inline void ApplyDocumentViewerTheme(
             ImGui::StyleColorsClassic(style);
             break;
         case DocumentViewerTheme_Light:
+#if defined(IMGUI_STYLES_H) && !defined(IMGEE_DISABLE_THEMES) && !defined(CONTRIB_DISABLE_THEMES)
+            ImGui::StyleColorsPaperLight(style);
+#else
             ImGui::StyleColorsLight(style);
+#endif
             break;
         default:
 #if defined(IMGUI_STYLES_H) && !defined(IMGEE_DISABLE_THEMES) && !defined(CONTRIB_DISABLE_THEMES)

@@ -4,6 +4,7 @@ Thumbs.db
 
 # Build & test artifacts
 build/
+build-*/
 out/
 *.o
 *.obj

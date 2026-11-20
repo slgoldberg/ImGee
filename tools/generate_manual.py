@@ -1527,6 +1527,18 @@ def parse_markdown_to_flowables(md_content: str, styles, is_first_doc: bool = Fa
             else:
                 img_full_path = img_rel_path
 
+            # Prefer light-theme specimen card when available on white-page PDF manuals:
+            norm_path = img_full_path.replace('\\', '/')
+            light_candidate = None
+            if '/docs/images/' in norm_path and '/docs/images/light/' not in norm_path:
+                light_candidate = norm_path.replace('/docs/images/', '/docs/images/light/')
+            elif norm_path.endswith('.png') or norm_path.endswith('.jpg'):
+                parent_dir, fname = os.path.split(img_full_path)
+                light_candidate = os.path.join(parent_dir, 'light', fname)
+
+            if light_candidate and os.path.exists(light_candidate):
+                img_full_path = light_candidate
+
             if os.path.exists(img_full_path):
                 try:
                     with PILImage.open(img_full_path) as pimg:
