@@ -1129,7 +1129,7 @@ inline bool DocumentViewer(
             if (is_init) {
                 state._dec_repeat_count = 0;
                 allow_step = true;
-            } else if ((++state._dec_repeat_count % 4) == 0) {
+            } else if ((++state._dec_repeat_count % 2) == 0) {
                 allow_step = true;
             }
             if (allow_step) {
@@ -1190,7 +1190,7 @@ inline bool DocumentViewer(
             if (is_init) {
                 state._inc_repeat_count = 0;
                 allow_step = true;
-            } else if ((++state._inc_repeat_count % 4) == 0) {
+            } else if ((++state._inc_repeat_count % 2) == 0) {
                 allow_step = true;
             }
             if (allow_step) {
@@ -1735,14 +1735,19 @@ inline bool DocumentViewer(
         if (!applied_raw_scroll) {
             state.last_scroll_y = ImGui::GetScrollY();
             if (state.pending_scroll_toc_index < 0 && !state.toc.empty()) {
-                const float probe_y = state.last_scroll_y + top_pad_y + 12.0f;
-                int current_sec = 0;
-                for (size_t i = 0; i < state.toc.size(); ++i) {
-                    if (state.toc[i].content_y >= 0.0f && state.toc[i].content_y <= probe_y) {
-                        current_sec = static_cast<int>(i);
+                const float max_scroll = ImGui::GetScrollMaxY();
+                if (max_scroll > 4.0f && state.last_scroll_y >= max_scroll - 4.0f) {
+                    state.active_toc_index = static_cast<int>(state.toc.size()) - 1;
+                } else {
+                    const float probe_y = state.last_scroll_y + top_pad_y + 12.0f;
+                    int current_sec = 0;
+                    for (size_t i = 0; i < state.toc.size(); ++i) {
+                        if (state.toc[i].content_y >= 0.0f && state.toc[i].content_y <= probe_y) {
+                            current_sec = static_cast<int>(i);
+                        }
                     }
+                    state.active_toc_index = current_sec;
                 }
-                state.active_toc_index = current_sec;
             }
         }
     }

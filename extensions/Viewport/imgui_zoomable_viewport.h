@@ -309,6 +309,7 @@ inline void EndZoomedViewport() {
 
 // Compact 1.0x toolbar control cluster: [-] [100%] [+]
 // Clicking the percentage button toggles between default_zoom and the previous custom zoom.
+// Hovering over the percentage button and scrolling the mouse wheel steps zoom.
 inline bool ZoomViewportControls(ZoomableViewportState& state, const char* id_suffix = "##imgee_zoom_ctrl") {
     bool changed = false;
     ImGui::PushID(id_suffix ? id_suffix : "##imgee_zoom_ctrl");
@@ -321,10 +322,21 @@ inline bool ZoomViewportControls(ZoomableViewportState& state, const char* id_su
     const float btn_h = ImGui::GetFrameHeight();
     const ImVec2 step_sz(btn_h, btn_h);
 
+    // 1. [-] Repeating Zoom-Out Stepper
     if (at_min) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.45f);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19070)
+    ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+#else
+    ImGui::PushButtonRepeat(true);
+#endif
     if (ImGui::Button("-##zoom_out", step_sz) && !at_min) {
         changed |= state.StepZoom(-state.button_step);
     }
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19070)
+    ImGui::PopItemFlag();
+#else
+    ImGui::PopButtonRepeat();
+#endif
     if (!at_min && ImGui::IsItemHovered()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }
@@ -332,6 +344,7 @@ inline bool ZoomViewportControls(ZoomableViewportState& state, const char* id_su
 
     ImGui::SameLine(0.0f, 3.0f);
 
+    // 2. [ 100% ] Reset / A/B Undo Button + Mouse-Wheel Zoom
     char pct_label[32];
     std::snprintf(pct_label, sizeof(pct_label), "%d%%##zoom_reset", state.GetZoomPercent());
     const float pct_w = ImMax(52.0f, ImGui::CalcTextSize("250%").x + ImGui::GetStyle().FramePadding.x * 2.0f);
@@ -340,14 +353,29 @@ inline bool ZoomViewportControls(ZoomableViewportState& state, const char* id_su
     }
     if (ImGui::IsItemHovered()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        const float wheel = ImGui::GetIO().MouseWheel;
+        if (wheel != 0.0f) {
+            changed |= state.StepZoom(wheel * state.wheel_step);
+        }
     }
 
     ImGui::SameLine(0.0f, 3.0f);
 
+    // 3. [+] Repeating Zoom-In Stepper
     if (at_max) ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.45f);
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19070)
+    ImGui::PushItemFlag(ImGuiItemFlags_ButtonRepeat, true);
+#else
+    ImGui::PushButtonRepeat(true);
+#endif
     if (ImGui::Button("+##zoom_in", step_sz) && !at_max) {
         changed |= state.StepZoom(state.button_step);
     }
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19070)
+    ImGui::PopItemFlag();
+#else
+    ImGui::PopButtonRepeat();
+#endif
     if (!at_max && ImGui::IsItemHovered()) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     }

@@ -544,9 +544,21 @@ namespace ImGui {
         if (!ItemAdd(bb, id)) return;
         Detail::RegisterItemTooltipToggle(true);
 
-        ImU32 bg_col = GetColorU32(ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
-        ImU32 border_col = GetColorU32(ImVec4(0.40f, 0.40f, 0.45f, 0.8f));
-        ImU32 bottom_shadow = GetColorU32(ImVec4(0.10f, 0.10f, 0.12f, 1.0f));
+        const ImVec4 win_bg = GetStyle().Colors[ImGuiCol_WindowBg];
+        const bool light_theme = (win_bg.x * 0.299f + win_bg.y * 0.587f + win_bg.z * 0.114f) > 0.55f;
+
+        ImU32 bg_col, border_col, bottom_shadow, text_col_u32;
+        if (light_theme) {
+            bg_col = GetColorU32(ImVec4(0.92f, 0.93f, 0.95f, 1.0f));
+            border_col = GetColorU32(ImVec4(0.72f, 0.76f, 0.82f, 0.9f));
+            bottom_shadow = GetColorU32(ImVec4(0.62f, 0.66f, 0.72f, 1.0f));
+            text_col_u32 = GetColorU32(ImVec4(0.12f, 0.15f, 0.19f, 1.0f));
+        } else {
+            bg_col = GetColorU32(ImVec4(0.18f, 0.18f, 0.22f, 1.0f));
+            border_col = GetColorU32(ImVec4(0.40f, 0.40f, 0.45f, 0.8f));
+            bottom_shadow = GetColorU32(ImVec4(0.10f, 0.10f, 0.12f, 1.0f));
+            text_col_u32 = GetColorU32(ImVec4(0.92f, 0.94f, 0.96f, 1.0f));
+        }
 
         const float rounding = 3.5f * scale;
         ImDrawList* dl = GetWindowDrawList();
@@ -562,11 +574,11 @@ namespace ImGui {
 
 #if defined(CONTRIB_BADGES_HAS_ICONS)
         if (is_icon) {
-            DrawVectorIcon(dl, text_pos, text_size.x, GetColorU32(GetStyle().Colors[ImGuiCol_Text]), icon_name.c_str());
+            DrawVectorIcon(dl, text_pos, text_size.x, text_col_u32, icon_name.c_str());
         } else
 #endif
         {
-            dl->AddText(text_pos, GetColorU32(GetStyle().Colors[ImGuiCol_Text]), key_label, text_end);
+            dl->AddText(text_pos, text_col_u32, key_label, text_end);
         }
     }
 
