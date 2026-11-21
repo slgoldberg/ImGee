@@ -535,21 +535,25 @@ namespace ImGui {
         }
 
         if (id == "gear") {
-            float r_outer = size * 0.38f;
+            float r_outer = size * 0.39f;
             float r_inner = size * 0.28f;
-            float r_hole  = size * 0.14f;
+            float r_hole  = size * 0.13f;
+            float r_mid   = (r_inner + r_hole) * 0.5f;
+            float ring_th = r_inner - r_hole;
             const int teeth = 6;
+            const float half_tip  = kPI / (teeth * 3.4f);
+            const float half_base = half_tip + 0.18f;
             for (int t = 0; t < teeth; ++t) {
-                float a0 = (t * 2.0f * kPI) / teeth;
-                float a1 = a0 + (kPI / (teeth * 2.0f));
+                float ac = (t * 2.0f * kPI) / teeth;
+                float a0 = ac - half_tip;
+                float a1 = ac + half_tip;
                 ImVec2 tip(center.x + r_outer * std::cos(a0), center.y + r_outer * std::sin(a0));
                 ImVec2 tip2(center.x + r_outer * std::cos(a1), center.y + r_outer * std::sin(a1));
-                ImVec2 b0(center.x + r_inner * std::cos(a0 - 0.2f), center.y + r_inner * std::sin(a0 - 0.2f));
-                ImVec2 b1(center.x + r_inner * std::cos(a1 + 0.2f), center.y + r_inner * std::sin(a1 + 0.2f));
+                ImVec2 b0(center.x + r_mid * std::cos(ac - half_base), center.y + r_mid * std::sin(ac - half_base));
+                ImVec2 b1(center.x + r_mid * std::cos(ac + half_base), center.y + r_mid * std::sin(ac + half_base));
                 draw_list->AddQuadFilled(b0, tip, tip2, b1, col);
             }
-            draw_list->AddCircleFilled(center, r_inner, col, 16);
-            draw_list->AddCircleFilled(center, r_hole, GetColorU32(ImGuiCol_WindowBg), 12);
+            draw_list->AddCircle(center, r_mid, col, 20, ring_th);
             return true;
         }
 
@@ -630,15 +634,27 @@ namespace ImGui {
 
         if (id == "star") {
             const int points = 5;
-            float r_out = size * 0.40f;
-            float r_in  = size * 0.18f;
+            float r_out = size * 0.42f;
+            float r_in  = size * 0.17f;
             ImVec2 pts[10];
             for (int p = 0; p < points * 2; ++p) {
                 float a = (p * kPI) / points - (kPI * 0.5f);
                 float r = (p % 2 == 0) ? r_out : r_in;
                 pts[p] = ImVec2(center.x + r * std::cos(a), center.y + r * std::sin(a));
             }
-            draw_list->AddConvexPolyFilled(pts, 10, col);
+            // A 5-pointed star is concave; decompose into 5 convex point kites + inner pentagon
+            // so outer edges get a clean single-pass AA fringe and inner seams are covered.
+            for (int i = 0; i < points; ++i) {
+                const ImVec2 kite[4] = {
+                    center,
+                    pts[(2 * i + 9) % 10],
+                    pts[2 * i],
+                    pts[(2 * i + 1) % 10]
+                };
+                draw_list->AddConvexPolyFilled(kite, 4, col);
+            }
+            const ImVec2 inner_pent[5] = { pts[1], pts[3], pts[5], pts[7], pts[9] };
+            draw_list->AddConvexPolyFilled(inner_pent, 5, col);
             return true;
         }
 
