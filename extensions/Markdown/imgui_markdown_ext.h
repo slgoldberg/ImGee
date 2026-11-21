@@ -4445,7 +4445,6 @@ namespace TimedTooltip {
         }
 
         bool displayed = false;
-        state.last_frame_updated = ImGui::GetFrameCount();
         if (BeginStationaryTooltipProxy(id, is_hovered, config_override)) {
             displayed = true;
 

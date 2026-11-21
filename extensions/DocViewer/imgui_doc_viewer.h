@@ -920,6 +920,26 @@ inline bool JumpToDocumentHeading(DocumentViewerState& state, int toc_index) {
     return true;
 }
 
+namespace DocViewerDetail {
+    inline std::string CollapseSlugHyphens(const std::string& s) {
+        std::string out;
+        out.reserve(s.size());
+        bool prev_hyphen = false;
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '-') {
+                if (!prev_hyphen) {
+                    out.push_back('-');
+                    prev_hyphen = true;
+                }
+            } else {
+                out.push_back(s[i]);
+                prev_hyphen = false;
+            }
+        }
+        return out;
+    }
+} // namespace DocViewerDetail
+
 inline bool JumpToDocumentAnchor(DocumentViewerState& state, const char* anchor_or_slug) {
     if (!anchor_or_slug || anchor_or_slug[0] == '\0') return false;
     const char* raw = (anchor_or_slug[0] == '#') ? (anchor_or_slug + 1) : anchor_or_slug;
@@ -932,8 +952,22 @@ inline bool JumpToDocumentAnchor(DocumentViewerState& state, const char* anchor_
         raw_lower[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(raw_lower[i])));
     }
 
+    // Pass 1: exact GFM slug match
     for (size_t i = 0; i < state.toc.size(); ++i) {
         if (state.toc[i].slug == raw_lower || (!target_slug.empty() && state.toc[i].slug == target_slug)) {
+            state.active_toc_index         = static_cast<int>(i);
+            state.pending_scroll_toc_index = static_cast<int>(i);
+            state.pending_anchor_slug.clear();
+            return true;
+        }
+    }
+
+    // Pass 2: collapsed-hyphen fallback (so #3-missed-approach-holding matches 3-missed-approach--holding)
+    const std::string collapsed_raw    = DocViewerDetail::CollapseSlugHyphens(raw_lower);
+    const std::string collapsed_target = DocViewerDetail::CollapseSlugHyphens(target_slug);
+    for (size_t i = 0; i < state.toc.size(); ++i) {
+        const std::string collapsed_toc = DocViewerDetail::CollapseSlugHyphens(state.toc[i].slug);
+        if (collapsed_toc == collapsed_raw || (!collapsed_target.empty() && collapsed_toc == collapsed_target)) {
             state.active_toc_index         = static_cast<int>(i);
             state.pending_scroll_toc_index = static_cast<int>(i);
             state.pending_anchor_slug.clear();
@@ -1009,11 +1043,23 @@ inline bool DocumentViewer(
     if (!state.pending_anchor_slug.empty()) {
         const std::string target = state.pending_anchor_slug;
         state.pending_anchor_slug.clear();
+        bool resolved = false;
         for (size_t i = 0; i < state.toc.size(); ++i) {
             if (state.toc[i].slug == target) {
                 state.active_toc_index         = static_cast<int>(i);
                 state.pending_scroll_toc_index = static_cast<int>(i);
+                resolved = true;
                 break;
+            }
+        }
+        if (!resolved) {
+            const std::string collapsed_target = DocViewerDetail::CollapseSlugHyphens(target);
+            for (size_t i = 0; i < state.toc.size(); ++i) {
+                if (DocViewerDetail::CollapseSlugHyphens(state.toc[i].slug) == collapsed_target) {
+                    state.active_toc_index         = static_cast<int>(i);
+                    state.pending_scroll_toc_index = static_cast<int>(i);
+                    break;
+                }
             }
         }
     }

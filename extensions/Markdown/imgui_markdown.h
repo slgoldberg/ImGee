@@ -1560,16 +1560,39 @@ namespace ImGui
                 ImGui::NewLine();
                 ImGui::SetCursorScreenPos( ImVec2( line_start_x + continuation_indent, ImGui::GetCursorScreenPos().y ) );
                 min_x_for_wrap = line_start_x + continuation_indent;
+                cur_x = min_x_for_wrap;
             }
 
             ImGui::PushStyleColor( ImGuiCol_Text, col );
-            if( has_wrap )
+            if( has_wrap && ( cur_x + tok_w > wrap_screen_x ) )
             {
-                ImGuiWindow* win = ImGui::GetCurrentWindow();
-                float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
-                ImGui::PushTextWrapPos( wrap_local_x );
-                ImGui::TextUnformatted( text_start, text_end );
-                ImGui::PopTextWrapPos();
+                ImFont* font = ImGui::GetFont();
+                float font_scale = ImGui::GetFontScale( false );
+                const char* seg = text_start;
+                while( seg < text_end )
+                {
+                    float seg_cur_x = ImGui::GetCursorScreenPos().x;
+                    float avail_w = ImMax( 20.0f, wrap_screen_x - seg_cur_x );
+                    const char* seg_end = MarkdownDetail::CalcWordWrapPositionCompat( font, font_scale, seg, text_end, avail_w );
+                    if( seg_end <= seg )
+                    {
+                        // Force progress by at least one UTF-8 codepoint if wrap width is extremely narrow
+                        ++seg_end;
+                        while( seg_end < text_end && ( ( *seg_end & 0xC0 ) == 0x80 ) ) ++seg_end;
+                    }
+                    ImGui::TextUnformatted( seg, seg_end );
+                    seg = seg_end;
+                    if( seg < text_end )
+                    {
+                        while( seg < text_end && *seg == ' ' ) ++seg;
+                        if( seg < text_end )
+                        {
+                            ImGui::NewLine();
+                            ImGui::SetCursorScreenPos( ImVec2( line_start_x + continuation_indent, ImGui::GetCursorScreenPos().y ) );
+                            min_x_for_wrap = line_start_x + continuation_indent;
+                        }
+                    }
+                }
             }
             else
             {

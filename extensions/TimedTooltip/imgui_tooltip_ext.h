@@ -394,6 +394,16 @@ namespace TimedTooltip {
 
         TooltipState& state = GetTooltipStateMap()[hash_id];
         const int prev_frame_updated = state.last_frame_updated;
+        const ImGuiContext* prev_ctx_updated = state.last_context_updated;
+        if (prev_frame_updated > 0 && (prev_ctx_updated != cur_ctx || (cur_frame - prev_frame_updated) > 1)) {
+            if (GetActiveTooltipID() == hash_id) {
+                GetActiveTooltipID() = 0;
+            }
+            state.is_displayed = false;
+            state.hover_cycles = 0;
+            state.unhover_grace_cycles = 0;
+            state.is_cooldown = false;
+        }
         state.last_frame_updated = cur_frame; // Mark as alive this frame!
         state.last_context_updated = cur_ctx;
         
@@ -941,7 +951,6 @@ namespace TimedTooltip {
         }
 
         bool displayed = false;
-        state.last_frame_updated = ImGui::GetFrameCount();
         if (BeginStationaryTooltipProxy(id, is_hovered, config_override)) {
             displayed = true;
 
