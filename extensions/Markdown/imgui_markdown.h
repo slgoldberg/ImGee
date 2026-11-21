@@ -355,7 +355,11 @@ namespace ImGui
         else
         {
             std::string link(data_.linkData.link, (size_t)data_.linkData.linkLength);
-            if (link.rfind("file:", 0) == 0 || link.rfind("local:", 0) == 0 || link.find(".pdf") != std::string::npos)
+            if (!link.empty() && link[0] == '#')
+            {
+                ImGui::SetTooltip( "Jump to section\n%.*s", data_.linkData.linkLength, data_.linkData.link );
+            }
+            else if (link.rfind("file:", 0) == 0 || link.rfind("local:", 0) == 0 || link.find(".pdf") != std::string::npos)
             {
                 ImGui::SetTooltip( "Open document\n%.*s", data_.linkData.linkLength, data_.linkData.link );
             }
