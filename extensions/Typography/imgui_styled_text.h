@@ -351,17 +351,25 @@ namespace ImGui {
                     closeName == "huge" ||
                     closeName == "regular" || closeName == "prop" || closeName == "sans") {
                     if (!fontStack.empty()) {
+                        const bool pushedInlineColor = fontStack.back();
                         ImGui::PopFontRole();
                         fontStack.pop_back();
+                        if (pushedInlineColor && !colorStack.empty()) {
+                            ImGui::PopStyleColor();
+                            colorStack.pop_back();
+                        }
                     }
+                    cur = tag_end;
+                    continue;
                 } else if (closeName == "color" || closeName == "col" || closeName == "style") {
                     if (!colorStack.empty()) {
                         ImGui::PopStyleColor();
                         colorStack.pop_back();
                     }
+                    cur = tag_end;
+                    continue;
                 }
-                cur = tag_end;
-                continue;
+                // Unrecognized closing tag: fall through to output literally at line 795
             }
 
             // B. Opening tags
@@ -374,16 +382,17 @@ namespace ImGui {
             // <small> / <tiny>
             if (tagName == "small" || tagName == "tiny") {
                 ImGui::PushFontRole((tagName == "tiny") ? ImFontRole::Tiny : ImFontRole::Small);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -391,16 +400,17 @@ namespace ImGui {
             // <big> / <large>
             if (tagName == "big" || tagName == "large") {
                 ImGui::PushFontRole(ImFontRole::Title);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -408,16 +418,17 @@ namespace ImGui {
             // <huge>
             if (tagName == "huge") {
                 ImGui::PushFontRole(ImFontRole::BoldLarge);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -425,16 +436,17 @@ namespace ImGui {
             // <regular> / <prop> / <sans>
             if (tagName == "regular" || tagName == "prop" || tagName == "sans") {
                 ImGui::PushFontRole(ImFontRole::Regular);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -442,16 +454,17 @@ namespace ImGui {
             // <b> / <strong>
             if (tagName == "b" || tagName == "strong") {
                 ImGui::PushFontRole(ImFontRole::Bold);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -459,16 +472,17 @@ namespace ImGui {
             // <i> / <em>
             if (tagName == "i" || tagName == "em") {
                 ImGui::PushFontRole(ImFontRole::Italic);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -476,16 +490,17 @@ namespace ImGui {
             // <mono> / <code>
             if (tagName == "mono" || tagName == "code") {
                 ImGui::PushFontRole(ImFontRole::Monospace);
-                fontStack.push_back(true);
-
+                bool pushedCol = false;
                 std::string colVal;
                 if (Detail::ExtractAttribute(tagStr, "color", colVal)) {
                     ImU32 ucol = 0;
                     if (Detail::ParseColor(colVal.c_str(), colVal.length(), ucol)) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ucol);
                         colorStack.push_back(true);
+                        pushedCol = true;
                     }
                 }
+                fontStack.push_back(pushedCol);
                 cur = tag_end;
                 continue;
             }
@@ -495,7 +510,7 @@ namespace ImGui {
                 ImFontRole role = (tagName == "h1") ? ImFontRole::Heading1 :
                                   ((tagName == "h2") ? ImFontRole::Heading2 : ImFontRole::Heading3);
                 ImGui::PushFontRole(role);
-                fontStack.push_back(true);
+                fontStack.push_back(false);
                 cur = tag_end;
                 continue;
             }
@@ -685,7 +700,7 @@ namespace ImGui {
                     if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
 #if defined(IMGUI_STYLED_TEXT_HAS_BADGES)
                     ImGui::PushFontRole(ImFontRole::Monospace);
-                    ImGui::Badge(innerText.c_str(), IM_COL32(60, 64, 72, 230));
+                    ImGui::Kbd(innerText.c_str());
                     ImGui::PopFontRole();
 #else
                     ImGui::Text("[%s]", innerText.c_str());
