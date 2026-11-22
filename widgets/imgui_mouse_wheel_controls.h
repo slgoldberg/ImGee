@@ -1505,67 +1505,63 @@ namespace ImGui {
 
             const float kPI = 3.14159265f;
             const float a_tail = 0.28f * kPI;
-            const float a_head = 1.62f * kPI;
-            draw_list->PathArcTo(center, radius, a_tail, a_head, 16);
+            const float a_neck = 1.54f * kPI; // back of arrowhead sits directly on the circle here
+            const float a_stroke_end = a_neck + 0.10f; // extend stroke slightly inside triangle body
+            draw_list->PathArcTo(center, radius, a_tail, a_stroke_end, 16);
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
             draw_list->PathStroke(icon_col, thickness, 0);
 #else
             draw_list->PathStroke(icon_col, 0, thickness);
 #endif
 
-            // Tangent-aligned arrowhead at a_head pointing clockwise (increasing angle):
-            float cos_a = std::cos(a_head);
-            float sin_a = std::sin(a_head);
-            float tx = -sin_a; // unit tangent in clockwise (increasing angle) direction
-            float ty =  cos_a;
-            float nx =  cos_a; // unit outward normal
-            float ny =  sin_a;
+            const float a_dir = a_neck + 0.08f;
+            const float cos_d = std::cos(a_dir);
+            const float sin_d = std::sin(a_dir);
+            const float tx = -sin_d; // unit tangent in clockwise (increasing angle) direction
+            const float ty =  cos_d;
+            const float nx =  cos_d; // unit outward normal
+            const float ny =  sin_d;
 
-            ImVec2 base(center.x + radius * cos_a, center.y + radius * sin_a);
-            float arrow_len = radius * 0.95f;
-            float arrow_w   = radius * 0.68f;
-            ImVec2 tip(base.x + tx * (arrow_len * 0.65f), base.y + ty * (arrow_len * 0.65f));
-            ImVec2 back(base.x - tx * (arrow_len * 0.35f), base.y - ty * (arrow_len * 0.35f));
+            const float arrow_len = radius * 0.95f;
+            const float arrow_w   = radius * 0.66f;
+            ImVec2 back(center.x + radius * std::cos(a_neck), center.y + radius * std::sin(a_neck));
+            ImVec2 tip(back.x + tx * arrow_len, back.y + ty * arrow_len);
             ImVec2 p1(back.x + nx * arrow_w, back.y + ny * arrow_w);
             ImVec2 p2(back.x - nx * arrow_w, back.y - ny * arrow_w);
-            draw_list->AddTriangleFilled(tip, p1, p2, icon_col);
+            // Clockwise winding in screen space (+Y down): (tip, p2, p1)
+            draw_list->AddTriangleFilled(tip, p2, p1, icon_col);
         } else {
             // Draw counter-clockwise undo circular arc (matching ICON_FA_UNDO / U+21BA):
-            // In ImGui screen coordinates (+Y down):
-            //   -0.62*PI is ~10:45 (top-left arrowhead), -0.50*PI is 12:00 (top),
-            //    0.00*PI is  3:00 (right),              +0.50*PI is  6:00 (bottom),
-            //   +0.72*PI is ~7:30 (bottom-left tail).
-            // Thus the arch sits on the right/top/bottom with the open gap on the left,
-            // sweeping counter-clockwise from bottom-left around the right to top-left!
             ImVec2 center(p.x + width * 0.52f, p.y + height * 0.52f);
             float radius = height * 0.25f;
             float thickness = (std::max)(1.2f, height * 0.095f);
 
             const float kPI = 3.14159265f;
-            const float a_head = -0.62f * kPI;
+            const float a_neck = -0.54f * kPI; // back of arrowhead sits directly on the circle here
+            const float a_stroke_start = a_neck - 0.10f; // extend stroke slightly inside triangle body
             const float a_tail =  0.72f * kPI;
-            draw_list->PathArcTo(center, radius, a_head, a_tail, 16);
+            draw_list->PathArcTo(center, radius, a_stroke_start, a_tail, 16);
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
             draw_list->PathStroke(icon_col, thickness, 0);
 #else
             draw_list->PathStroke(icon_col, 0, thickness);
 #endif
 
-            // Tangent-aligned arrowhead at a_head pointing counter-clockwise (decreasing angle):
-            float cos_a = std::cos(a_head);
-            float sin_a = std::sin(a_head);
-            float tx =  sin_a; // unit tangent in counter-clockwise (decreasing angle) direction
-            float ty = -cos_a;
-            float nx =  cos_a; // unit outward normal
-            float ny =  sin_a;
+            const float a_dir = a_neck - 0.08f;
+            const float cos_d = std::cos(a_dir);
+            const float sin_d = std::sin(a_dir);
+            const float tx =  sin_d; // unit tangent in counter-clockwise (decreasing angle) direction
+            const float ty = -cos_d;
+            const float nx =  cos_d; // unit outward normal
+            const float ny =  sin_d;
 
-            ImVec2 base(center.x + radius * cos_a, center.y + radius * sin_a);
-            float arrow_len = radius * 0.95f;
-            float arrow_w   = radius * 0.68f;
-            ImVec2 tip(base.x + tx * (arrow_len * 0.65f), base.y + ty * (arrow_len * 0.65f));
-            ImVec2 back(base.x - tx * (arrow_len * 0.35f), base.y - ty * (arrow_len * 0.35f));
+            const float arrow_len = radius * 0.95f;
+            const float arrow_w   = radius * 0.66f;
+            ImVec2 back(center.x + radius * std::cos(a_neck), center.y + radius * std::sin(a_neck));
+            ImVec2 tip(back.x + tx * arrow_len, back.y + ty * arrow_len);
             ImVec2 p1(back.x + nx * arrow_w, back.y + ny * arrow_w);
             ImVec2 p2(back.x - nx * arrow_w, back.y - ny * arrow_w);
+            // Clockwise winding in screen space (+Y down): (tip, p1, p2)
             draw_list->AddTriangleFilled(tip, p1, p2, icon_col);
         }
 

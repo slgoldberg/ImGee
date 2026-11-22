@@ -5527,13 +5527,15 @@ namespace ImGui
                             }
 #endif
                             if( !drew_vec_icon ) {
+                                const float kPI = 3.14159265f;
                                 const ImVec2 arc_c(
                                     c_rst.x + ( can_z_restore ? -icon_sz * 0.02f : icon_sz * 0.02f ),
                                     c_rst.y + icon_sz * 0.02f );
                                 const float ar = icon_sz * 0.25f;
                                 const float th = ImMax( 1.2f, icon_sz * 0.095f );
-                                const float a_min = can_z_restore ? -5.49f : -2.30f;
-                                const float a_max = can_z_restore ? -0.84f :  2.35f;
+                                const float a_neck = can_z_restore ? ( 1.54f * kPI ) : ( -0.54f * kPI );
+                                const float a_min  = can_z_restore ? ( 0.28f * kPI ) : ( a_neck - 0.10f );
+                                const float a_max  = can_z_restore ? ( a_neck + 0.10f ) : ( 0.72f * kPI );
                                 lb_dl->PathClear();
                                 lb_dl->PathArcTo( arc_c, ar, a_min, a_max, 16 );
 #if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
@@ -5541,21 +5543,24 @@ namespace ImGui
 #else
                                 lb_dl->PathStroke( rst_col, 0, th );
 #endif
-                                const float a_head = can_z_restore ? a_max : a_min;
-                                const float cos_a = std::cos( a_head );
-                                const float sin_a = std::sin( a_head );
-                                const float tx = can_z_restore ? -sin_a :  sin_a;
-                                const float ty = can_z_restore ?  cos_a : -cos_a;
-                                const float nx = cos_a;
-                                const float ny = sin_a;
-                                const ImVec2 base( arc_c.x + ar * cos_a, arc_c.y + ar * sin_a );
+                                const float a_dir = can_z_restore ? ( a_neck + 0.08f ) : ( a_neck - 0.08f );
+                                const float cos_d = std::cos( a_dir );
+                                const float sin_d = std::sin( a_dir );
+                                const float tx = can_z_restore ? -sin_d :  sin_d;
+                                const float ty = can_z_restore ?  cos_d : -cos_d;
+                                const float nx = cos_d;
+                                const float ny = sin_d;
                                 const float arrow_len = ar * 0.95f;
-                                const float arrow_w   = ar * 0.68f;
-                                const ImVec2 tip( base.x + tx * ( arrow_len * 0.65f ), base.y + ty * ( arrow_len * 0.65f ) );
-                                const ImVec2 back( base.x - tx * ( arrow_len * 0.35f ), base.y - ty * ( arrow_len * 0.35f ) );
+                                const float arrow_w   = ar * 0.66f;
+                                const ImVec2 back( arc_c.x + ar * std::cos( a_neck ), arc_c.y + ar * std::sin( a_neck ) );
+                                const ImVec2 tip( back.x + tx * arrow_len, back.y + ty * arrow_len );
                                 const ImVec2 p1( back.x + nx * arrow_w, back.y + ny * arrow_w );
                                 const ImVec2 p2( back.x - nx * arrow_w, back.y - ny * arrow_w );
-                                lb_dl->AddTriangleFilled( tip, p1, p2, rst_col );
+                                if( can_z_restore ) {
+                                    lb_dl->AddTriangleFilled( tip, p2, p1, rst_col );
+                                } else {
+                                    lb_dl->AddTriangleFilled( tip, p1, p2, rst_col );
+                                }
                             }
                         }
 
