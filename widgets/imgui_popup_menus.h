@@ -587,10 +587,7 @@ namespace ImGui {
 
         std::string btn_id = std::string("##") + popup_id;
         bool clicked = ImGui::Button(btn_id.c_str(), ImVec2(btn_w, btn_h));
-        ImGuiHoveredFlags hover_flags = ImGuiHoveredFlags_AllowWhenBlockedByPopup;
-        if (is_open) {
-            hover_flags |= ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
-        }
+        ImGuiHoveredFlags hover_flags = is_open ? ImGuiHoveredFlags_AllowWhenBlockedByPopup : ImGuiHoveredFlags_None;
         bool btn_hovered = ImGui::IsItemHovered(hover_flags);
         if (btn_hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
