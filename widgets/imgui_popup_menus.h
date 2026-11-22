@@ -581,19 +581,22 @@ namespace ImGui {
             btn_w = (std::max)(min_btn_w, ImGui::GetContentRegionAvail().x + width);
         }
 
-        if (is_open) {
-            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_ButtonHovered]);
+        const ImVec2 btn_min = ImGui::GetCursorScreenPos();
+        const ImVec2 btn_max(btn_min.x + btn_w, btn_min.y + btn_h);
+        const bool held_dismissing = !is_open && ImGui::IsMouseHoveringRect(btn_min, btn_max) && ImGui::GetIO().MouseDown[0];
+        if (is_open || held_dismissing) {
+            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[held_dismissing ? ImGuiCol_ButtonActive : ImGuiCol_ButtonHovered]);
         }
 
         std::string btn_id = std::string("##") + popup_id;
         bool clicked = ImGui::Button(btn_id.c_str(), ImVec2(btn_w, btn_h));
-        ImGuiHoveredFlags hover_flags = is_open ? ImGuiHoveredFlags_AllowWhenBlockedByPopup : ImGuiHoveredFlags_None;
+        ImGuiHoveredFlags hover_flags = ImGuiHoveredFlags_AllowWhenBlockedByPopup | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
         bool btn_hovered = ImGui::IsItemHovered(hover_flags);
         if (btn_hovered) {
             ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
         }
 
-        if (is_open) {
+        if (is_open || held_dismissing) {
             ImGui::PopStyleColor();
         }
 
