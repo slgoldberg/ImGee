@@ -622,7 +622,7 @@ namespace Detail {
     }
 
     // -------------------------------------------------------------------------
-    // 3. Composite Rotary Knob with 1-Click Vector Reset (↺)
+    // 3. Composite Rotary Knob with 1-Click Vector Reset & Undo (↺/↻)
     // -------------------------------------------------------------------------
     inline IMGUI_API bool KnobWithReset(const char* label,
                                         float* p_value,
@@ -633,8 +633,11 @@ namespace Detail {
                                         float radius = 0.0f,
                                         float wheel_step = 0.0f,
                                         const char* reset_tooltip = nullptr,
-                                        ImGuiKnobFlags flags = ImGuiKnobFlags_None)
+                                        ImGuiKnobFlags flags = ImGuiKnobFlags_None,
+                                        float* v_last = nullptr)
     {
+        (void)reset_tooltip;
+        (void)v_last;
         ImGuiWindow* window = GetCurrentWindow();
         ImGuiContext& g = *GImGui;
         ImGuiID group_id = window->GetID(label);
@@ -671,35 +674,55 @@ namespace Detail {
 
         bool reset_hovered = false;
 #if defined(IMGUI_MOUSE_WHEEL_CONTROLS_H) && !defined(IMGEE_DISABLE_RESET_BUTTON) && !defined(CONTRIB_DISABLE_RESET_BUTTON)
+        const float kEps = 0.0001f;
+        ImGuiID undo_id = GetID("##reset_undo");
+        if (changed && std::abs(*p_value - v_default) <= kEps) {
+            WheelSliderDetail::ClearFloatUndo(undo_id, v_default, v_last);
+        }
+
         SameLine(0.0f, GetStyle().ItemInnerSpacing.x);
         float btn_size = GetFrameHeight();
         if (knob_diameter > btn_size) {
             SetCursorPosY(start_local_y + (knob_diameter - btn_size) * 0.5f);
         }
-        bool is_modified = std::abs(*p_value - v_default) > 0.0001f;
+        bool is_modified = std::abs(*p_value - v_default) > kEps;
+        float restore_val = v_default;
+        bool can_restore = !is_modified && WheelSliderDetail::ResolveFloatUndo(undo_id, *p_value, v_default, kEps, v_last, &restore_val);
+
         char reset_id[64];
         ImFormatString(reset_id, sizeof(reset_id), "##reset_%s", label);
-        if (ResetButton(reset_id, is_modified)) {
-            *p_value = v_default;
-            changed = true;
+        if (ResetButton(reset_id, is_modified, 0.0f, false, nullptr, can_restore)) {
+            if (is_modified) {
+                WheelSliderDetail::RecordFloatReset(undo_id, *p_value, v_last);
+                *p_value = v_default;
+                changed = true;
+            } else if (can_restore) {
+                float lower = (std::min)(v_min, v_max);
+                float upper = (std::max)(v_min, v_max);
+                *p_value = (lower < upper) ? WheelSliderDetail::Clamp(restore_val, lower, upper) : lower;
+                changed = true;
+            }
         }
         reset_hovered = IsItemHovered();
 
-        char default_buf[160];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            ImFormatString(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            float display_def = v_default;
-            if (v_max <= 1.0f && v_min >= 0.0f && std::strstr(format, "%%") != nullptr) {
-                display_def *= 100.0f;
-            }
-            ImFormatString(val_str, sizeof(val_str), format, display_def);
-            if (is_modified) {
-                ImFormatString(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
+        const bool scale_pct_disp = (v_max <= 1.0f && v_min >= 0.0f && std::strstr(format, "%%") != nullptr);
+        char default_buf[256];
+        char val_str[64];
+        float display_def = scale_pct_disp ? (v_default * 100.0f) : v_default;
+        ImFormatString(val_str, sizeof(val_str), format, display_def);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                ImFormatString(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                ImFormatString(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                ImFormatString(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            float display_prev = scale_pct_disp ? (restore_val * 100.0f) : restore_val;
+            ImFormatString(prev_str, sizeof(prev_str), format, display_prev);
+            ImFormatString(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            ImFormatString(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
 #if defined(IMGUI_MARKDOWN_EXT_H) && defined(IMGUI_TOOLTIP_EXT_H)

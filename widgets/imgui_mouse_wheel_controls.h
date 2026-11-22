@@ -1762,20 +1762,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            std::snprintf(val_str, sizeof(val_str), format, v_default);
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
-            } else if (can_restore) {
-                char prev_str[64];
-                std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        char val_str[64];
+        std::snprintf(val_str, sizeof(val_str), format, v_default);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
@@ -1871,20 +1871,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            std::snprintf(val_str, sizeof(val_str), format, v_default);
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
-            } else if (can_restore) {
-                char prev_str[64];
-                std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        char val_str[64];
+        std::snprintf(val_str, sizeof(val_str), format, v_default);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
@@ -1983,20 +1983,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            std::snprintf(val_str, sizeof(val_str), format, v_default * 100.0f);
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
-            } else if (can_restore) {
-                char prev_str[64];
-                std::snprintf(prev_str, sizeof(prev_str), format, restore_val * 100.0f);
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        char val_str[64];
+        std::snprintf(val_str, sizeof(val_str), format, v_default * 100.0f);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            std::snprintf(prev_str, sizeof(prev_str), format, restore_val * 100.0f);
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
@@ -2096,20 +2096,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            std::snprintf(val_str, sizeof(val_str), format, v_default);
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
-            } else if (can_restore) {
-                char prev_str[64];
-                std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        char val_str[64];
+        std::snprintf(val_str, sizeof(val_str), format, v_default);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
@@ -2207,20 +2207,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            char val_str[64];
-            std::snprintf(val_str, sizeof(val_str), format, v_default);
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
-            } else if (can_restore) {
-                char prev_str[64];
-                std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        char val_str[64];
+        std::snprintf(val_str, sizeof(val_str), format, v_default);
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", val_str);
             }
+        } else if (can_restore) {
+            char prev_str[64];
+            std::snprintf(prev_str, sizeof(prev_str), format, restore_val);
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", val_str, prev_str);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", val_str);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
@@ -2462,20 +2462,20 @@ namespace ImGui {
         bool reset_hovered = IsItemHovered();
 
         char default_buf[256];
-        if (reset_tooltip && reset_tooltip[0] != '\0') {
-            std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
-        } else {
-            const char* def_name = (clamped_default >= 0 && clamped_default < items_count && items[clamped_default])
-                                   ? items[clamped_default] : "default";
-            if (is_modified) {
-                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", def_name);
-            } else if (can_restore) {
-                const char* prev_name = (restore_item >= 0 && restore_item < items_count && items[restore_item])
-                                        ? items[restore_item] : "previous";
-                std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", def_name, prev_name);
+        const char* def_name = (clamped_default >= 0 && clamped_default < items_count && items[clamped_default])
+                               ? items[clamped_default] : "default";
+        if (is_modified) {
+            if (reset_tooltip && reset_tooltip[0] != '\0') {
+                std::snprintf(default_buf, sizeof(default_buf), "%s", reset_tooltip);
             } else {
-                std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", def_name);
+                std::snprintf(default_buf, sizeof(default_buf), "Click to revert to default (%s).", def_name);
             }
+        } else if (can_restore) {
+            const char* prev_name = (restore_item >= 0 && restore_item < items_count && items[restore_item])
+                                    ? items[restore_item] : "previous";
+            std::snprintf(default_buf, sizeof(default_buf), "At default (%s). Click to restore previous (%s).", def_name, prev_name);
+        } else {
+            std::snprintf(default_buf, sizeof(default_buf), "Already at default (%s).", def_name);
         }
 
         WheelSliderDetail::AttachTooltip(default_buf, reset_hovered);
