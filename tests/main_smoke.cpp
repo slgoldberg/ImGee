@@ -3155,6 +3155,114 @@ int main(int argc, char** argv) {
                 ImGui::Render();
                 CompleteHeadlessRenderTextures();
             }
+
+            // 7h. ImGee v1.2.1 Typographic Word-Wrap Regression Suite:
+            //     Prevent stranded leading '.' (e.g. "an ." / "acf-based") and orphaned leading
+            //     closing/trailing punctuation (e.g. "(i.e." / ", third-party"), while keeping
+            //     ultra-long spaceless tokens wrapping forward without stalling.
+            {
+                const std::string s10AcfCodeMd  = "assuming target is an `.acf`-based aircraft";
+                const std::string s10AcfPlainMd = "assuming target is an .acf-based aircraft";
+                const std::string s10ObjCodeMd  = "custom scenery in `.obj`-based aircraft";
+                const std::string s10IeMd       = "views in X-Plane (i.e., third-party models)";
+                const std::string s10LongMd     = "https://example.com/ultra_long_spaceless_token_with.dots,commas;and:colons/end";
+
+                auto findFirstMatchY = [](const std::string& md, const ImGui::MarkdownConfig& cfg, const char* needle, size_t& outLineCount) -> float {
+                    std::vector<float> ys;
+                    ImGui::MarkdownDetail::MarkdownSearchContext sc;
+                    sc.query         = needle;
+                    sc.queryLen      = std::strlen(needle);
+                    sc.caseSensitive = true;
+                    sc.activeIndex   = 0;
+                    sc.matchLocalYs  = &ys;
+                    {
+                        ImGui::MarkdownDetail::ScopedMarkdownSearchContext scope(&sc);
+                        ImGui::MarkdownExt(md, &cfg);
+                    }
+                    outLineCount = ImGui::GetLastMarkdownRenderedLines().size();
+                    IMGEE_TEST_CHECK(!ys.empty());
+                    return ys.front();
+                };
+
+                bool sawMultiLineAcfCode  = false;
+                bool sawMultiLineAcfPlain = false;
+                bool sawMultiLineObjCode  = false;
+                bool sawMultiLineIe       = false;
+
+                // Sweep narrow-to-medium widths (step 3px) across every real-world wrap trap
+                for (int s10W = 90; s10W <= 310; s10W += 3) {
+                    ImGui::MarkdownConfig s10Cfg;
+                    s10Cfg.wrapWidth = static_cast<float>(s10W);
+
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(480.0f, 520.0f), ImGuiCond_Always);
+                    ImGui::Begin("TypoWrapRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    StackSnapshot s10Snap = StackSnapshot::Capture();
+
+                    // 1. Backtick code span "`.acf`": '.' and "acf" must stay on the exact same line
+                    {
+                        size_t linesA = 0, linesB = 0;
+                        const float yStart = ImGui::GetCursorScreenPos().y;
+                        const float dotY = findFirstMatchY(s10AcfCodeMd, s10Cfg, ".", linesA);
+                        ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, yStart));
+                        const float acfY = findFirstMatchY(s10AcfCodeMd, s10Cfg, "acf", linesB);
+                        IMGEE_TEST_CHECK(std::fabs(dotY - acfY) < 1.5f);
+                        if (linesA >= 2u) sawMultiLineAcfCode = true;
+                    }
+
+                    // 2. Plain text ".acf-based": '.' and "acf" must stay on the exact same line
+                    {
+                        size_t linesA = 0, linesB = 0;
+                        const float yStart = ImGui::GetCursorScreenPos().y;
+                        const float dotY = findFirstMatchY(s10AcfPlainMd, s10Cfg, ".", linesA);
+                        ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, yStart));
+                        const float acfY = findFirstMatchY(s10AcfPlainMd, s10Cfg, "acf", linesB);
+                        IMGEE_TEST_CHECK(std::fabs(dotY - acfY) < 1.5f);
+                        if (linesA >= 2u) sawMultiLineAcfPlain = true;
+                    }
+
+                    // 3. Backtick code span "`.obj`": '.' and "obj" must stay on the exact same line
+                    {
+                        size_t linesA = 0, linesB = 0;
+                        const float yStart = ImGui::GetCursorScreenPos().y;
+                        const float dotY = findFirstMatchY(s10ObjCodeMd, s10Cfg, ".", linesA);
+                        ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, yStart));
+                        const float objY = findFirstMatchY(s10ObjCodeMd, s10Cfg, "obj", linesB);
+                        IMGEE_TEST_CHECK(std::fabs(dotY - objY) < 1.5f);
+                        if (linesA >= 2u) sawMultiLineObjCode = true;
+                    }
+
+                    // 4. "(i.e.,": "(i.e." and "," must stay on the exact same line (no orphaned leading comma!)
+                    {
+                        size_t linesA = 0, linesB = 0;
+                        const float yStart = ImGui::GetCursorScreenPos().y;
+                        const float ieY = findFirstMatchY(s10IeMd, s10Cfg, "(i.e.", linesA);
+                        ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, yStart));
+                        const float commaY = findFirstMatchY(s10IeMd, s10Cfg, ",", linesB);
+                        IMGEE_TEST_CHECK(std::fabs(ieY - commaY) < 1.5f);
+                        if (linesA >= 2u) sawMultiLineIe = true;
+                    }
+
+                    // 5. Ultra-long spaceless token must wrap cleanly across multiple lines without stalling
+                    if (s10W == 120) {
+                        ImGui::MarkdownExt(s10LongMd, &s10Cfg);
+                        const auto& longLines = ImGui::GetLastMarkdownRenderedLines();
+                        IMGEE_TEST_CHECK(longLines.size() >= 2u);
+                        IMGEE_TEST_CHECK(longLines.back().min.y > longLines.front().min.y + 4.0f);
+                    }
+
+                    s10Snap.VerifyBalanced("TypoWrapRegWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+
+                IMGEE_TEST_CHECK(sawMultiLineAcfCode);
+                IMGEE_TEST_CHECK(sawMultiLineAcfPlain);
+                IMGEE_TEST_CHECK(sawMultiLineObjCode);
+                IMGEE_TEST_CHECK(sawMultiLineIe);
+            }
         }
     }
 

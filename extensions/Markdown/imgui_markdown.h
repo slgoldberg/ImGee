@@ -671,7 +671,8 @@ namespace ImGui
                c_ != '{' && c_ != '}';
     }
 
-    // Typographic wrap helper: Prevents orphaned opening quotes/brackets and severed contractions/hyphens
+    // Typographic wrap helper: Prevents orphaned opening/prefix delimiters, severed contractions/hyphens,
+    // and orphaned closing/trailing punctuation on wrapped lines.
     inline const char* AdjustWrapForTypography( const char* text_, const char* endLine, const char* text_end_ )
     {
         if( endLine <= text_ || endLine >= text_end_ )
@@ -680,19 +681,33 @@ namespace ImGui
         char c_ = *endLine;
         char prev_c = *(endLine - 1);
 
-        // 1. Orphaned Opening Delimiter: e.g. " word -> break before the opening delimiter so it travels with the word!
-        if( ( prev_c == '\"' || prev_c == '\'' || prev_c == '(' || prev_c == '[' || prev_c == '{' ) &&
-            ( endLine - 1 > text_ && *(endLine - 2) == ' ' ) )
+        // 1. Orphaned Opening / Prefix Delimiter: e.g. " word or " .acf" -> break before the delimiter so it travels with the word!
+        if( ( prev_c == '\"' || prev_c == '\'' || prev_c == '(' || prev_c == '[' || prev_c == '{' || prev_c == '.' ) &&
+            ( endLine - 1 > text_ && *(endLine - 2) == ' ' ) &&
+            ( c_ != ' ' && c_ != '\t' && c_ != '\n' && c_ != '\r' ) )
         {
             return endLine - 1;
         }
 
-        // 2. Severed Contraction or Hyphen: e.g. "man's" or "semi-final" -> break before the whole compound word!
-        if( ( prev_c == '\'' || prev_c == '-' ) &&
+        // 2. Severed Contraction, Hyphen, or Dotted Token: e.g. "man's", "semi-final", "(i.e.,", "v1.2.1" -> break before the whole token!
+        if( ( prev_c == '\'' || prev_c == '-' || prev_c == '.' ) &&
             ( endLine - 1 > text_ && IsCharInsideWord( *(endLine - 2) ) ) &&
             ( IsCharInsideWord( c_ ) ) )
         {
             const char* rewind = endLine - 2;
+            while( rewind > text_ && *rewind != ' ' )
+                --rewind;
+
+            if( rewind > text_ && *rewind == ' ' )
+                return rewind;
+        }
+
+        // 3. Orphaned Closing / Trailing Punctuation: e.g. "(i.e.," breaking between '.' and ',' -> move whole token intact!
+        if( ( prev_c != ' ' && prev_c != '\t' && prev_c != '\n' && prev_c != '\r' ) &&
+            ( c_ == ',' || c_ == '.' || c_ == ';' || c_ == ':' || c_ == '!' || c_ == '?' ||
+              c_ == ')' || c_ == ']' || c_ == '}' || c_ == '\"' || c_ == '\'' ) )
+        {
+            const char* rewind = endLine - 1;
             while( rewind > text_ && *rewind != ' ' )
                 --rewind;
 
@@ -1266,10 +1281,15 @@ namespace ImGui
                 else if( endLine > first_non_space && endLine < text_end_ )
                 {
                     const char* word_end = first_non_space;
-                    while( word_end < text_end_ && IsCharInsideWord( *word_end ) ) ++word_end;
+                    while( word_end < text_end_ && *word_end != ' ' && *word_end != '\t' && *word_end != '\n' && *word_end != '\r' ) ++word_end;
                     if( endLine < word_end )
                     {
-                        breaks_first_word = true;
+                        const float fullLineWidth = usedOnLine + widthLeft;
+                        const float tokenWidth = ImGui::CalcTextSize( first_non_space, word_end, false ).x;
+                        if( tokenWidth <= fullLineWidth + 0.5f )
+                        {
+                            breaks_first_word = true;
+                        }
                     }
                 }
 
@@ -7400,10 +7420,15 @@ namespace ImGui
                 else if( endLine > first_non_space && endLine < text_end_ )
                 {
                     const char* word_end = first_non_space;
-                    while( word_end < text_end_ && IsCharInsideWord( *word_end ) ) ++word_end;
+                    while( word_end < text_end_ && *word_end != ' ' && *word_end != '\t' && *word_end != '\n' && *word_end != '\r' ) ++word_end;
                     if( endLine < word_end )
                     {
-                        breaks_first_word = true;
+                        const float fullLineWidth = usedOnLine + widthLeft;
+                        const float tokenWidth = ImGui::CalcTextSize( first_non_space, word_end, false ).x;
+                        if( tokenWidth <= fullLineWidth + 0.5f )
+                        {
+                            breaks_first_word = true;
+                        }
                     }
                 }
 

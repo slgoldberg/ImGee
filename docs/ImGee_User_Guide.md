@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.2.0)
+## Comprehensive Developer & User Manual (v1.2.1)
 
 ---
 
@@ -715,4 +715,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.2.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.2.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
