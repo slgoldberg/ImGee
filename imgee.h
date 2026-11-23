@@ -37,8 +37,8 @@
 // ============================================================================
 // ImGee Version Specifications
 // ============================================================================
-#define IMGEE_VERSION     "1.3.0"
-#define IMGEE_VERSION_NUM 10300
+#define IMGEE_VERSION     "1.4.0"
+#define IMGEE_VERSION_NUM 10400
 
 // ============================================================================
 // Granular Legacy Alias Bridge: CONTRIB_DISABLE_* -> IMGEE_DISABLE_*
@@ -375,6 +375,10 @@ namespace ImGeeDetail {
     static AutoImgWindowResolverBridge s_AutoImgWindowResolverBridge;
 }
 #endif
+#endif
+
+#if defined(IMGEE_INCLUDE_DEMO)
+#include "imgee_demo.h"
 #endif
 
 #endif // !IMGEE_DISABLE_ALL

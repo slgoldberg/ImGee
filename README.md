@@ -119,6 +119,11 @@ Add **ImGee** to your project (e.g. `git submodule add https://github.com/slgold
 
 // Or when the parent directory of ImGee/ is on your -I include path:
 #include "ImGee/imgee.h"
+
+// Optional interactive showcase window (v1.4.0 -- opt-in, zero cost unless included):
+#include "imgee_demo.h"
+// static bool show_demo = true;
+// ImGui::ShowImGeeDemoWindow(&show_demo);   // Own top-level window (or ShowImGeeDemoContent() inside an existing window)
 ```
 
 ### 2. A-La-Carte & Order-Independent Inclusion

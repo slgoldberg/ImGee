@@ -100,6 +100,7 @@ jobs:
 
           HEADERS=(
             imgee.h
+            imgee_demo.h
             imgee_host_backend.h
             imgee-global.h
             includes.h
@@ -141,6 +142,10 @@ jobs:
 
           echo "[Standalone Opt-Out Check] $CXX_BIN -> extensions/DocViewer/imgui_doc_viewer.h (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES)"
           printf '#include "extensions/DocViewer/imgui_doc_viewer.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Wsign-conversion -Werror \
+            -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES -I. -isystem "$IMGUI_ABS" -x c++ -
+
+          echo "[Standalone Opt-Out Check] $CXX_BIN -> imgee_demo.h (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES)"
+          printf '#include "imgee_demo.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Wsign-conversion -Werror \
             -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES -I. -isystem "$IMGUI_ABS" -x c++ -
 
       - name: Configure CMake test suite (Native GCC / Clang / MSVC)

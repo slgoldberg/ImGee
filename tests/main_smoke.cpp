@@ -4,6 +4,7 @@
 
 #define IMGEE_ENABLE_GLOBAL_NAMESPACES
 #include "imgee.h"
+#include "imgee_demo.h"
 #include "imgui_internal.h"
 #include "imgee_test_common.h"
 
@@ -3549,6 +3550,70 @@ int main(int argc, char** argv) {
                 IMGEE_TEST_CHECK(s12Cap.tips[0] == "Frame Metric");
                 IMGEE_TEST_CHECK(s12Cap.tips[1] == "Live Value");
                 IMGEE_TEST_CHECK(!s12Cap.hasTip("Drag to resize"));
+            }
+
+            // 7k. ImGee v1.4.0 Interactive Showcase Window (imgee_demo.h) Regression Suite:
+            //     Exercises ShowImGeeDemoWindow(&open) and ShowImGeeDemoContent() across all
+            //     8 tabs in both Charcoal and Paper Light themes with StackSnapshot checks,
+            //     synchronized DocumentViewer theme_index, and Restore Host Style snapshot.
+            {
+                // Set a recognizable host style sentinel color so Restore Host Style is verified
+                ImGui::StyleColorsDark();
+                const ImVec4 s13HostSentinel(0.11f, 0.22f, 0.33f, 0.99f);
+                ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = s13HostSentinel;
+
+                bool s13Open = true;
+                for (int s13ThemePass = 0; s13ThemePass < 2; ++s13ThemePass) {
+                    const int s13ThemeIdx = (s13ThemePass == 0) ? 0 : 4; // 0 = Charcoal, 4 = Paper Light
+                    for (int s13Tab = 0; s13Tab < 8; ++s13Tab) {
+                        ImGeeDemoDetail::GetForcedTabIndex() = s13Tab;
+                        ImGui::NewFrame();
+                        ImGui::ShowImGeeDemoWindow(&s13Open);
+
+                        // Also verify embedded ShowImGeeDemoContent inside a caller-owned window on tab 0 & tab 6
+                        if (s13Tab == 0 || s13Tab == 6) {
+                            ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                            ImGui::SetNextWindowSize(ImVec2(820.0f, 560.0f), ImGuiCond_Always);
+                            ImGui::Begin("ImGeeEmbeddedDemoHostWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                            StackSnapshot s13Snap = StackSnapshot::Capture();
+                            const ImGuiID s13EmbId = ImGui::GetID("##s13_embedded_demo");
+                            ImGeeDemoDetail::ImGeeDemoState& s13EmbSt = ImGeeDemoDetail::GetOrCreateDemoState(s13EmbId);
+                            if (s13Tab == 0) {
+                                ImGeeDemoDetail::ApplyDemoTheme(s13EmbSt, s13ThemeIdx);
+                            }
+                            ImGui::ShowImGeeDemoContent("##s13_embedded_demo");
+                            IMGEE_TEST_CHECK(s13EmbSt.theme_index == s13ThemeIdx);
+                            IMGEE_TEST_CHECK(s13EmbSt.doc_state.theme_index == s13ThemeIdx);
+                            s13Snap.VerifyBalanced("ImGeeEmbeddedDemoHostWin");
+                            ImGui::End();
+                        }
+
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                }
+
+                // Verify RestoreHostStyle restores the original host WindowBg sentinel after Paper Light
+                {
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(820.0f, 560.0f), ImGuiCond_Always);
+                    ImGui::Begin("ImGeeEmbeddedDemoHostWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                    const ImGuiID s13EmbId = ImGui::GetID("##s13_embedded_demo");
+                    ImGeeDemoDetail::ImGeeDemoState& s13EmbSt = ImGeeDemoDetail::GetOrCreateDemoState(s13EmbId);
+                    IMGEE_TEST_CHECK(s13EmbSt.has_host_style_snapshot);
+                    ImGeeDemoDetail::RestoreHostStyle(s13EmbSt);
+                    const ImVec4 restoredBg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+                    IMGEE_TEST_CHECK(std::fabs(restoredBg.x - s13HostSentinel.x) < 0.001f);
+                    IMGEE_TEST_CHECK(std::fabs(restoredBg.y - s13HostSentinel.y) < 0.001f);
+                    IMGEE_TEST_CHECK(std::fabs(restoredBg.z - s13HostSentinel.z) < 0.001f);
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+
+                ImGeeDemoDetail::GetForcedTabIndex() = -1;
+                ImGui::StyleColorsDark();
             }
         }
     }

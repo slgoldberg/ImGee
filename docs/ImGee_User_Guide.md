@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.3.0)
+## Comprehensive Developer & User Manual (v1.4.0)
 
 ---
 
@@ -26,6 +26,7 @@ Stock `Dear ImGui` is a brilliant immediate-mode canvas engineered primarily for
 ```
 ImGee/
 ├── imgee.h                        # Canonical ImGee Master Header & Version Contract
+├── imgee_demo.h                   # Opt-in Interactive Showcase (ShowImGeeDemoWindow / ShowImGeeDemoContent)
 ├── imgee_host_backend.h           # Standalone GPU Texture, Asset Path & Shutdown Hook Contract
 ├── includes.h                     # Folder Roll-Up Header (-> imgee.h)
 ├── extensions.h                   # Subsystem Roll-Up (-> extensions/includes.h)
@@ -712,9 +713,10 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 | `IMGEE_NO_IMGWINDOW_BRIDGE` | Disables automatic `ImgWindow.h` discovery and bridging even when `ImgWindow.h` is on `-I`. |
 | `IMGEE_FILEPATHS_FORCE_RELATIVE` | Forces local Markdown image URLs to resolve strictly as relative paths (`1` by default with `ImgWindow`, `0` standalone). |
 | `IMGEE_ENABLE_GLOBAL_NAMESPACES` | Publishes `Markdown::`, `MD::`, and `TimedTooltip::` to global scope. |
+| `IMGEE_INCLUDE_DEMO` | Opt-in switch to pull in `imgee_demo.h` (`ImGui::ShowImGeeDemoWindow` & `ImGui::ShowImGeeDemoContent`) from `imgee.h` (omitted by default for zero production binary overhead). |
 
 > [!NOTE]
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.3.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.4.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
