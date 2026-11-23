@@ -15,7 +15,9 @@
 #include <stdint.h>
 #include <string.h>
 #include <ctype.h>
+#include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <algorithm>
