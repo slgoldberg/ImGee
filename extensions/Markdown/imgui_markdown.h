@@ -703,9 +703,12 @@ namespace ImGui
         }
 
         // 3. Orphaned Closing / Trailing Punctuation: e.g. "(i.e.," breaking between '.' and ',' -> move whole token intact!
+        auto isTrailingPunct = []( char ch ) -> bool {
+            return ch == ',' || ch == '.' || ch == ';' || ch == ':' || ch == '!' || ch == '?' ||
+                   ch == ')' || ch == ']' || ch == '}' || ch == '\"' || ch == '\'';
+        };
         if( ( prev_c != ' ' && prev_c != '\t' && prev_c != '\n' && prev_c != '\r' ) &&
-            ( c_ == ',' || c_ == '.' || c_ == ';' || c_ == ':' || c_ == '!' || c_ == '?' ||
-              c_ == ')' || c_ == ']' || c_ == '}' || c_ == '\"' || c_ == '\'' ) )
+            isTrailingPunct( c_ ) )
         {
             const char* rewind = endLine - 1;
             while( rewind > text_ && *rewind != ' ' )
@@ -713,6 +716,14 @@ namespace ImGui
 
             if( rewind > text_ && *rewind == ' ' )
                 return rewind;
+
+            // First token on the line (no earlier space): keep trailing punctuation attached to this line
+            // rather than stranding it at the start of the next line (also fixes ImGui <1.89
+            // CalcWordWrapPositionA stopping before consecutive punctuation like "(i.e.,").
+            const char* advance = endLine;
+            while( advance < text_end_ && isTrailingPunct( *advance ) )
+                ++advance;
+            return advance;
         }
 
         return endLine;
