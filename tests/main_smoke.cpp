@@ -2832,22 +2832,22 @@ int main(int argc, char** argv) {
                 ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
                 ImGui::SetNextWindowSize(ImVec2(520.0f, 220.0f), ImGuiCond_Always);
                 ImGui::Begin("StyledTextRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
-                StackSnapshot stSnap = StackSnapshot::Capture();
-                ImDrawList* stDl = ImGui::GetWindowDrawList();
+                StackSnapshot s7StSnap = StackSnapshot::Capture();
+                ImDrawList* s7StDl = ImGui::GetWindowDrawList();
 
-                const int vBase0 = stDl->VtxBuffer.Size;
+                const int vBase0 = s7StDl->VtxBuffer.Size;
                 ImGui::StyledText("Prefix  Suffix");
-                const int vBaseDelta = stDl->VtxBuffer.Size - vBase0;
+                const int vBaseDelta = s7StDl->VtxBuffer.Size - vBase0;
 
-                const int vTag0 = stDl->VtxBuffer.Size;
+                const int vTag0 = s7StDl->VtxBuffer.Size;
                 ImGui::StyledText("Prefix </cam> Suffix");
-                const int vTagDelta = stDl->VtxBuffer.Size - vTag0;
+                const int vTagDelta = s7StDl->VtxBuffer.Size - vTag0;
                 IMGEE_TEST_CHECK(vTagDelta > vBaseDelta);
 
                 // Inline color= attribute on opening formatting tags must auto-pop on closing tag without leaking color stack:
                 ImGui::StyledText("<b color=#ff8800>Bold Orange</b> <mono color=#40c0ff>Mono Cyan</mono> <i color=green>Italic Green</i>");
 
-                stSnap.VerifyBalanced("StyledTextRegWin");
+                s7StSnap.VerifyBalanced("StyledTextRegWin");
                 ImGui::End();
                 ImGui::Render();
                 CompleteHeadlessRenderTextures();

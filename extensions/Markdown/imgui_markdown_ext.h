@@ -1637,7 +1637,7 @@ namespace ImGui {
                     size_t q_lead_cols = 0;
                     size_t q_lead_idx = 0;
                     while (q_lead_idx < stripped.size() && (stripped[q_lead_idx] == ' ' || stripped[q_lead_idx] == '\t')) {
-                        q_lead_cols += (stripped[q_lead_idx] == '\t') ? 4 : 1;
+                        q_lead_cols += (stripped[q_lead_idx] == '\t') ? 4u : 1u;
                         ++q_lead_idx;
                     }
                     if (q_lead_cols <= 3 && q_lead_idx < stripped.size() && (stripped[q_lead_idx] == '`' || stripped[q_lead_idx] == '~')) {

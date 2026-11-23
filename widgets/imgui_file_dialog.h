@@ -129,7 +129,7 @@ namespace ImGui {
             // Convert UTF-8 path to wide string for Windows Unicode API
             int wlen = MultiByteToWideChar(CP_UTF8, 0, search_mask.c_str(), -1, NULL, 0);
             if (wlen <= 0) return entries;
-            std::vector<wchar_t> wmask(wlen);
+            std::vector<wchar_t> wmask(static_cast<size_t>(wlen));
             MultiByteToWideChar(CP_UTF8, 0, search_mask.c_str(), -1, wmask.data(), wlen);
 
             WIN32_FIND_DATAW fd;
@@ -140,7 +140,7 @@ namespace ImGui {
                 // Convert back from wide to UTF-8
                 int nlen = WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, NULL, 0, NULL, NULL);
                 if (nlen <= 0) continue;
-                std::vector<char> nbuf(nlen);
+                std::vector<char> nbuf(static_cast<size_t>(nlen));
                 WideCharToMultiByte(CP_UTF8, 0, fd.cFileName, -1, nbuf.data(), nlen, NULL, NULL);
                 std::string fname = nbuf.data();
 
@@ -215,7 +215,7 @@ namespace ImGui {
 #if defined(_WIN32)
             int wlen = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, NULL, 0);
             if (wlen <= 0) return false;
-            std::vector<wchar_t> wpath(wlen);
+            std::vector<wchar_t> wpath(static_cast<size_t>(wlen));
             MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wpath.data(), wlen);
             DWORD dwAttrib = GetFileAttributesW(wpath.data());
             return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
