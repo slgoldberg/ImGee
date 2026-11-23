@@ -174,6 +174,14 @@ namespace ImGui {
     constexpr ImGuiPopupAlign  PopupAlign_Auto            = ::ImGuiPopupAlign_Auto;
 
     namespace Detail {
+        struct ContextScopedId {
+            ImGuiContext* ctx = nullptr;
+            ImGuiID       id  = 0;
+            bool operator<(const ContextScopedId& rhs) const {
+                return (ctx != rhs.ctx) ? (ctx < rhs.ctx) : (id < rhs.id);
+            }
+        };
+
         struct AnchoredPopupState {
             ImVec2 anchor_pos  = ImVec2(0.0f, 0.0f);
             ImVec2 item_min    = ImVec2(0.0f, 0.0f);
@@ -183,11 +191,46 @@ namespace ImGui {
             ImGuiPopupAlign  align  = ImGuiPopupAlign_Auto;
             bool was_open = false;
             bool force_close = false;
+            int  last_frame_seen = -1;
         };
 
-        inline std::map<ImGuiID, AnchoredPopupState>& GetPopupStateMap() {
-            static std::map<ImGuiID, AnchoredPopupState> s_Map;
+        inline std::map<ContextScopedId, AnchoredPopupState>& GetPopupStateMap() {
+            static std::map<ContextScopedId, AnchoredPopupState> s_Map;
             return s_Map;
+        }
+
+        inline AnchoredPopupState& GetOrCreatePopupState(ImGuiID id) {
+            ContextScopedId key{ ImGui::GetCurrentContext(), id };
+            auto& st = GetPopupStateMap()[key];
+            const int cur_frame = ImGui::GetFrameCount();
+            if (st.last_frame_seen > cur_frame) {
+                st = AnchoredPopupState{};
+            }
+            st.last_frame_seen = cur_frame;
+            return st;
+        }
+
+        inline AnchoredPopupState* FindPopupState(ImGuiID id) {
+            ContextScopedId key{ ImGui::GetCurrentContext(), id };
+            auto& m = GetPopupStateMap();
+            auto it = m.find(key);
+            if (it == m.end()) return nullptr;
+            const int cur_frame = ImGui::GetFrameCount();
+            if (it->second.last_frame_seen > cur_frame) {
+                it->second = AnchoredPopupState{};
+                it->second.last_frame_seen = cur_frame;
+                return nullptr;
+            }
+            return &it->second;
+        }
+
+        inline void AddRectCompat(ImDrawList* dl, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding = 0.0f, ImDrawFlags flags = 0, float thickness = 1.0f) {
+            if (!dl) return;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19280)
+            dl->AddRect(p_min, p_max, col, rounding, thickness, flags);
+#else
+            dl->AddRect(p_min, p_max, col, rounding, flags, thickness);
+#endif
         }
 
         inline const char*& GetDefaultPulldownCaretDownStorage() {
@@ -268,6 +311,22 @@ namespace ImGui {
             }
 #endif
         }
+
+        // UX Rule #6 strict silent fallback (never falls back to instant-pop ImGui::SetTooltip)
+        inline void AttachSilentTimedTooltipProxy(ImGuiID id, const char* text, bool is_hovered)
+        {
+            if (!text || text[0] == '\0') return;
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+    #if defined(IMGUI_MARKDOWN_EXT_H) && !defined(IMGEE_DISABLE_MARKDOWN) && !defined(CONTRIB_DISABLE_MARKDOWN) && !defined(IMGUI_CONTRIB_DISABLE_MARKDOWN)
+            TimedTooltip::TextMDProxy(id, is_hovered, "%s", text);
+    #else
+            TimedTooltip::TextProxy(id, is_hovered, "%s", text);
+    #endif
+#else
+            (void)id;
+            (void)is_hovered;
+#endif
+        }
     } // namespace Detail
 
     // ========================================================================
@@ -333,9 +392,9 @@ namespace ImGui {
     inline IMGUI_API ImVec2 GetLastPopupSize(const char* str_id) {
         if (!str_id || !*str_id) return ImVec2(0.0f, 0.0f);
         ImGuiID id = ImGui::GetID(str_id);
-        auto& m = Detail::GetPopupStateMap();
-        auto it = m.find(id);
-        if (it != m.end()) return it->second.last_size;
+        if (Detail::AnchoredPopupState* st = Detail::FindPopupState(id)) {
+            return st->last_size;
+        }
         return ImVec2(0.0f, 0.0f);
     }
 
@@ -361,7 +420,7 @@ namespace ImGui {
     {
         if (!str_id || !*str_id) return false;
         ImGuiID id = ImGui::GetID(str_id);
-        auto& state = Detail::GetPopupStateMap()[id];
+        auto& state = Detail::GetOrCreatePopupState(id);
 
         // Muscle-memory toggle safety: if already open, toggle it closed cleanly
         if (ImGui::IsPopupOpen(str_id, popup_flags)) {
@@ -418,7 +477,7 @@ namespace ImGui {
     {
         if (!str_id || !*str_id) return false;
         ImGuiID id = ImGui::GetID(str_id);
-        auto& state = Detail::GetPopupStateMap()[id];
+        auto& state = Detail::GetOrCreatePopupState(id);
 
         if (ImGui::IsPopupOpen(str_id, popup_flags)) {
             ImGui::CloseCurrentPopup();
@@ -459,31 +518,29 @@ namespace ImGui {
     inline IMGUI_API bool BeginAnchoredPopup(const char* str_id, ImGuiWindowFlags flags = 0) {
         if (!str_id || !*str_id) return false;
         ImGuiID id = ImGui::GetID(str_id);
-        auto& m = Detail::GetPopupStateMap();
-        auto it = m.find(id);
+        Detail::AnchoredPopupState* st = Detail::FindPopupState(id);
 
-        if (it != m.end() && it->second.was_open) {
-            auto& state = it->second;
-            ImVec2 pivot(0.0f, (state.anchor == ImGuiPopupAnchor_AboveItem) ? 1.0f : 0.0f);
-            if (state.align == ImGuiPopupAlign_Right) pivot.x = 1.0f;
-            else if (state.align == ImGuiPopupAlign_Center) pivot.x = 0.5f;
+        if (st && st->was_open) {
+            ImVec2 pivot(0.0f, (st->anchor == ImGuiPopupAnchor_AboveItem) ? 1.0f : 0.0f);
+            if (st->align == ImGuiPopupAlign_Right) pivot.x = 1.0f;
+            else if (st->align == ImGuiPopupAlign_Center) pivot.x = 0.5f;
 
-            if (state.last_size.y > 0.0f) {
+            if (st->last_size.y > 0.0f) {
                 // Known size from previous opening: exact pivot placement
-                ImGui::SetNextWindowPos(state.anchor_pos, ImGuiCond_Always, pivot);
+                ImGui::SetNextWindowPos(st->anchor_pos, ImGuiCond_Always, pivot);
             } else {
                 // First appearance before measurement: estimate top-left to avoid jumping
                 float est_h = ImGui::GetFontSize() * 3.5f;
-                float start_y = (state.anchor == ImGuiPopupAnchor_AboveItem)
-                    ? (state.anchor_pos.y - est_h)
-                    : state.anchor_pos.y;
-                ImGui::SetNextWindowPos(ImVec2(state.anchor_pos.x, start_y), ImGuiCond_Always, ImVec2(pivot.x, 0.0f));
+                float start_y = (st->anchor == ImGuiPopupAnchor_AboveItem)
+                    ? (st->anchor_pos.y - est_h)
+                    : st->anchor_pos.y;
+                ImGui::SetNextWindowPos(ImVec2(st->anchor_pos.x, start_y), ImGuiCond_Always, ImVec2(pivot.x, 0.0f));
             }
         }
 
-        if (it != m.end() && it->second.force_close) {
-            it->second.force_close = false;
-            it->second.was_open = false;
+        if (st && st->force_close) {
+            st->force_close = false;
+            st->was_open = false;
             if (ImGui::BeginPopup(str_id, flags)) {
                 ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
@@ -493,15 +550,472 @@ namespace ImGui {
 
         bool open = ImGui::BeginPopup(str_id, flags);
         if (open) {
-            if (it != m.end()) {
-                it->second.last_size = ImGui::GetWindowSize();
+            if (st) {
+                st->last_size = ImGui::GetWindowSize();
+                st->last_frame_seen = ImGui::GetFrameCount();
             }
         } else {
-            if (it != m.end()) {
-                it->second.was_open = false;
+            if (st) {
+                st->was_open = false;
             }
         }
         return open;
+    }
+
+    // ========================================================================
+    // Hover-Latching Menu Strip (v1.3.0)
+    // ========================================================================
+
+    struct MenuStripConfig {
+        ImGuiPopupAnchor anchor            = ImGuiPopupAnchor_Auto; // AboveItem (status bar), BelowItem (menu bar), or Auto
+        ImGuiPopupAlign  align             = ImGuiPopupAlign_Auto;  // Left, Right, Center, or Auto
+        bool             autoSameLine      = true;                  // Automatically places sibling triggers on one row
+        float            itemSpacingX      = -1.0f;                 // < 0 uses style.ItemSpacing.x
+        bool             showCaret         = true;                  // Draws procedural vector caret matching anchor direction
+        bool             flipCaretOnOpen   = true;                  // Flips caret direction while this menu is open
+        bool             matchTriggerWidth = true;                  // Enforce popup min-width >= trigger button width
+        bool             dynamicCursors    = true;                  // Active ImGuiMouseCursor_Hand on strip triggers
+        ImGuiWindowFlags popupFlags        = 0;                     // Extra flags forwarded to BeginAnchoredPopup
+    };
+
+    struct MenuStripState {
+        bool    is_latched                 = false;                 // True while any menu in this strip is open
+        ImGuiID active_menu_id             = 0;                     // ID of currently open menu (0 if closed)
+        int     active_menu_index          = -1;                    // 0-based index of currently open menu (-1 if closed)
+        ImVec2  last_popup_size            = ImVec2(0.0f, 0.0f);    // Last measured size of active popup (headroom query)
+
+        struct TriggerSlot {
+            ImGuiID menu_id  = 0;
+            ImVec2  rect_min = ImVec2(0.0f, 0.0f);
+            ImVec2  rect_max = ImVec2(0.0f, 0.0f);
+            bool    enabled  = true;
+        };
+
+        // Internal frame-sync bookkeeping (managed by BeginMenuStrip / BeginStripMenu / EndMenuStrip)
+        ImGuiID _hovered_menu_id_prev      = 0;
+        ImGuiID _hovered_menu_id_curr      = 0;
+        ImGuiID _suppress_click_menu_id    = 0;
+        ImGuiID _opened_while_mouse_down_id = 0;
+        ImGuiID _pre_switch_target_id      = 0;
+        ImVec2  _active_popup_min          = ImVec2(0.0f, 0.0f);
+        ImVec2  _active_popup_max          = ImVec2(0.0f, 0.0f);
+        bool    _any_open_this_frame       = false;
+        int     _item_count                = 0;
+        int     _last_frame_seen           = -1;
+        std::vector<TriggerSlot> _slots_prev;
+        std::vector<TriggerSlot> _slots_curr;
+    };
+
+    namespace Detail {
+        struct ActiveMenuStripScope {
+            ImGuiID         strip_id = 0;
+            MenuStripConfig config;
+            MenuStripState* state    = nullptr;
+        };
+
+        inline std::map<ContextScopedId, MenuStripState>& GetMenuStripStateMap() {
+            static std::map<ContextScopedId, MenuStripState> s_Map;
+            return s_Map;
+        }
+
+        inline std::map<ImGuiContext*, std::vector<ActiveMenuStripScope>>& GetActiveMenuStripStackMap() {
+            static std::map<ImGuiContext*, std::vector<ActiveMenuStripScope>> s_Stacks;
+            return s_Stacks;
+        }
+
+        inline MenuStripState& GetOrCreateMenuStripState(ImGuiID strip_id) {
+            ContextScopedId key{ ImGui::GetCurrentContext(), strip_id };
+            auto& st = GetMenuStripStateMap()[key];
+            const int cur_frame = ImGui::GetFrameCount();
+            if (st._last_frame_seen > cur_frame) {
+                st = MenuStripState{};
+            }
+            st._last_frame_seen = cur_frame;
+            return st;
+        }
+
+        inline MenuStripState* FindMenuStripState(ImGuiID strip_id) {
+            ContextScopedId key{ ImGui::GetCurrentContext(), strip_id };
+            auto& m = GetMenuStripStateMap();
+            auto it = m.find(key);
+            if (it == m.end()) return nullptr;
+            const int cur_frame = ImGui::GetFrameCount();
+            if (it->second._last_frame_seen > cur_frame) {
+                it->second = MenuStripState{};
+                it->second._last_frame_seen = cur_frame;
+                return nullptr;
+            }
+            return &it->second;
+        }
+    } // namespace Detail
+
+    /// Opens a hover-latching horizontal menu strip scope.
+    /// Passing state = nullptr uses internal (ImGuiContext*, ImGuiID)-keyed storage automatically.
+    /// Always pair with EndMenuStrip().
+    inline IMGUI_API bool BeginMenuStrip(const char* str_id,
+                                         const MenuStripConfig* config = nullptr,
+                                         MenuStripState* state = nullptr)
+    {
+        const char* safe_id = (str_id && str_id[0] != '\0') ? str_id : "##imgee_menu_strip";
+        const ImGuiID strip_id = ImGui::GetID(safe_id);
+        ImGui::PushID(static_cast<int>(strip_id));
+
+        MenuStripState* st = state ? state : &Detail::GetOrCreateMenuStripState(strip_id);
+        const int cur_frame = ImGui::GetFrameCount();
+        if (st->_last_frame_seen > cur_frame) {
+            *st = MenuStripState{};
+        }
+        st->_last_frame_seen = cur_frame;
+
+        // Release stale click guards once LMB is no longer held or releasing
+        if (!ImGui::IsMouseDown(0) && !ImGui::IsMouseReleased(0)) {
+            st->_suppress_click_menu_id     = 0;
+            st->_opened_while_mouse_down_id = 0;
+        }
+
+        // Determine which enabled trigger slot the mouse is actually over on this frame
+        // (ignoring any slot hidden underneath the currently open popup rect).
+        ImGuiID live_mouse_slot_id = 0;
+        if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
+            const ImGuiIO& io = ImGui::GetIO();
+            const bool has_pop = (st->_active_popup_max.x > st->_active_popup_min.x &&
+                                  st->_active_popup_max.y > st->_active_popup_min.y);
+            const bool in_pop = has_pop &&
+                                (io.MousePos.x >= st->_active_popup_min.x && io.MousePos.x <= st->_active_popup_max.x &&
+                                 io.MousePos.y >= st->_active_popup_min.y && io.MousePos.y <= st->_active_popup_max.y);
+            if (!in_pop) {
+                for (size_t si = 0; si < st->_slots_prev.size(); ++si) {
+                    const MenuStripState::TriggerSlot& sl = st->_slots_prev[si];
+                    if (sl.enabled &&
+                        io.MousePos.x >= sl.rect_min.x && io.MousePos.x <= sl.rect_max.x &&
+                        io.MousePos.y >= sl.rect_min.y && io.MousePos.y <= sl.rect_max.y)
+                    {
+                        live_mouse_slot_id = sl.menu_id;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Muscle-memory toggle guard: if the user pressed LMB directly over the currently open
+        // trigger, Dear ImGui's popup dismissal will close the popup before Button() fires on
+        // release. Record _suppress_click_menu_id so the release click does NOT bounce it back open.
+        // Clicking a *sibling* trigger leaves _suppress_click_menu_id == 0 so it switches cleanly!
+        if (st->active_menu_id != 0 && ImGui::IsMouseClicked(0)) {
+            const bool clicking_active_trigger = (live_mouse_slot_id != 0)
+                ? (live_mouse_slot_id == st->active_menu_id)
+                : (st->_hovered_menu_id_prev == st->active_menu_id);
+            if (clicking_active_trigger) {
+                st->_suppress_click_menu_id = st->active_menu_id;
+                st->is_latched = false;
+            }
+        }
+
+        st->_hovered_menu_id_curr = 0;
+        st->_pre_switch_target_id = 0;
+        st->_any_open_this_frame  = false;
+        st->_item_count           = 0;
+        st->_slots_curr.clear();
+
+        // Pre-pass hover-switch detection: if latched and mouse has moved onto an enabled sibling
+        // trigger, suppress rendering the outgoing popup on this frame so forward glides (A -> B)
+        // and direct sibling clicks transition cleanly with zero 1-frame dual-popup overlap!
+        if (st->is_latched && st->active_menu_id != 0 &&
+            live_mouse_slot_id != 0 && live_mouse_slot_id != st->active_menu_id)
+        {
+            st->_pre_switch_target_id = live_mouse_slot_id;
+        }
+
+        Detail::ActiveMenuStripScope scope;
+        scope.strip_id = strip_id;
+        if (config) scope.config = *config;
+        scope.state = st;
+        Detail::GetActiveMenuStripStackMap()[ImGui::GetCurrentContext()].push_back(scope);
+        return true;
+    }
+
+    /// Submits a menu strip trigger button and opens its anchored popup scope if open.
+    /// anchor_override / align_override default to -1 (inherit MenuStripConfig::anchor / align).
+    /// Returns true while the menu popup is open (caller MUST call EndStripMenu() iff true).
+    inline IMGUI_API bool BeginStripMenu(const char* label,
+                                         const char* tooltip_md = nullptr,
+                                         bool enabled = true,
+                                         float width = 0.0f,
+                                         int anchor_override = -1,
+                                         int align_override = -1)
+    {
+        auto& stack = Detail::GetActiveMenuStripStackMap()[ImGui::GetCurrentContext()];
+        if (stack.empty() || !stack.back().state) return false;
+
+        Detail::ActiveMenuStripScope& scope = stack.back();
+        MenuStripState* st = scope.state;
+        const MenuStripConfig& cfg = scope.config;
+        const int item_idx = st->_item_count++;
+
+        if (cfg.autoSameLine && item_idx > 0) {
+            ImGui::SameLine(0.0f, cfg.itemSpacingX);
+        }
+
+        const char* safe_label = label ? label : "";
+        const ImGuiID menu_id = ImGui::GetID(safe_label);
+        char popup_id[64];
+        std::snprintf(popup_id, sizeof(popup_id), "##MenuStrip_%08X", static_cast<unsigned int>(menu_id));
+
+        const ImGuiPopupAnchor resolved_anchor = (anchor_override >= 0)
+            ? static_cast<ImGuiPopupAnchor>(anchor_override)
+            : cfg.anchor;
+        const ImGuiPopupAlign resolved_align = (align_override >= 0)
+            ? static_cast<ImGuiPopupAlign>(align_override)
+            : cfg.align;
+
+        const ImGuiIO& io = ImGui::GetIO();
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float font_size = ImGui::GetFontSize();
+        const float btn_h = ImGui::GetFrameHeight();
+        const float pad_x = style.FramePadding.x;
+
+        // Determine visible label text (strip ##ID suffix)
+        const char* label_end = std::strstr(safe_label, "##");
+        if (!label_end) label_end = safe_label + std::strlen(safe_label);
+        const ImVec2 text_sz = (label_end > safe_label)
+            ? ImGui::CalcTextSize(safe_label, label_end, false)
+            : ImVec2(0.0f, font_size);
+
+        const float caret_w = cfg.showCaret ? (font_size * 0.72f) : 0.0f;
+        const float caret_gap = (cfg.showCaret && label_end > safe_label) ? (pad_x * 0.65f) : 0.0f;
+        const float min_btn_w = pad_x * 2.0f + text_sz.x + caret_gap + caret_w;
+        float btn_w = min_btn_w;
+        if (width > 0.0f) {
+            btn_w = width;
+        } else if (width < 0.0f) {
+            btn_w = (std::max)(min_btn_w, ImGui::GetContentRegionAvail().x + width);
+        }
+
+        const bool was_open_before = ImGui::IsPopupOpen(popup_id);
+        const bool show_active_style = (st->_pre_switch_target_id != 0)
+            ? (st->_pre_switch_target_id == menu_id)
+            : (was_open_before || (st->is_latched && st->active_menu_id == menu_id));
+
+        if (!enabled) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18500)
+            ImGui::BeginDisabled(true);
+#else
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, style.Alpha * 0.5f);
+#endif
+        }
+
+        if (show_active_style) {
+            ImGui::PushStyleColor(ImGuiCol_Button, style.Colors[ImGuiCol_ButtonActive]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, style.Colors[ImGuiCol_ButtonActive]);
+        }
+
+        char btn_id[80];
+        std::snprintf(btn_id, sizeof(btn_id), "##StripBtn_%08X", static_cast<unsigned int>(menu_id));
+        const bool raw_clicked = ImGui::Button(btn_id, ImVec2(btn_w, btn_h));
+        const bool clicked = enabled && raw_clicked;
+
+        if (show_active_style) {
+            ImGui::PopStyleColor(2);
+        }
+
+        if (!enabled) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18500)
+            ImGui::EndDisabled();
+#else
+            ImGui::PopStyleVar();
+#endif
+        }
+
+        const ImVec2 item_min = ImGui::GetItemRectMin();
+        const ImVec2 item_max = ImGui::GetItemRectMax();
+        {
+            MenuStripState::TriggerSlot slot;
+            slot.menu_id  = menu_id;
+            slot.rect_min = item_min;
+            slot.rect_max = item_max;
+            slot.enabled  = enabled;
+            st->_slots_curr.push_back(slot);
+        }
+
+        // Guard against accidentally hover-switching to a sibling trigger hidden behind the open popup
+        const bool has_popup_rect = (st->_active_popup_max.x > st->_active_popup_min.x &&
+                                     st->_active_popup_max.y > st->_active_popup_min.y);
+        const bool mouse_in_active_popup = has_popup_rect &&
+                                           (io.MousePos.x >= st->_active_popup_min.x && io.MousePos.x <= st->_active_popup_max.x &&
+                                            io.MousePos.y >= st->_active_popup_min.y && io.MousePos.y <= st->_active_popup_max.y);
+
+        ImGuiHoveredFlags hov_flags = ImGuiHoveredFlags_AllowWhenBlockedByPopup;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18500)
+        if (!enabled) hov_flags |= ImGuiHoveredFlags_AllowWhenDisabled;
+#endif
+        const bool raw_hovered = ImGui::IsItemHovered(hov_flags) && !mouse_in_active_popup;
+        const bool btn_hovered = enabled && raw_hovered;
+
+        if (btn_hovered) {
+            st->_hovered_menu_id_curr = menu_id;
+            if (cfg.dynamicCursors) {
+                ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+            }
+        }
+
+        // Draw crisp trigger label + optional procedural vector caret + Paper Light active ring
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImU32 txt_col = ImGui::GetColorU32(enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
+        if (show_active_style) {
+            const ImVec4 win_bg = style.Colors[ImGuiCol_WindowBg];
+            const bool is_light = (win_bg.x * 0.299f + win_bg.y * 0.587f + win_bg.z * 0.114f) > 0.55f;
+            if (is_light) {
+                Detail::AddRectCompat(dl, item_min, item_max, IM_COL32(37, 99, 215, 190), style.FrameRounding, 0, 1.0f);
+            }
+        }
+
+        const float text_x = item_min.x + pad_x;
+        const float text_y = item_min.y + (btn_h - text_sz.y) * 0.5f;
+        const float clip_right = cfg.showCaret ? (item_max.x - pad_x - caret_w - caret_gap * 0.5f) : (item_max.x - pad_x);
+        if (label_end > safe_label && clip_right > text_x) {
+            const ImVec4 clip_rect(text_x, item_min.y, clip_right, item_max.y);
+            dl->AddText(ImGui::GetFont(), font_size, ImVec2(text_x, text_y), txt_col,
+                        safe_label, label_end, 0.0f, &clip_rect);
+        }
+
+        if (cfg.showCaret) {
+            ImGuiPopupAnchor eff_anchor = resolved_anchor;
+            if (eff_anchor == ImGuiPopupAnchor_Auto) {
+                eff_anchor = (item_max.y > io.DisplaySize.y * 0.70f)
+                    ? ImGuiPopupAnchor_AboveItem
+                    : ImGuiPopupAnchor_BelowItem;
+            }
+            const bool points_up = (eff_anchor == ImGuiPopupAnchor_AboveItem)
+                ? (cfg.flipCaretOnOpen ? !show_active_style : true)
+                : (cfg.flipCaretOnOpen ?  show_active_style : false);
+            const float arrow_x = item_max.x - pad_x - font_size * 0.85f;
+            const float arrow_y = item_min.y + (btn_h - font_size) * 0.5f;
+            DrawPulldownArrow(dl, ImVec2(arrow_x, arrow_y), txt_col,
+                              points_up ? ImGuiDir_Up : ImGuiDir_Down, font_size, 0.85f);
+        }
+
+        // Open / Hover-Switch / Toggle-Close state transitions
+        auto openThisMenu = [&]() {
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            TimedTooltip::ClearActiveTooltip();
+#endif
+            if (OpenPopupAtItem(popup_id, resolved_anchor, resolved_align)) {
+                st->is_latched              = true;
+                st->active_menu_id          = menu_id;
+                st->active_menu_index       = item_idx;
+                st->_suppress_click_menu_id = 0;
+            }
+        };
+
+        const bool sibling_direct_click = enabled && btn_hovered && ImGui::IsMouseClicked(0) &&
+                                          (st->active_menu_id != 0) && (st->active_menu_id != menu_id);
+        const bool hover_switch = enabled && st->is_latched && btn_hovered &&
+                                  !was_open_before && (st->active_menu_id != menu_id);
+
+        if (clicked) {
+            if (st->_suppress_click_menu_id == menu_id) {
+                // Swallow mouse-release after muscle-memory toggle close on mouse-down
+                st->_suppress_click_menu_id = 0;
+                st->is_latched = false;
+                if (was_open_before) {
+                    Detail::AnchoredPopupState& pst = Detail::GetOrCreatePopupState(ImGui::GetID(popup_id));
+                    pst.force_close = true;
+                    pst.was_open = false;
+                }
+            } else if (st->_opened_while_mouse_down_id == menu_id) {
+                // Already switched/opened on mouse-down of this exact click: keep it open on release!
+                st->_opened_while_mouse_down_id = 0;
+            } else if (was_open_before) {
+                // Single-frame toggle close
+                OpenPopupAtItem(popup_id, resolved_anchor, resolved_align);
+                st->is_latched = false;
+                st->active_menu_id = 0;
+                st->active_menu_index = -1;
+            } else {
+                openThisMenu();
+            }
+        } else if (sibling_direct_click || hover_switch) {
+            openThisMenu();
+            if (ImGui::IsMouseDown(0)) {
+                st->_opened_while_mouse_down_id = menu_id;
+            }
+        }
+
+        // Stationary TimedTooltip on closed triggers (suppressed while any menu in the strip is open)
+        if (tooltip_md && tooltip_md[0] != '\0') {
+            const bool allow_tip = !st->is_latched && !was_open_before && raw_hovered;
+            Detail::AttachSilentTimedTooltipProxy(menu_id, tooltip_md, allow_tip);
+        }
+
+        if (cfg.matchTriggerWidth) {
+            ImGui::SetNextWindowSizeConstraints(ImVec2(btn_w, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
+        }
+
+        // If a sibling trigger is taking over on this frame, skip rendering the outgoing popup
+        if (st->_pre_switch_target_id != 0 && st->_pre_switch_target_id != menu_id) {
+            return false;
+        }
+
+        const bool popup_open = BeginAnchoredPopup(popup_id, cfg.popupFlags);
+        if (popup_open) {
+            const ImVec2 p_pos = ImGui::GetWindowPos();
+            const ImVec2 p_sz  = ImGui::GetWindowSize();
+            st->_any_open_this_frame = true;
+            st->is_latched           = true;
+            st->active_menu_id       = menu_id;
+            st->active_menu_index    = item_idx;
+            st->last_popup_size      = p_sz;
+            st->_active_popup_min    = p_pos;
+            st->_active_popup_max    = ImVec2(p_pos.x + p_sz.x, p_pos.y + p_sz.y);
+            return true;
+        }
+        return false;
+    }
+
+    inline IMGUI_API void EndStripMenu() {
+        ImGui::EndPopup();
+    }
+
+    inline IMGUI_API void EndMenuStrip() {
+        auto& stack = Detail::GetActiveMenuStripStackMap()[ImGui::GetCurrentContext()];
+        if (!stack.empty()) {
+            MenuStripState* st = stack.back().state;
+            if (st) {
+                st->_hovered_menu_id_prev = st->_hovered_menu_id_curr;
+                st->_slots_prev.swap(st->_slots_curr);
+                st->_slots_curr.clear();
+                st->_pre_switch_target_id = 0;
+                if (!ImGui::IsMouseDown(0)) {
+                    st->_suppress_click_menu_id     = 0;
+                    st->_opened_while_mouse_down_id = 0;
+                }
+                if (!st->_any_open_this_frame) {
+                    st->is_latched        = false;
+                    st->active_menu_id    = 0;
+                    st->active_menu_index = -1;
+                    st->_active_popup_min = ImVec2(0.0f, 0.0f);
+                    st->_active_popup_max = ImVec2(0.0f, 0.0f);
+                }
+            }
+            stack.pop_back();
+        }
+        ImGui::PopID();
+    }
+
+    /// Returns true if any menu inside the specified menu strip is currently open.
+    inline IMGUI_API bool IsMenuStripOpen(const char* str_id) {
+        if (!str_id || !*str_id) return false;
+        const ImGuiID strip_id = ImGui::GetID(str_id);
+        const MenuStripState* st = Detail::FindMenuStripState(strip_id);
+        return st ? st->is_latched : false;
+    }
+
+    /// Returns the last measured pixel size of the active popup inside the specified menu strip.
+    inline IMGUI_API ImVec2 GetMenuStripLastPopupSize(const char* str_id) {
+        if (!str_id || !*str_id) return ImVec2(0.0f, 0.0f);
+        const ImGuiID strip_id = ImGui::GetID(str_id);
+        const MenuStripState* st = Detail::FindMenuStripState(strip_id);
+        return st ? st->last_popup_size : ImVec2(0.0f, 0.0f);
     }
 
     // ========================================================================

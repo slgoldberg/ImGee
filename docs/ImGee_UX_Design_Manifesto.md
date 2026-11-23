@@ -2,7 +2,7 @@
 ## Ergonomics, Cognitive Affordances, and Human Factors for Simulation User Interfaces
 
 **Authors & Architecture:** Steven L. Goldberg (@slgoldberg) & the Antigravity Engineering Team  
-**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee) • **Version:** v1.2.1 (Living Standard • Nov 2026)
+**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee) • **Version:** v1.3.0 (Living Standard • Nov 2026)
 
 ---
 

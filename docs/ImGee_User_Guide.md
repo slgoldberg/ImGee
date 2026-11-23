@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.2.1)
+## Comprehensive Developer & User Manual (v1.3.0)
 
 ---
 
@@ -274,7 +274,7 @@ ImGui::Markdown::Text(doc);
 
 ### Key Markdown Affordances:
 * **Tristate Column Sorting:** Click any column header to cycle Ascending -> Descending -> Default sort.
-* **Delayed Table Control Tooltips:** Sortable headers, column dividers, and the right-edge width grip automatically display context-aware `TimedTooltip` guidance (announcing the next step in the tristate sort cycle or A/B layout toggle), with `MarkdownConfig::enableTableTooltips`, `MarkdownConfig::tableTooltipCallback`, and per-table `<!-- table-preset: tooltips=off ... -->` or per-column `col-tooltips="A|B|off"` / `tip0="..."` overrides. When `TimedTooltip` is disabled and no custom callback is set, table controls stay silent rather than falling back to instant-pop tooltips.
+* **Delayed Table Control Tooltips & Metadata Overrides (`v1.3.0`):** Sortable headers, column dividers, and the right-edge width grip automatically display context-aware `TimedTooltip` guidance (announcing the next step in the tristate sort cycle or A/B layout toggle), controlled globally via `MarkdownConfig::enableTableTooltips` / `tableTooltipCallback` or per-table via `<!-- table-preset: ... -->` directives: `tooltips=off` / `headers-only`, `sort-tooltips=off`, `header-tooltips=off`, `resize-tooltips=off`, `grip-tooltip="..."` / `off`, pipe-separated `col-tooltips="A | B | off"`, and 0-based `tip0="..."` / `col0-tooltip="..."` (with `\n` / `\"` escape decoding and passive hover support on non-sortable tables). When `TimedTooltip` is disabled and no custom callback is set, table controls stay strictly silent rather than falling back to instant-pop tooltips.
 * **Interactive Drag Sizing:** Adjust column dividers directly with instant mouse feedback.
 * **Persistent Presets:** Save and restore column widths via inline comment tags (`<!-- table-state: ... -->`).
 * **Native Blockquotes & GFM Callout Cards:** Standard `> ...` blockquotes (including nested `> > ...` quotes) and all five GitHub-Flavored Markdown callouts (`> [!NOTE]` / `[!INFO]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` in both multi-line and inline forms, plus `<callout type=... title="...">` and `<blockquote>` tags) render out of the box with zero-font procedural vector icons and full nesting support for code blocks (including quoted code fences) and tables.
@@ -583,14 +583,16 @@ ImGui::RadialTimer("Approach Leg", s_LegFraction, 14.0f, 3.0f, IM_COL32(234, 179
 
 ---
 
-### 10.7 Directional Popups, Item Anchoring & SelectPulldown (`imgui_popup_menus.h`)
+### 10.7 Directional Popups, SelectPulldown & Hover-Latching Menu Strips (`imgui_popup_menus.h`)
 
-Provides precision item-anchored popup placement, upward blossoming for bottom-docked status bars, and compact 1-line option selectors with Lens UI mouse-wheel interaction:
+Provides precision item-anchored popup placement, upward blossoming for bottom-docked status bars, hover-latching horizontal menu strips (`v1.3.0`), and compact 1-line option selectors with Lens UI mouse-wheel interaction:
 
 ![Directional Anchored Popups & SelectPulldown: Scroll pass-through when closed and live wheel stepping when open](images/fig_popup_menus.png)
 
+* **Hover-Latching Menu Strips (`BeginMenuStrip` / `BeginStripMenu` / `EndStripMenu` / `EndMenuStrip`, `v1.3.0`)**:
+  Horizontal toolbar/status-bar menu strips with classic `Begin`/`End` scope pairing (zero C++ callbacks, 1:1 bindable to Lua/Python). Clicking any trigger opens its anchored popup (`AboveItem`, `BelowItem`, or `Auto`) and latches the strip active; gliding over sibling triggers switches menus on the exact same frame with zero extra clicks and zero flicker. Clicking the open trigger toggles closed cleanly, clicking outside or pressing `Esc` unlatches automatically, closed-trigger `TimedTooltip`s suppress while any menu is open (strictly silent fallback when `TimedTooltip` is disabled), and internal state is isolated per `(ImGuiContext*, ImGuiID)` with recycled-context frame guards (`state = nullptr` default). Also exposes `IsMenuStripOpen(str_id)` and `GetMenuStripLastPopupSize(str_id)`.
 * **Item-Anchored Popups (`OpenPopupAtItem` & `BeginAnchoredPopup`)**:
-  Positions dropdowns relative to the preceding item's bounding box (`GetItemRectMin`/`Max`). Supports `ImGuiPopupAnchor_BelowItem` (standard dropdown) or `ImGuiPopupAnchor_AboveItem` (blossoms upward for bottom bars and docks) with font-scale invariance and muscle-memory toggle protection.
+  Positions dropdowns relative to the preceding item's bounding box (`GetItemRectMin`/`Max`). Supports `ImGuiPopupAnchor_BelowItem` (standard dropdown) or `ImGuiPopupAnchor_AboveItem` (blossoms upward for bottom bars and docks) with font-scale invariance, `(ImGuiContext*, ImGuiID)` isolation, and muscle-memory toggle protection.
 * **1-Line Option Selector (`SelectPulldown` / `SelectPulldownMD`)**:
   - **Scroll Pass-Through When Closed**: Ignores mouse-wheel events while closed so parent scrollable windows never accidentally change settings during scroll navigation.
   - **"Lens UI" Selection-Latched Tooltips**: When spinning the mouse wheel inside an open pulldown menu, per-item tooltips dynamically latch onto the newly selected item (`*current_item`) instead of remaining frozen over whichever row the stationary cursor rests on. Deliberate mouse movement (`> 6 px`) cleanly breaks the latch and reverts to standard spatial hover.
@@ -715,4 +717,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.2.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.3.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

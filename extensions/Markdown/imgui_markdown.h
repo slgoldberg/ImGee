@@ -3630,6 +3630,10 @@ namespace ImGui
             std::string         presetSortColName;
             std::vector<float>  presetColWidths;
             bool                enableTooltips = true;
+            bool                enableHeaderTooltips = true;
+            bool                enableSortTooltips = true;
+            bool                enableResizeTooltips = true;
+            std::string         gripTooltip;
             std::vector<std::string> colHeaderTooltips;
 
             // User active / saved state (<!-- table-state: ... --> or <!-- table: ... -->)
@@ -3686,9 +3690,19 @@ namespace ImGui
                     if( p < end && ( *p == '"' || *p == '\'' ) )
                     {
                         char q = *p++;
-                        const char* v_start = p;
-                        while( p < end && *p != q ) ++p;
-                        val.assign( v_start, (size_t)( p - v_start ) );
+                        val.clear();
+                        while( p < end && *p != q )
+                        {
+                            if( *p == '\\' && p + 1 < end )
+                            {
+                                char nxt = *( p + 1 );
+                                if( nxt == 'n' )       { val.push_back( '\n' ); p += 2; continue; }
+                                else if( nxt == 't' )  { val.push_back( '\t' ); p += 2; continue; }
+                                else if( nxt == q )    { val.push_back( q );    p += 2; continue; }
+                                else if( nxt == '\\' ) { val.push_back( '\\' ); p += 2; continue; }
+                            }
+                            val.push_back( *p++ );
+                        }
                         if( p < end && *p == q ) ++p;
                     }
                     else
@@ -3809,44 +3823,100 @@ namespace ImGui
                 }
                 else if( key == "tooltips" || key == "tooltip" )
                 {
-                    if( val.empty() || IsEnabledTooltipValue( val ) )
+                    if( StrCaseEqual( val, "headers-only" ) || StrCaseEqual( val, "headers_only" ) || StrCaseEqual( val, "headers" ) )
+                    {
                         meta.enableTooltips = true;
+                        meta.enableHeaderTooltips = true;
+                        meta.enableResizeTooltips = false;
+                    }
+                    else if( val.empty() || IsEnabledTooltipValue( val ) )
+                    {
+                        meta.enableTooltips = true;
+                    }
                     else if( IsSuppressedTooltipValue( val ) )
+                    {
                         meta.enableTooltips = false;
+                    }
                 }
                 else if( key == "notooltips" || key == "no-tooltips" || key == "no_tooltips" )
                 {
                     meta.enableTooltips = false;
                 }
+                else if( key == "sort-tooltips" || key == "sort_tooltips" )
+                {
+                    if( val.empty() || IsEnabledTooltipValue( val ) )
+                        meta.enableSortTooltips = true;
+                    else if( IsSuppressedTooltipValue( val ) )
+                        meta.enableSortTooltips = false;
+                }
+                else if( key == "nosorttooltips" || key == "no-sort-tooltips" || key == "no_sort_tooltips" )
+                {
+                    meta.enableSortTooltips = false;
+                }
+                else if( key == "resize-tooltips" || key == "resize_tooltips" )
+                {
+                    if( val.empty() || IsEnabledTooltipValue( val ) )
+                        meta.enableResizeTooltips = true;
+                    else if( IsSuppressedTooltipValue( val ) )
+                        meta.enableResizeTooltips = false;
+                }
+                else if( key == "noresizetooltips" || key == "no-resize-tooltips" || key == "no_resize_tooltips" )
+                {
+                    meta.enableResizeTooltips = false;
+                }
+                else if( key == "grip-tooltip" || key == "grip_tooltip" || key == "grip-tip" || key == "grip_tip" )
+                {
+                    meta.gripTooltip = val;
+                }
                 else if( key == "col-tooltips" || key == "col_tooltips" || key == "header-tooltips" || key == "header_tooltips" )
                 {
-                    size_t col_i = 0;
-                    std::string cur_seg;
-                    for( size_t i = 0; i < val.size(); ++i )
+                    if( val.find( '|' ) == std::string::npos && IsSuppressedTooltipValue( val ) )
                     {
-                        if( val[i] == '\\' && i + 1 < val.size() && val[i + 1] == '|' )
+                        meta.enableHeaderTooltips = false;
+                    }
+                    else if( val.find( '|' ) == std::string::npos && IsEnabledTooltipValue( val ) )
+                    {
+                        meta.enableHeaderTooltips = true;
+                    }
+                    else
+                    {
+                        auto trimSeg = []( std::string& s ) {
+                            size_t b = 0;
+                            while( b < s.size() && ( s[b] == ' ' || s[b] == '\t' ) ) ++b;
+                            size_t e = s.size();
+                            while( e > b && ( s[e - 1] == ' ' || s[e - 1] == '\t' ) ) --e;
+                            if( b > 0 || e < s.size() ) s = s.substr( b, e - b );
+                        };
+                        size_t col_i = 0;
+                        std::string cur_seg;
+                        for( size_t i = 0; i < val.size(); ++i )
                         {
-                            cur_seg.push_back( '|' );
-                            ++i;
+                            if( val[i] == '\\' && i + 1 < val.size() && val[i + 1] == '|' )
+                            {
+                                cur_seg.push_back( '|' );
+                                ++i;
+                            }
+                            else if( val[i] == '|' )
+                            {
+                                trimSeg( cur_seg );
+                                if( meta.colHeaderTooltips.size() <= col_i )
+                                    meta.colHeaderTooltips.resize( col_i + 1 );
+                                meta.colHeaderTooltips[col_i] = cur_seg;
+                                cur_seg.clear();
+                                ++col_i;
+                            }
+                            else
+                            {
+                                cur_seg.push_back( val[i] );
+                            }
                         }
-                        else if( val[i] == '|' )
+                        if( !val.empty() || col_i > 0 )
                         {
+                            trimSeg( cur_seg );
                             if( meta.colHeaderTooltips.size() <= col_i )
                                 meta.colHeaderTooltips.resize( col_i + 1 );
                             meta.colHeaderTooltips[col_i] = cur_seg;
-                            cur_seg.clear();
-                            ++col_i;
                         }
-                        else
-                        {
-                            cur_seg.push_back( val[i] );
-                        }
-                    }
-                    if( !val.empty() || col_i > 0 )
-                    {
-                        if( meta.colHeaderTooltips.size() <= col_i )
-                            meta.colHeaderTooltips.resize( col_i + 1 );
-                        meta.colHeaderTooltips[col_i] = cur_seg;
                     }
                 }
                 else
@@ -4468,7 +4538,10 @@ namespace ImGui
                 ImGui::TableUpdateColumnsWeightFromWidth( table );
             }
 
-            const bool allow_table_tooltips = mdConfig_.enableTableTooltips && metadata.enableTooltips;
+            const bool allow_table_tooltips  = mdConfig_.enableTableTooltips && metadata.enableTooltips;
+            const bool allow_header_tooltips = allow_table_tooltips && metadata.enableHeaderTooltips;
+            const bool allow_sort_tooltips   = allow_header_tooltips && metadata.enableSortTooltips;
+            const bool allow_resize_tooltips = allow_table_tooltips && metadata.enableResizeTooltips;
 
             // 2. Submit Header Row (with interactive sort click, hand cursor, delayed tooltips, and visual sort indicators)
             float header_h = ImMax( ImGui::GetFrameHeight(), ImGui::GetFontSize() + ImGui::GetStyle().CellPadding.y * 2.0f );
@@ -4534,7 +4607,7 @@ namespace ImGui
                         sort_changed = true;
                     }
 
-                    if( allow_table_tooltips )
+                    if( allow_header_tooltips )
                     {
                         const std::string& custom_tip = ( col < metadata.colHeaderTooltips.size() )
                             ? metadata.colHeaderTooltips[col]
@@ -4546,7 +4619,7 @@ namespace ImGui
                             {
                                 tip = custom_tip;
                             }
-                            else
+                            else if( allow_sort_tooltips )
                             {
                                 std::string col_label = TableDetail::GetCellPlainText( h_cell );
                                 if( col_label.empty() ) col_label = "column";
@@ -4563,8 +4636,11 @@ namespace ImGui
                                     tip = "Sort table by **" + col_label + "** (A to Z)";
                                 }
                             }
-                            bool header_tt_hovered = hovered && !held && !pressed && !border_active && table->ReorderColumn == -1;
-                            MarkdownDetail::ShowTableTooltip( mdConfig_, header_id, header_tt_hovered, tip.c_str(), pressed );
+                            if( !tip.empty() )
+                            {
+                                bool header_tt_hovered = hovered && !held && !pressed && !border_active && table->ReorderColumn == -1;
+                                MarkdownDetail::ShowTableTooltip( mdConfig_, header_id, header_tt_hovered, tip.c_str(), pressed );
+                            }
                         }
                     }
 
@@ -4577,6 +4653,29 @@ namespace ImGui
                     // Sync internal ImGui column sort state
                     column->SortOrder = ( (int)col == active_sort_col ) ? 0 : -1;
                     column->SortDirection = ( (int)col == active_sort_col ) ? (ImU8)active_sort_dir : (ImU8)ImGuiSortDirection_None;
+                }
+                else if( table && allow_header_tooltips && col < metadata.colHeaderTooltips.size() )
+                {
+                    // Non-sortable tables still honor explicit per-column custom header tooltips (passive hover, no Hand cursor/click)
+                    const std::string& custom_tip = metadata.colHeaderTooltips[col];
+                    if( !custom_tip.empty() && !TableDetail::IsSuppressedTooltipValue( custom_tip ) )
+                    {
+                        ImRect cell_r = ImGui::TableGetCellBgRect( table, (int)col );
+                        if( cell_r.Max.y <= cell_r.Min.y )
+                        {
+                            cell_r.Max.y = cell_r.Min.y + header_h;
+                        }
+                        ImGuiID header_id = ImGui::GetID( (const void*)(intptr_t)col );
+#if defined(IMGUI_VERSION_NUM) && IMGUI_VERSION_NUM < 18300
+                        ImGui::ItemAdd( cell_r, header_id, NULL );
+#else
+                        ImGui::ItemAdd( cell_r, header_id, NULL, ImGuiItemFlags_NoNav );
+#endif
+                        const bool border_active = ( table->HoveredColumnBorder != -1 || table->ResizedColumn != -1 );
+                        const bool hdr_hovered = ImGui::IsItemHovered( ImGuiHoveredFlags_AllowWhenBlockedByActiveItem ) &&
+                                                 !border_active && !ImGui::IsMouseDown( 0 ) && table->ReorderColumn == -1;
+                        MarkdownDetail::ShowTableTooltip( mdConfig_, header_id, hdr_hovered, custom_tip.c_str(), false );
+                    }
                 }
 
                 RenderTableCell( h_cell, alignments[col], true, mdConfig_ );
@@ -4680,7 +4779,7 @@ namespace ImGui
                         ImGui::GetStateStorage()->SetFloat( header_hash + 100 + (ImGuiID)col_n, 0.0f );
                     }
 
-                    if( allow_table_tooltips )
+                    if( allow_resize_tooltips )
                     {
                         ImGuiID sep_id = ImGui::TableGetColumnResizeID( table, col_n );
                         bool sep_hovered = ( table->HoveredColumnBorder == col_n ) && ( table->ResizedColumn == -1 ) && !ImGui::IsMouseDown( 0 );
@@ -4832,13 +4931,17 @@ namespace ImGui
                     ImGui::GetWindowDrawList()->AddLine( ImVec2( right_x, top_y ), ImVec2( right_x, bot_y ), line_col, 2.0f * scale );
                 }
 
-                if( allow_table_tooltips )
+                if( allow_resize_tooltips && !TableDetail::IsSuppressedTooltipValue( metadata.gripTooltip ) )
                 {
                     const bool has_layout_preset = metadata.hasPreset && ( metadata.presetWidth > 0.0f || !metadata.presetColWidths.empty() );
                     const float cur_w_now  = ImGui::GetStateStorage()->GetFloat( width_key, preset_norm_w );
                     const float last_w_now = ImGui::GetStateStorage()->GetFloat( last_width_key, 0.0f );
                     const char* grip_tip = nullptr;
-                    if( std::fabs( cur_w_now - preset_norm_w ) > 0.1f )
+                    if( !metadata.gripTooltip.empty() )
+                    {
+                        grip_tip = metadata.gripTooltip.c_str();
+                    }
+                    else if( std::fabs( cur_w_now - preset_norm_w ) > 0.1f )
                     {
                         grip_tip = has_layout_preset
                             ? "Drag to resize table width\nDouble-click to reset to **preset layout**"

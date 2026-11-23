@@ -3263,6 +3263,293 @@ int main(int argc, char** argv) {
                 IMGEE_TEST_CHECK(sawMultiLineObjCode);
                 IMGEE_TEST_CHECK(sawMultiLineIe);
             }
+
+            // 7i. ImGee v1.3.0 Hover-Latching Menu Strip Regression Suite:
+            //     Click-to-latch, forward/backward hover-glide, direct sibling click (no swallow
+            //     or release bounce), muscle-memory toggle close, click-outside unlatch, disabled
+            //     trigger guard, multi-ImGuiContext isolation, and recycled context frame reset.
+            {
+                auto setS11Mouse = [&](ImGuiIO& targetIo, float x, float y, bool down) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+                    targetIo.AddMousePosEvent(x, y);
+                    targetIo.AddMouseButtonEvent(0, down);
+#else
+                    targetIo.MousePos = ImVec2(x, y);
+                    targetIo.MouseDown[0] = down;
+#endif
+                };
+
+                ImGui::MenuStripConfig s11Cfg;
+                s11Cfg.anchor = ImGuiPopupAnchor_BelowItem;
+                s11Cfg.align  = ImGuiPopupAlign_Left;
+                IMGEE_TEST_CHECK(s11Cfg.showCaret == true);
+
+                ImVec2 s11CenterA(0.0f, 0.0f);
+                ImVec2 s11CenterB(0.0f, 0.0f);
+                ImVec2 s11CenterC(0.0f, 0.0f);
+                bool s11OpenA = false, s11OpenB = false, s11OpenC = false;
+                bool s11StripOpenQuery = false;
+                ImVec2 s11StripPopSize(0.0f, 0.0f);
+
+                auto runS11Frame = [&](float mx, float my, bool down, bool lightTheme = false) {
+                    setS11Mouse(io, mx, my, down);
+                    ImGui::NewFrame();
+                    if (lightTheme) {
+                        ImGui::StyleColorsLight();
+                    } else {
+                        ImGui::StyleColorsDark();
+                    }
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(520.0f, 300.0f), ImGuiCond_Always);
+                    ImGui::Begin("MenuStripRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
+                    StackSnapshot s11Snap = StackSnapshot::Capture();
+                    s11OpenA = s11OpenB = s11OpenC = false;
+
+                    if (ImGui::BeginMenuStrip("##s11_strip", &s11Cfg)) {
+                        if (ImGui::BeginStripMenu("View", "**View Modes**", true, 84.0f)) {
+                            s11OpenA = true;
+                            ImGui::MenuItem("Cockpit");
+                            ImGui::MenuItem("Chase");
+                            ImGui::EndStripMenu();
+                        }
+                        if (s11CenterA.x == 0.0f) {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            s11CenterA = ImVec2((rMin.x + rMax.x) * 0.5f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        if (ImGui::BeginStripMenu("Track", "**Tracking**", true, 84.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left)) {
+                            s11OpenB = true;
+                            ImGui::MenuItem("User Aircraft");
+                            ImGui::MenuItem("Nearest AI");
+                            ImGui::EndStripMenu();
+                        }
+                        if (s11CenterB.x == 0.0f) {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            s11CenterB = ImVec2((rMin.x + rMax.x) * 0.5f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        if (ImGui::BeginStripMenu("Locked", "**Disabled Menu**", false, 84.0f)) {
+                            s11OpenC = true;
+                            ImGui::MenuItem("Unreachable");
+                            ImGui::EndStripMenu();
+                        }
+                        if (s11CenterC.x == 0.0f) {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            s11CenterC = ImVec2((rMin.x + rMax.x) * 0.5f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        ImGui::EndMenuStrip();
+                    }
+
+                    s11StripOpenQuery = ImGui::IsMenuStripOpen("##s11_strip");
+                    s11StripPopSize   = ImGui::GetMenuStripLastPopupSize("##s11_strip");
+                    s11Snap.VerifyBalanced("MenuStripRegWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                };
+
+                // 1. Warm-up layout pass to measure trigger centers
+                runS11Frame(5.0f, 5.0f, false);
+                IMGEE_TEST_CHECK(!s11OpenA && !s11OpenB && !s11StripOpenQuery);
+                IMGEE_TEST_CHECK(s11CenterB.x > s11CenterA.x + 50.0f);
+                IMGEE_TEST_CHECK(s11CenterC.x > s11CenterB.x + 50.0f);
+
+                // 2. Hover then click Trigger A -> opens & latches strip (and exercise Paper Light active ring)
+                runS11Frame(s11CenterA.x, s11CenterA.y, false, true);
+                runS11Frame(s11CenterA.x, s11CenterA.y, true, true);
+                runS11Frame(s11CenterA.x, s11CenterA.y, false, true);
+                IMGEE_TEST_CHECK(s11OpenA && !s11OpenB && s11StripOpenQuery);
+                IMGEE_TEST_CHECK(s11StripPopSize.y > 10.0f);
+
+                // 3. Forward hover-glide onto Trigger B (no click!) -> switches to B on same frame
+                runS11Frame(s11CenterB.x, s11CenterB.y, false);
+                IMGEE_TEST_CHECK(!s11OpenA && s11OpenB && s11StripOpenQuery);
+
+                // 4. Hovering disabled Trigger C must NOT switch away from B or open C
+                runS11Frame(s11CenterC.x, s11CenterC.y, false);
+                IMGEE_TEST_CHECK(!s11OpenC && s11OpenB && s11StripOpenQuery);
+
+                // 5. Backward hover-glide back to Trigger A (no click!) -> switches to A on same frame
+                runS11Frame(s11CenterA.x, s11CenterA.y, false);
+                IMGEE_TEST_CHECK(s11OpenA && !s11OpenB && s11StripOpenQuery);
+
+                // 6. Direct sibling click: while A is open, click directly on B (down + release) -> B opens & STAYS open!
+                runS11Frame(s11CenterB.x, s11CenterB.y, true);
+                IMGEE_TEST_CHECK(!s11OpenA && s11OpenB && s11StripOpenQuery);
+                runS11Frame(s11CenterB.x, s11CenterB.y, false);
+                IMGEE_TEST_CHECK(!s11OpenA && s11OpenB && s11StripOpenQuery);
+
+                // 7. Muscle-memory toggle close: click currently open Trigger B (down + release) -> closes cleanly without bounce!
+                runS11Frame(s11CenterB.x, s11CenterB.y, true);
+                runS11Frame(s11CenterB.x, s11CenterB.y, false);
+                IMGEE_TEST_CHECK(!s11OpenA && !s11OpenB && !s11StripOpenQuery);
+
+                // 8. Next click on B re-opens normally, then clicking outside unlatches cleanly
+                runS11Frame(s11CenterB.x, s11CenterB.y, true);
+                runS11Frame(s11CenterB.x, s11CenterB.y, false);
+                IMGEE_TEST_CHECK(s11OpenB && s11StripOpenQuery);
+                runS11Frame(460.0f, 260.0f, true);
+                runS11Frame(460.0f, 260.0f, false);
+                IMGEE_TEST_CHECK(!s11OpenA && !s11OpenB && !s11StripOpenQuery);
+
+                // 9. Multi-ImGuiContext isolation (state = nullptr internal map keyed per ImGuiContext*)
+                runS11Frame(s11CenterA.x, s11CenterA.y, true);
+                runS11Frame(s11CenterA.x, s11CenterA.y, false);
+                IMGEE_TEST_CHECK(s11OpenA && s11StripOpenQuery);
+
+                ImGuiContext* s11Ctx2 = ImGui::CreateContext();
+                ImGui::SetCurrentContext(s11Ctx2);
+                {
+                    ImGuiIO& io2 = ImGui::GetIO();
+                    io2.IniFilename = nullptr;
+                    io2.DisplaySize = ImVec2(1280.0f, 720.0f);
+                    io2.DeltaTime   = 1.0f / 60.0f;
+                    (void)PrepareHeadlessFontAtlas(io2);
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_Always);
+                    ImGui::Begin("MenuStripRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoTitleBar);
+                    bool ctx2OpenA = false;
+                    if (ImGui::BeginMenuStrip("##s11_strip", &s11Cfg)) {
+                        if (ImGui::BeginStripMenu("View", nullptr, true, 84.0f)) {
+                            ctx2OpenA = true;
+                            ImGui::MenuItem("Other Ctx");
+                            ImGui::EndStripMenu();
+                        }
+                        ImGui::EndMenuStrip();
+                    }
+                    // ctx2 MUST NOT inherit ctx1's latched open state even with identical window & strip IDs!
+                    IMGEE_TEST_CHECK(!ctx2OpenA);
+                    IMGEE_TEST_CHECK(!ImGui::IsMenuStripOpen("##s11_strip"));
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+                ImGui::DestroyContext(s11Ctx2);
+                ImGui::SetCurrentContext(ctx);
+                // ctx1 strip must remain open & unaffected after ctx2 render/destroy
+                runS11Frame(s11CenterA.x, s11CenterA.y, false);
+                IMGEE_TEST_CHECK(s11OpenA && s11StripOpenQuery);
+                // Cleanly close ctx1 strip
+                runS11Frame(460.0f, 260.0f, true);
+                runS11Frame(460.0f, 260.0f, false);
+
+                // 10. Recycled ImGuiContext* frame-counter reset guard (_last_frame_seen > cur_frame)
+                {
+                    ImGui::MenuStripState s11Recycled;
+                    s11Recycled.is_latched        = true;
+                    s11Recycled.active_menu_id    = 0xBEEFu;
+                    s11Recycled.active_menu_index = 2;
+                    s11Recycled._last_frame_seen  = ImGui::GetFrameCount() + 100;
+
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                    ImGui::Begin("MenuStripRecycledWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    if (ImGui::BeginMenuStrip("##s11_recycled", &s11Cfg, &s11Recycled)) {
+                        if (ImGui::BeginStripMenu("Item")) {
+                            ImGui::EndStripMenu();
+                        }
+                        ImGui::EndMenuStrip();
+                    }
+                    IMGEE_TEST_CHECK(!s11Recycled.is_latched);
+                    IMGEE_TEST_CHECK(s11Recycled.active_menu_id == 0u);
+                    IMGEE_TEST_CHECK(s11Recycled.active_menu_index == -1);
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+                ImGui::StyleColorsDark();
+            }
+
+            // 7j. ImGee v1.3.0 Markdown Table Metadata Tooltip Overrides Regression Suite:
+            //     Verify resize-tooltips=off, tooltips=headers-only, sort-tooltips=off,
+            //     header-tooltips=off, grip-tooltip="..." / off, escape decoding (\n, \", \\),
+            //     and custom header tooltips on non-sortable static layout tables.
+            {
+                struct S12TipCapture {
+                    std::vector<std::string> tips;
+                    bool hasTip(const std::string& sub) const {
+                        for (size_t i = 0; i < tips.size(); ++i) {
+                            if (tips[i].find(sub) != std::string::npos) return true;
+                        }
+                        return false;
+                    }
+                };
+                auto runS12Table = [&](const std::string& md, ImGuiTableFlags tblFlags, S12TipCapture& cap) {
+                    cap.tips.clear();
+                    ImGui::MarkdownConfig s12Cfg;
+                    s12Cfg.tableFlags = tblFlags;
+                    s12Cfg.userData   = &cap;
+                    s12Cfg.tableTooltipCallback = [](ImGuiID, bool, const char* txt, void* ud) {
+                        if (txt && txt[0] != '\0') {
+                            static_cast<S12TipCapture*>(ud)->tips.push_back(txt);
+                        }
+                    };
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(600.0f, 320.0f), ImGuiCond_Always);
+                    ImGui::Begin("TablePresetTooltipsV13Win", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    StackSnapshot s12Snap = StackSnapshot::Capture();
+                    ImGui::MarkdownExt(md, &s12Cfg);
+                    s12Snap.VerifyBalanced("TablePresetTooltipsV13Win");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                };
+
+                S12TipCapture s12Cap;
+
+                // 1. tooltips=headers-only + escape decoding (\n, \", \\) -> headers fire, NO resize/grip tips!
+                const std::string s12HeadersOnlyMd =
+                    "| ICAO | Alt |\n"
+                    "| :--- | ---: |\n"
+                    "| KLAX | FL180 |\n"
+                    "<!-- table-preset: tooltips=headers-only tip0=\"**ICAO**\\nAirport \\\"code\\\" \\\\ ref\" -->\n";
+                runS12Table(s12HeadersOnlyMd, ImGui::MarkdownConfig().tableFlags, s12Cap);
+                IMGEE_TEST_CHECK(s12Cap.hasTip("**ICAO**\nAirport \"code\" \\ ref"));
+                IMGEE_TEST_CHECK(s12Cap.hasTip("Sort table by **Alt**"));
+                IMGEE_TEST_CHECK(!s12Cap.hasTip("Drag to resize"));
+
+                // 2. sort-tooltips=off + custom grip-tooltip -> only explicit tip0 + custom grip fire (no default sort hint!)
+                const std::string s12SortOffMd =
+                    "| Fix | Speed |\n"
+                    "| :--- | ---: |\n"
+                    "| RBL | 250 |\n"
+                    "<!-- table-preset: sort-tooltips=off tip0=\"Fix identifier\" grip-tooltip=\"Custom **Grip**\\nReset width\" -->\n";
+                runS12Table(s12SortOffMd, ImGui::MarkdownConfig().tableFlags, s12Cap);
+                IMGEE_TEST_CHECK(s12Cap.hasTip("Fix identifier"));
+                IMGEE_TEST_CHECK(!s12Cap.hasTip("Sort table by **Speed**"));
+                IMGEE_TEST_CHECK(s12Cap.hasTip("Custom **Grip**\nReset width"));
+
+                // 3. header-tooltips=off + grip-tooltip=off -> no headers and no right-edge grip, divider still fires
+                const std::string s12HdrGripOffMd =
+                    "| ColA | ColB |\n"
+                    "| :--- | :--- |\n"
+                    "| 1 | 2 |\n"
+                    "<!-- table-preset: header-tooltips=off grip-tooltip=off -->\n";
+                runS12Table(s12HdrGripOffMd, ImGui::MarkdownConfig().tableFlags, s12Cap);
+                IMGEE_TEST_CHECK(!s12Cap.hasTip("Sort table by"));
+                IMGEE_TEST_CHECK(!s12Cap.hasTip("Drag to resize table width"));
+                IMGEE_TEST_CHECK(s12Cap.hasTip("Drag to resize **ColA** column"));
+
+                // 4. Non-sortable static table with col-tooltips (trimmed around '|') + resize-tooltips=off
+                const std::string s12StaticMd =
+                    "| Metric | Value |\n"
+                    "| :--- | ---: |\n"
+                    "| FPS | 60 |\n"
+                    "<!-- table-preset: resize-tooltips=off col-tooltips=\"  Frame Metric  |  Live Value  \" -->\n";
+                const ImGuiTableFlags s12NoSortFlags = ImGui::MarkdownConfig().tableFlags & ~ImGuiTableFlags_Sortable;
+                runS12Table(s12StaticMd, s12NoSortFlags, s12Cap);
+                IMGEE_TEST_CHECK(s12Cap.tips.size() == 2u);
+                IMGEE_TEST_CHECK(s12Cap.tips[0] == "Frame Metric");
+                IMGEE_TEST_CHECK(s12Cap.tips[1] == "Live Value");
+                IMGEE_TEST_CHECK(!s12Cap.hasTip("Drag to resize"));
+            }
         }
     }
 

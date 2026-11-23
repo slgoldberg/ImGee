@@ -256,9 +256,9 @@ ImGui::Knob("Input Trim", &s_InputTrim, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f,
 
 ---
 
-### 8. Directional Popup Menus & Select Pulldowns (`imgui_popup_menus.h`)
+### 8. Directional Popup Menus, Select Pulldowns & Hover-Latching Menu Strips (`imgui_popup_menus.h`)
 
-Item-anchored popup helpers (`OpenPopupAtItem` / `BeginAnchoredPopup`) and compact 1-line `SelectPulldown` selectors designed for dense settings panels and bottom-docked status bars:
+Item-anchored popup helpers (`OpenPopupAtItem` / `BeginAnchoredPopup`), compact 1-line `SelectPulldown` selectors, and hover-latching horizontal menu strips (`BeginMenuStrip` / `BeginStripMenu` / `EndStripMenu` / `EndMenuStrip`) designed for dense settings panels, desktop menu bars, and bottom-docked status bars:
 
 ![Directional Anchored Popups & SelectPulldown: Scroll pass-through when closed and live wheel stepping when open](../docs/images/fig_popup_menus.png)
 
@@ -273,7 +273,23 @@ if (ImGui::SelectPulldownMD("##CamMode", &s_SelectedCam, kCamModes, 4, kCamTips,
     UpdateCamera(s_SelectedCam);
 }
 
-// 2. Upward-blossoming anchored popup for bottom docks (with measured pixel headroom query):
+// 2. Hover-latching menu strip (v1.3.0): click one trigger to open, glide across siblings to switch menus!
+ImGui::MenuStripConfig stripCfg;
+stripCfg.anchor = ImGuiPopupAnchor_AboveItem; // Upward blossoming for bottom status bars
+if (ImGui::BeginMenuStrip("##StatusMenus", &stripCfg)) {
+    if (ImGui::BeginStripMenu("View", "**View Modes**\nSwitch camera perspectives.")) {
+        if (ImGui::MenuItemLink("Cockpit")) SetMode(0);
+        if (ImGui::MenuItemLink("Chase"))   SetMode(1);
+        ImGui::EndStripMenu();
+    }
+    if (ImGui::BeginStripMenu("Track", "**Target Tracking**\nSelect active aircraft.")) {
+        if (ImGui::MenuItemLink("User Aircraft")) SetTarget(0);
+        ImGui::EndStripMenu();
+    }
+    ImGui::EndMenuStrip();
+}
+
+// 3. Standalone item-anchored popup (with measured pixel headroom query):
 if (ImGui::ButtonLink("Power Bus")) {
     ImGui::OpenPopupAtItem("##BusMenu", ImGuiPopupAnchor_AboveItem);
 }
@@ -284,8 +300,9 @@ if (ImGui::BeginAnchoredPopup("##BusMenu")) {
 }
 ```
 
+* **Hover-Latching Menu Strips (`v1.3.0`):** Click any trigger to open its anchored popup and latch the strip active; gliding over sibling triggers switches menus on the exact same frame with zero extra clicks and zero bounce. Clicking the active trigger toggles closed cleanly, clicking outside or pressing `Esc` unlatches automatically, closed-trigger `TimedTooltip`s are suppressed while any menu is open (silent fallback when `TimedTooltip` is disabled), and all internal state is keyed per `(ImGuiContext*, ImGuiID)` with recycled-context frame guards so `state = nullptr` works cleanly across multi-window C++, Lua (`LuiGee`), and Python (`PyGee`) hosts.
 * **Scroll Pass-Through When Closed, Live Wheel Cycling When Open:** Closed `SelectPulldown` buttons never hijack parent window scrolling. Once clicked open, spinning the wheel anywhere over the popup list or opener button cycles items live (`ResizeNS` cursor) and latches `TimedTooltip`s to `*current_item` ("Lens UI" with `> 6 px` motion hysteresis).
-* **Font-Scale Invariant Anchoring & Caret Clipping:** Anchors directly to live `GetItemRectMin`/`Max` geometry (both `BelowItem` and upward `AboveItem`), draws zero-font procedural vector carets (`▼` / `▲`), clips long preview labels cleanly before the caret zone, and exposes `ImGui::GetLastPopupHeight(str_id)` for host window headroom queries.
+* **Font-Scale Invariant Anchoring & Caret Clipping:** Anchors directly to live `GetItemRectMin`/`Max` geometry (both `BelowItem` and upward `AboveItem`), draws zero-font procedural vector carets (`▼` / `▲`), clips long preview labels cleanly before the caret zone, and exposes `ImGui::GetLastPopupHeight(str_id)` and `ImGui::GetMenuStripLastPopupSize(str_id)` for host window headroom queries.
 
 ---
 

@@ -37,8 +37,8 @@
 // ============================================================================
 // ImGee Version Specifications
 // ============================================================================
-#define IMGEE_VERSION     "1.2.1"
-#define IMGEE_VERSION_NUM 10201
+#define IMGEE_VERSION     "1.3.0"
+#define IMGEE_VERSION_NUM 10300
 
 // ============================================================================
 // Granular Legacy Alias Bridge: CONTRIB_DISABLE_* -> IMGEE_DISABLE_*
