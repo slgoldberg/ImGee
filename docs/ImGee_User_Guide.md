@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.1.1)
+## Comprehensive Developer & User Manual (v1.2.0)
 
 ---
 
@@ -56,7 +56,7 @@ Extensions are feature-complete subsystems that solve deep architectural limitat
 * **`Markdown` (`imgui_markdown_ext.h`):** Replaces flat plain ASCII with interactive CommonMark, full GFM tables with tristate column sorting and drag-resizing, GFM callouts (`> [!NOTE]` .. `[!CAUTION]`), 3-tier images with text-wrapping floats and same-context lightboxes, parameterized styling tags (`<badge>`, `<pill>`, `<icon>`), and `ButtonMD`.
 * **`Typography` (`imgui_font_roles.h` & `imgui_styled_text.h`):** A 9-slot semantic font role registry (`ImFontRole`), RAII scoped font guards (`ScopedFontRole`), and the `StyledText` engine for inline baseline-aligned sizing with zero Markdown document overhead.
 * **`Viewport` (`imgui_zoomable_viewport.h`):** Two-layer `BeginZoomedViewport` / `EndZoomedViewport` container keeping window chrome at crisp `1.0x` while zooming scrollable inner content across `50%..250%`.
-* **`DocViewer` (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` combining `BeginZoomedViewport` and `MarkdownExt` with an auto-parsed ATX TOC section jumper, 1-click scroll-to-top / return-to-spot (`↺`/`↻`), `#heading-slug` navigation, zero-shift opacity slider, and 5-preset theme picker.
+* **`DocViewer` (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` combining `BeginZoomedViewport` and `MarkdownExt` with an auto-parsed ATX TOC section jumper, 1-click scroll-to-top / return-to-spot (`↺`/`↻`), in-document live Find (`Ctrl+F` / `Cmd+F`), `#heading-slug` navigation, zero-shift opacity slider, and 5-preset theme picker.
 
 > [!IMPORTANT]
 > **The Flagship Core:** `TimedTooltip`, `Markdown`, and `Typography` form the foundational triad of the ImGee suite, while `Viewport` and `DocViewer` build directly on top of them for turnkey in-app manuals and reference guides.
@@ -416,6 +416,7 @@ When your desktop application, studio tool, or plugin includes a user manual, re
 
 * **Two-Row `1.0x` Header Chrome:** Keeps the responsive title, repeating `[-]` / `[+]` zoom steppers, mouse-wheel `Zoom` slider (`50%..250%`), 1-click A/B zoom reset/undo (`↺` / `↻`), Table-of-Contents `SelectPulldown` with 1-click scroll-to-top / return-to-reading-spot (`↺` / `↻`), zero-shift `Opacity:` + `Transparent` controls, and 5-preset `Theme:` picker (`Charcoal (Default)`, `Rusty (Bronze)`, `ImGui Dark`, `ImGui Classic`, `Paper Light`) crisp at `1.0x` scale while zooming document prose independently.
 * **Automatic Section Jump, Scroll Return, & `#heading-slug` Links:** Scans `#`, `##`, and `###` ATX headings (skipping fenced code blocks and blockquotes) into the Row 2 TOC pulldown, pairs it with a `ResetButton` (`showScrollResetButton = true`) that jumps cleanly to the top of the document and restores your exact previous `ScrollY` spot in one click, and intercepts internal `[Jump](#section-slug)` links to scroll directly to the matching section.
+* **In-Document Live Search ("Find in Doc", `v1.2.0`):** A compact Row 2 search toggle (`showSearchButton = true`, plus `Ctrl+F` / `Cmd+F` when `enableSearchShortcut = true`) opens a collapsible `1.0x` Find bar with live match counter (`3 / 12`), circular Prev/Next steppers (`▲` / `▼`) supporting `Enter` / `Shift+Enter` and Natural List Order mouse-wheel stepping, a case-sensitivity toggle (`Aa`), and theme-adaptive highlights drawn cleanly behind text glyphs across headings, prose, GFM tables, fenced code blocks, and inline `<color>` / `<badge>` / `<pill>` / `StyledText` runs.
 * **Optional Host Window Hooks:** Exposes clean boolean flags and function-pointer callbacks in `DocumentViewerConfig` (`showFitButton`, `showCursorToggle`, `showPopOutButton`, `showVrButton`, `showCloseButton`, `showReloadButton`, `externalPdfPath`) with zero platform SDK dependencies.
 
 ```cpp
@@ -714,4 +715,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.1.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.2.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

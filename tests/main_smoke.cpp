@@ -2959,6 +2959,155 @@ int main(int argc, char** argv) {
                 ImGui::Render();
                 CompleteHeadlessRenderTextures();
             }
+
+            // 7f. ImGee v1.2.0 In-Document Live Search ("Find in Doc") Regression Suite:
+            {
+                std::string s8Doc =
+                    "# Beacon Overview\n\n"
+                    "Plain prose mentioning a beacon once, plus a [beacon link](#beacon-overview).\n\n"
+                    "Inline styled tags: <color=cyan>Beacon</color> and <badge=info>beacon</badge> and <pill=green>Beacon</pill>.\n\n"
+                    "| System | Note |\n"
+                    "| :--- | :--- |\n"
+                    "| Nav | Active beacon status |\n\n"
+                    "```cpp\n"
+                    "int beaconCount = 3; // trailing beacon comment\n"
+                    "```\n\n";
+                for (int s8p = 0; s8p < 22; ++s8p) {
+                    s8Doc += "Filler paragraph line to push the final match far below the fold in the scrollable viewport.\n\n";
+                }
+                s8Doc += "## Bottom Section\n\nFinal bottom beacon marker for auto-scroll verification.\n";
+
+                ImGui::DocumentViewerState s8State;
+                ImGui::DocumentViewerConfig s8Cfg;
+                s8Cfg.title = "Find In Doc Test";
+                IMGEE_TEST_CHECK(s8Cfg.showSearchButton == true);
+                IMGEE_TEST_CHECK(s8Cfg.enableSearchShortcut == true);
+                IMGEE_TEST_CHECK(s8State.search_open == false);
+
+                auto runS8Frame = [&](int themeIdx = ImGui::DocumentViewerTheme_Charcoal) {
+                    s8State.theme_index = themeIdx;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(640.0f, 280.0f), ImGuiCond_Always);
+                    ImGui::Begin("DocViewerFindRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                    StackSnapshot s8Snap = StackSnapshot::Capture();
+                    (void)ImGui::DocumentViewer("##s8_find_dv", s8Doc, s8State, &s8Cfg);
+                    s8Snap.VerifyBalanced("DocViewerFindRegWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                };
+
+                // 1. Open search, type case-insensitive query "Beacon"
+                ImGui::OpenDocumentSearch(s8State);
+                IMGEE_TEST_CHECK(s8State.search_open == true);
+                IMGEE_TEST_CHECK(s8State.search_focus_requested == true);
+                std::snprintf(s8State.search_query, sizeof(s8State.search_query), "%s", "Beacon");
+                runS8Frame();
+
+                // Matches expected (case-insensitive):
+                // 1: Heading "Beacon Overview"
+                // 2: Prose "beacon once"
+                // 3: Link "beacon link"
+                // 4: <color=cyan>Beacon</color>
+                // 5: <badge=info>beacon</badge>
+                // 6: <pill=green>Beacon</pill>
+                // 7: Table cell "Active beacon status"
+                // 8: Code token "beaconCount"
+                // 9: Code comment "trailing beacon comment"
+                // 10: Bottom section "Final bottom beacon marker"
+                IMGEE_TEST_CHECK(s8State.search_match_count == 10);
+                IMGEE_TEST_CHECK(s8State.search_match_ys.size() == 10u);
+                IMGEE_TEST_CHECK(s8State.search_active_index == 0);
+                IMGEE_TEST_CHECK(s8State.search_match_ys.back() > s8State.search_match_ys.front() + 250.0f);
+
+                // 2. Case-sensitive toggle ("Beacon" with capital B appears 3 times: Heading, <color>, <pill>)
+                s8State.search_case_sensitive = true;
+                runS8Frame(ImGui::DocumentViewerTheme_Light); // Exercise Paper Light highlight palette too
+                IMGEE_TEST_CHECK(s8State.search_match_count == 3);
+                IMGEE_TEST_CHECK(s8State.search_active_index == 0);
+
+                // 3. Switch back to case-insensitive, test circular Prev/Next stepping & auto-scroll
+                s8State.search_case_sensitive = false;
+                runS8Frame();
+                IMGEE_TEST_CHECK(s8State.search_match_count == 10);
+
+                // Step backward from 0 -> wraps circularly to 9 (the far-bottom match!)
+                IMGEE_TEST_CHECK(ImGui::StepDocumentSearchMatch(s8State, -1));
+                IMGEE_TEST_CHECK(s8State.search_active_index == 9);
+                IMGEE_TEST_CHECK(s8State.search_pending_scroll == true);
+                runS8Frame(); // Issues SetScrollY to match 9
+                runS8Frame(); // Applies ScrollTarget.y and updates last_scroll_y
+                IMGEE_TEST_CHECK(s8State.last_scroll_y > 150.0f);
+
+                // Step forward from 9 -> wraps circularly back to 0 (top of doc)
+                IMGEE_TEST_CHECK(ImGui::StepDocumentSearchMatch(s8State, +1));
+                IMGEE_TEST_CHECK(s8State.search_active_index == 0);
+                runS8Frame();
+                runS8Frame();
+                IMGEE_TEST_CHECK(s8State.last_scroll_y < 40.0f);
+
+                // Zoom to 1.5x and step to bottom match again (verify zoom-invariant auto-scroll)
+                s8State.viewport.SetZoom(1.5f);
+                IMGEE_TEST_CHECK(ImGui::StepDocumentSearchMatch(s8State, -1));
+                runS8Frame();
+                runS8Frame();
+                IMGEE_TEST_CHECK(s8State.last_scroll_y > 200.0f);
+
+                // 4. Closing [X] preserves search_query while clearing highlights/match_count
+                ImGui::CloseDocumentSearch(s8State);
+                IMGEE_TEST_CHECK(s8State.search_open == false);
+                IMGEE_TEST_CHECK(s8State.search_match_count == 0);
+                IMGEE_TEST_CHECK(s8State.search_match_ys.empty());
+                IMGEE_TEST_CHECK(std::string(s8State.search_query) == "Beacon");
+                runS8Frame();
+                IMGEE_TEST_CHECK(s8State.search_match_count == 0);
+
+                // Reopening preserves query and requests focus + scroll
+                ImGui::OpenDocumentSearch(s8State);
+                IMGEE_TEST_CHECK(s8State.search_open == true);
+                IMGEE_TEST_CHECK(s8State.search_focus_requested == true);
+                IMGEE_TEST_CHECK(s8State.search_pending_scroll == true);
+                IMGEE_TEST_CHECK(std::string(s8State.search_query) == "Beacon");
+
+                // 5. Verify direct StyledTextUnformatted honors ScopedMarkdownSearchContext AND emits highlight BEHIND text
+                {
+                    std::vector<float> s8StyledYs;
+                    ImGui::MarkdownDetail::MarkdownSearchContext s8StyledCtx;
+                    s8StyledCtx.query         = "Altimeter";
+                    s8StyledCtx.queryLen      = 9u;
+                    s8StyledCtx.caseSensitive = false;
+                    s8StyledCtx.activeIndex   = 0;
+                    s8StyledCtx.matchLocalYs  = &s8StyledYs;
+
+                    int vtxBeforeNoSearch = 0, vtxAfterNoSearch = 0;
+                    int vtxBeforeSearch   = 0, vtxAfterSearch   = 0;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(480.0f, 160.0f), ImGuiCond_Always);
+                    ImGui::Begin("StyledSearchOrderWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    ImDrawList* s8Dl = ImGui::GetWindowDrawList();
+
+                    vtxBeforeNoSearch = s8Dl->VtxBuffer.Size;
+                    ImGui::StyledTextUnformatted("Check <b>Altimeter</b> and <color=cyan>altimeter</color> setting.");
+                    vtxAfterNoSearch = s8Dl->VtxBuffer.Size;
+
+                    vtxBeforeSearch = s8Dl->VtxBuffer.Size;
+                    {
+                        ImGui::MarkdownDetail::ScopedMarkdownSearchContext s8Scope(&s8StyledCtx);
+                        ImGui::StyledTextUnformatted("Check <b>Altimeter</b> and <color=cyan>altimeter</color> setting.");
+                    }
+                    vtxAfterSearch = s8Dl->VtxBuffer.Size;
+
+                    IMGEE_TEST_CHECK(s8StyledCtx.matchCount == 2);
+                    IMGEE_TEST_CHECK(s8StyledYs.size() == 2u);
+                    // Highlight fill + active border must emit extra vertices compared to unhighlighted StyledText!
+                    IMGEE_TEST_CHECK((vtxAfterSearch - vtxBeforeSearch) > (vtxAfterNoSearch - vtxBeforeNoSearch));
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+            }
         }
     }
 

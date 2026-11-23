@@ -2075,6 +2075,11 @@ namespace ImGui {
                 ImGui::Text("[%s]", style.clean_text.c_str());
                 ImGui::PopStyleColor();
 #endif
+                if (!style.clean_text.empty()) {
+                    MarkdownDetail::HighlightSearchMatchesInCapsule(
+                        style.clean_text.c_str(), style.clean_text.size(),
+                        ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+                }
 
                 PopMarkdownTagFont(config, style);
             };
@@ -2172,6 +2177,11 @@ namespace ImGui {
                 ImGui::Text("(%s)", style.clean_text.c_str());
                 ImGui::PopStyleColor();
 #endif
+                if (!style.clean_text.empty()) {
+                    MarkdownDetail::HighlightSearchMatchesInCapsule(
+                        style.clean_text.c_str(), style.clean_text.size(),
+                        ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+                }
 
                 PopMarkdownTagFont(config, style);
             };
@@ -2196,6 +2206,11 @@ namespace ImGui {
 #else
                 ImGui::Text("[%s]", style.clean_text.c_str());
 #endif
+                if (!style.clean_text.empty()) {
+                    MarkdownDetail::HighlightSearchMatchesInCapsule(
+                        style.clean_text.c_str(), style.clean_text.size(),
+                        ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+                }
 
                 PopMarkdownTagFont(config, style);
             };
@@ -2306,10 +2321,10 @@ namespace ImGui {
                     ImGui::SetCursorScreenPos(ImVec2(cur_x, pos.y));
                     if (has_explicit_fg) {
                         ImGui::PushStyleColor(ImGuiCol_Text, fg_col);
-                        ImGui::TextUnformatted(style.clean_text.c_str());
+                        MarkdownDetail::RenderTextWithSearchHighlight(style.clean_text.c_str(), style.clean_text.c_str() + style.clean_text.size());
                         ImGui::PopStyleColor();
                     } else {
-                        ImGui::TextUnformatted(style.clean_text.c_str());
+                        MarkdownDetail::RenderTextWithSearchHighlight(style.clean_text.c_str(), style.clean_text.c_str() + style.clean_text.size());
                     }
                     if (has_icon) {
                         ImGui::SetCursorScreenPos(ImVec2(pos.x + content_w, pos.y));
@@ -3002,7 +3017,7 @@ namespace ImGui {
                            : icon_ready;
 
         if (text.find('<') == std::string::npos) {
-            ImGui::TextUnformatted(text.c_str());
+            MarkdownDetail::RenderTextWithSearchHighlight(text.c_str(), text.c_str() + text.size());
             return;
         }
 
@@ -3017,7 +3032,7 @@ namespace ImGui {
                 std::string rem = text.substr(pos);
                 if (!rem.empty()) {
                     if (!first) ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::TextUnformatted(rem.c_str());
+                    MarkdownDetail::RenderTextWithSearchHighlight(rem.c_str(), rem.c_str() + rem.size());
                 }
                 break;
             }
@@ -3026,7 +3041,7 @@ namespace ImGui {
                 std::string pre = text.substr(pos, open - pos);
                 if (!pre.empty()) {
                     if (!first) ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::TextUnformatted(pre.c_str());
+                    MarkdownDetail::RenderTextWithSearchHighlight(pre.c_str(), pre.c_str() + pre.size());
                     first = false;
                 }
             }
@@ -3035,7 +3050,7 @@ namespace ImGui {
             if (close_header == std::string::npos) {
                 std::string rem = text.substr(open);
                 if (!first) ImGui::SameLine(0.0f, 0.0f);
-                ImGui::TextUnformatted(rem.c_str());
+                MarkdownDetail::RenderTextWithSearchHighlight(rem.c_str(), rem.c_str() + rem.size());
                 break;
             }
 
@@ -3083,7 +3098,7 @@ namespace ImGui {
             if (close_pos == std::string::npos) {
                 std::string chunk = text.substr(open, close_header + 1 - open);
                 if (!first) ImGui::SameLine(0.0f, 0.0f);
-                ImGui::TextUnformatted(chunk.c_str());
+                MarkdownDetail::RenderTextWithSearchHighlight(chunk.c_str(), chunk.c_str() + chunk.size());
                 first = false;
                 pos = close_header + 1;
                 continue;
@@ -3097,7 +3112,7 @@ namespace ImGui {
                 first = false;
             } else {
                 if (!first) ImGui::SameLine(0.0f, 0.0f);
-                ImGui::TextUnformatted(inner.c_str());
+                MarkdownDetail::RenderTextWithSearchHighlight(inner.c_str(), inner.c_str() + inner.size());
                 first = false;
             }
             pos = close_pos + tag_name.length() + 3;
@@ -3204,7 +3219,7 @@ namespace ImGui {
             if (it != tags.end()) {
                 it->second(inner_text, tag_param);
             } else {
-                ImGui::TextUnformatted(inner_text.c_str());
+                MarkdownDetail::RenderTextWithSearchHighlight(inner_text.c_str(), inner_text.c_str() + inner_text.size());
             }
 
             GetActiveMarkdownConfig() = prev;

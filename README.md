@@ -43,7 +43,7 @@ Extensions are self-contained subsystems that address deep architectural gaps in
 * **[`Markdown`](extensions/Markdown/README.md) (`imgui_markdown_ext.h`):** Interactive CommonMark + GFM tables with tristate column sorting and drag-resizing, GFM alert callouts (`> [!NOTE]` .. `[!CAUTION]`), 3-tier images with text-wrapping floats and interactive zoom/pan lightboxes, inline tags (`<badge>`, `<pill>`, `<kbd>`, `<icon>`), and `ButtonMD`.
 * **[`Typography`](extensions/Typography/README.md) (`imgui_font_roles.h` & `imgui_styled_text.h`):** A 9-slot semantic font registry (`ImFontRole`), RAII `ScopedFontRole` guards, and baseline-aligned `StyledText` for inline rich readouts without full Markdown block margins.
 * **[`Viewport`](extensions/Viewport/README.md) (`imgui_zoomable_viewport.h`):** Two-layer `BeginZoomedViewport` / `EndZoomedViewport` container keeping window chrome at crisp `1.0x` while zooming scrollable inner content smoothly from `50%` to `250%`.
-* **[`DocViewer`](extensions/DocViewer/README.md) (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` with automatic ATX Table-of-Contents section jumping, 1-click scroll-to-top / return-to-spot (`↺`/`↻`), `#heading-slug` anchor navigation, zero-shift opacity controls, and 5-preset theme switching.
+* **[`DocViewer`](extensions/DocViewer/README.md) (`imgui_doc_viewer.h`):** Turnkey standalone `ImGui::DocumentViewer` with automatic ATX Table-of-Contents section jumping, 1-click scroll-to-top / return-to-spot (`↺`/`↻`), in-document live Find (`Ctrl+F` / `Cmd+F`), `#heading-slug` anchor navigation, zero-shift opacity controls, and 5-preset theme switching.
 
 <br clear="all"/>
 

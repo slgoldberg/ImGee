@@ -248,6 +248,17 @@ namespace ImGui {
 
     } // namespace Detail
 
+#ifndef IMGEE_TEXT_SEARCH_HOOK_DEFINED
+#define IMGEE_TEXT_SEARCH_HOOK_DEFINED
+    namespace Detail {
+        typedef void (*TextSearchHighlightHookFn)(const char* text, const char* text_end);
+        inline TextSearchHighlightHookFn& GetTextSearchHighlightHook() {
+            static TextSearchHighlightHookFn s_Fn = nullptr;
+            return s_Fn;
+        }
+    } // namespace Detail
+#endif
+
     // Renders inline styled text supporting HTML-like tags:
     //   `<b>bold</b>`, `<i>italic</i>`, `<mono>code</mono>`, `<h1>..<h3>headers</h3>`,
     //   `<color="#hex">tinted text</color>`, `<pill color="#hex">capsule</pill>`,
@@ -256,6 +267,13 @@ namespace ImGui {
         if (!text) return;
         if (!text_end) text_end = text + std::strlen(text);
         if (text >= text_end) return;
+
+        auto emitTextRun = [](const char* start, const char* end) {
+            if (Detail::TextSearchHighlightHookFn hook = Detail::GetTextSearchHighlightHook()) {
+                hook(start, end);
+            }
+            ImGui::TextUnformatted(start, end);
+        };
 
         const char* cur = text;
         bool needSameLine = false;
@@ -267,7 +285,7 @@ namespace ImGui {
             // 1. Literal escape: "\<" or "\>"
             if (*cur == '\\' && cur + 1 < text_end && (cur[1] == '<' || cur[1] == '>')) {
                 if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
-                ImGui::TextUnformatted(cur + 1, cur + 2);
+                emitTextRun(cur + 1, cur + 2);
                 needSameLine = true;
                 cur += 2;
                 continue;
@@ -309,7 +327,7 @@ namespace ImGui {
                 }
                 if (cur > seg_start) {
                     if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
-                    ImGui::TextUnformatted(seg_start, cur);
+                    emitTextRun(seg_start, cur);
                     needSameLine = true;
                 }
                 continue;
@@ -324,7 +342,7 @@ namespace ImGui {
             if (tag_end >= text_end) {
                 // Unterminated tag, print as bare text
                 if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
-                ImGui::TextUnformatted(cur, text_end);
+                emitTextRun(cur, text_end);
                 break;
             }
             tag_end++; // include '>'
@@ -808,7 +826,7 @@ namespace ImGui {
 
             // Unrecognized tag: output literally
             if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
-            ImGui::TextUnformatted(tag_start, tag_end);
+            emitTextRun(tag_start, tag_end);
             needSameLine = true;
             cur = tag_end;
         }

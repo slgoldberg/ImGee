@@ -215,6 +215,8 @@ struct DocumentViewerConfig {
     bool   showHeaderRow1          = true;    // Title + Zoom suite + optional host window buttons
     bool   showHeaderRow2          = true;    // TOC Section Jump + Opacity/Transparent + Theme picker
     bool   showScrollResetButton   = true;    // [Reset / Restore] 1-click jump-to-top / return-to-reading-spot button beside TOC
+    bool   showSearchButton        = true;    // [Find] magnifying glass toggle beside TOC/Scroll Reset in Row 2
+    bool   enableSearchShortcut    = true;    // Ctrl+F / Cmd+F opens & focuses inline Find bar when viewer is focused
     bool   showOpacityControls     = true;    // Show Opacity/Saturation slider + Transparent/Custom toggle
     bool   showThemePicker         = true;    // Show 5-preset Theme MouseWheelCombo
     bool   showFooter              = true;    // Show compact 1.0x footer bar at bottom of viewer
@@ -290,6 +292,18 @@ struct DocumentViewerState {
     float       last_scroll_y            = 0.0f;
     float       saved_scroll_y           = 0.0f;
     float       pending_raw_scroll_y     = -1.0f;
+
+    // In-Document Live Search ("Find in Doc", v1.2.0)
+    bool        search_open                 = false;
+    bool        search_case_sensitive       = false;
+    char        search_query[128]           = {};
+    int         search_match_count          = 0;
+    int         search_active_index         = 0;
+    std::vector<float> search_match_ys;
+    bool        search_pending_scroll       = false;
+    bool        search_focus_requested      = false;
+    std::string _search_last_query;
+    bool        _search_last_case_sensitive = false;
 
     // Internal Repeat & Cache Bookkeeping
     int         _dec_repeat_count     = 0;
@@ -407,8 +421,21 @@ namespace DocViewerDetail {
         ToolbarGlyph_PopOut,
         ToolbarGlyph_PopIn,
         ToolbarGlyph_Close,
-        ToolbarGlyph_Reload
+        ToolbarGlyph_Reload,
+        ToolbarGlyph_Search,
+        ToolbarGlyph_CaretUp,
+        ToolbarGlyph_CaretDown
     };
+
+    inline bool IsFindShortcutPressed() {
+        const ImGuiIO& io = ImGui::GetIO();
+        if (!io.KeyCtrl && !io.KeySuper) return false;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+        return ImGui::IsKeyPressed(ImGuiKey_F, false);
+#else
+        return ImGui::IsKeyPressed(static_cast<int>('F'), false);
+#endif
+    }
 
     inline void DrawToolbarGlyph(ImDrawList* dl, const ImVec2& center, float sz, ImU32 col, ToolbarGlyph glyph) {
         if (!dl || glyph == ToolbarGlyph_None) return;
@@ -509,15 +536,63 @@ namespace DocViewerDetail {
                 }
                 break;
             }
+            case ToolbarGlyph_Search: {
+#if defined(CONTRIB_ICONS_AVAILABLE) && !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS)
+                if (ImGui::DrawVectorIcon(dl, ImVec2(center.x - sz * 0.5f, center.y - sz * 0.5f), sz, col, "search")) {
+                    break;
+                }
+#endif
+                const ImVec2 lens_c(center.x - r * 0.16f, center.y - r * 0.16f);
+                const float lens_r = r * 0.46f;
+                dl->AddCircle(lens_c, lens_r, col, 16, sw * 1.05f);
+                const ImVec2 handle[2] = {
+                    ImVec2(lens_c.x + lens_r * 0.72f, lens_c.y + lens_r * 0.72f),
+                    ImVec2(center.x + r * 0.68f, center.y + r * 0.68f)
+                };
+                StrokePointsZeroBias(dl, handle, 2, col, sw * 1.35f);
+                break;
+            }
+            case ToolbarGlyph_CaretUp: {
+#if defined(CONTRIB_ICONS_AVAILABLE) && !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS)
+                if (ImGui::DrawVectorIcon(dl, ImVec2(center.x - sz * 0.5f, center.y - sz * 0.5f), sz, col, "caret-up")) {
+                    break;
+                }
+#endif
+                dl->AddTriangleFilled(
+                    ImVec2(center.x, center.y - r * 0.44f),
+                    ImVec2(center.x - r * 0.54f, center.y + r * 0.36f),
+                    ImVec2(center.x + r * 0.54f, center.y + r * 0.36f),
+                    col);
+                break;
+            }
+            case ToolbarGlyph_CaretDown: {
+#if defined(CONTRIB_ICONS_AVAILABLE) && !defined(IMGEE_DISABLE_ICONS) && !defined(CONTRIB_DISABLE_ICONS) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(CONTRIB_DISABLE_WIDGETS)
+                if (ImGui::DrawVectorIcon(dl, ImVec2(center.x - sz * 0.5f, center.y - sz * 0.5f), sz, col, "caret-down")) {
+                    break;
+                }
+#endif
+                dl->AddTriangleFilled(
+                    ImVec2(center.x - r * 0.54f, center.y - r * 0.36f),
+                    ImVec2(center.x + r * 0.54f, center.y - r * 0.36f),
+                    ImVec2(center.x, center.y + r * 0.44f),
+                    col);
+                break;
+            }
             default:
                 break;
         }
     }
 
-    inline bool ToolbarGlyphButton(const char* str_id, ToolbarGlyph glyph, const DocumentViewerState& state, const char* md_tip, const ImVec2& size = ImVec2(24.0f, 0.0f), bool muted = false) {
+    inline bool ToolbarGlyphButton(const char* str_id, ToolbarGlyph glyph, const DocumentViewerState& state, const char* md_tip, const ImVec2& size = ImVec2(24.0f, 0.0f), bool muted = false, bool active = false) {
         const float h = (size.y > 0.0f) ? size.y : ImGui::GetFrameHeight();
         const ImVec2 btn_sz((size.x > 0.0f) ? size.x : h, h);
+        if (active) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
         bool clicked = ImGui::Button(str_id, btn_sz);
+        if (active) {
+            ImGui::PopStyleColor();
+        }
         bool hovered = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
         if (hovered) {
             SetToolbarCursor(state, ImGuiMouseCursor_Hand);
@@ -1001,6 +1076,35 @@ inline bool ToggleDocumentScrollReset(DocumentViewerState& state) {
     return false;
 }
 
+// In-Document Live Search ("Find in Doc") Helpers (v1.2.0)
+inline void OpenDocumentSearch(DocumentViewerState& state) {
+    state.search_open            = true;
+    state.search_focus_requested = true;
+    if (state.search_query[0] != '\0') {
+        state.search_pending_scroll = true;
+    }
+}
+
+inline void CloseDocumentSearch(DocumentViewerState& state) {
+    state.search_open            = false;
+    state.search_focus_requested = false;
+    state.search_pending_scroll  = false;
+    state.search_match_count     = 0;
+    state.search_match_ys.clear();
+}
+
+inline bool StepDocumentSearchMatch(DocumentViewerState& state, int delta) {
+    if (state.search_match_count <= 0) {
+        return false;
+    }
+    const int n = state.search_match_count;
+    int next = (state.search_active_index + delta) % n;
+    if (next < 0) next += n;
+    state.search_active_index   = next;
+    state.search_pending_scroll = true;
+    return true;
+}
+
 // ----------------------------------------------------------------------------
 // 3. Composite DocumentViewer Widget
 // ----------------------------------------------------------------------------
@@ -1077,6 +1181,14 @@ inline bool DocumentViewer(
 
     ImGuiWindow* host_win = ImGui::GetCurrentWindow();
     const float saved_host_scale = host_win ? host_win->FontWindowScale : 1.0f;
+
+    // Optional Ctrl+F / Cmd+F keyboard shortcut to open & focus Find bar
+    if (cfg.enableSearchShortcut &&
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        DocViewerDetail::IsFindShortcutPressed())
+    {
+        OpenDocumentSearch(state);
+    }
 
     // ========================================================================
     // A. HEADER CHROME ROW 1 (Fixed 1.0x Scale: Title + Zoom Suite + Host Hooks)
@@ -1415,8 +1527,9 @@ inline bool DocumentViewer(
         }
 
         const float scroll_rst_reserve = cfg.showScrollResetButton ? (ImGui::GetFrameHeight() + 3.0f) : 0.0f;
+        const float search_reserve     = cfg.showSearchButton ? (24.0f + 4.0f) : 0.0f;
         const float reload_reserve     = cfg.showReloadButton ? (24.0f + 4.0f) : 0.0f;
-        const float max_toc_avail = ImGui::GetWindowWidth() - ImGui::GetCursorPosX() - right_r2_w - right_margin - scroll_rst_reserve - reload_reserve - 12.0f;
+        const float max_toc_avail = ImGui::GetWindowWidth() - ImGui::GetCursorPosX() - right_r2_w - right_margin - scroll_rst_reserve - search_reserve - reload_reserve - 12.0f;
         const float toc_w = ImClamp(cfg.tocWidth * r2_scale, 95.0f, (std::max)(95.0f, max_toc_avail));
 
         if (!state.toc.empty()) {
@@ -1471,6 +1584,21 @@ inline bool DocumentViewer(
                     ? "**Return to Reading Spot:** 1-click jump back to your previous scroll position."
                     : "**At Top of Document**");
             DocViewerDetail::ShowDelayedTip(DocViewerDetail::GetItemIDCompat(), scroll_rst_hov, scroll_rst_tip);
+        }
+
+        if (cfg.showSearchButton) {
+            ImGui::SameLine(0.0f, 4.0f);
+            const char* find_tip = state.search_open
+                ? "**Close Find Bar**\n\nHides search bar and clears highlights (preserves query text)."
+                : "**Find in Document** (`Ctrl+F` / `Cmd+F`)\n\nSearch headings, prose, code blocks, tables, and styled tags.";
+            if (DocViewerDetail::ToolbarGlyphButton("##dv_search_toggle", DocViewerDetail::ToolbarGlyph_Search, state,
+                                                    find_tip, ImVec2(24.0f, 0.0f), false, state.search_open)) {
+                if (state.search_open) {
+                    CloseDocumentSearch(state);
+                } else {
+                    OpenDocumentSearch(state);
+                }
+            }
         }
 
         if (cfg.showReloadButton) {
@@ -1608,7 +1736,174 @@ inline bool DocumentViewer(
         }
     }
 
-    if (cfg.showHeaderRow1 || cfg.showHeaderRow2) {
+    // ========================================================================
+    // B2. COLLAPSIBLE 1.0x FIND-IN-DOCUMENT BAR (v1.2.0)
+    // ========================================================================
+    if (state.search_open) {
+        ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
+        const float bar_avail_w = ImGui::GetContentRegionAvail().x;
+        const float counter_w   = (std::max)(58.0f, ImGui::CalcTextSize("999 / 999").x + 10.0f);
+        const float step_btn_w  = 24.0f;
+        const float case_btn_w  = (std::max)(28.0f, ImGui::CalcTextSize("Aa").x + 10.0f);
+        const float close_btn_w = 24.0f;
+        const float controls_w  = counter_w + 4.0f + step_btn_w + 2.0f + step_btn_w + 6.0f + case_btn_w + 4.0f + close_btn_w;
+        const float input_w     = ImClamp(bar_avail_w - controls_w - 8.0f, 96.0f, 340.0f);
+
+        const bool just_opened_focus = state.search_focus_requested;
+        if (just_opened_focus) {
+            ImGui::SetKeyboardFocusHere();
+            state.search_focus_requested = false;
+        }
+        ImGui::SetNextItemWidth(input_w);
+        const ImGuiInputTextFlags input_flags =
+            ImGuiInputTextFlags_EnterReturnsTrue |
+            (just_opened_focus ? ImGuiInputTextFlags_AutoSelectAll : 0);
+        const bool enter_pressed = ImGui::InputTextWithHint(
+            "##dv_search_input", "Find in document...",
+            state.search_query, sizeof(state.search_query), input_flags);
+        if (ImGui::IsItemHovered()) {
+            DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_TextInput);
+        }
+
+        // Detect live query or case-sensitivity edits before handling Enter
+        const bool query_edited = (state._search_last_query != state.search_query);
+        if (query_edited) {
+            state._search_last_query    = state.search_query;
+            state.search_active_index   = 0;
+            state.search_pending_scroll = (state.search_query[0] != '\0');
+        }
+
+        if (enter_pressed) {
+            if (!query_edited && state.search_query[0] != '\0' && state.search_match_count > 0) {
+                const bool shift_held = ImGui::GetIO().KeyShift;
+                StepDocumentSearchMatch(state, shift_held ? -1 : +1);
+            }
+            // Keep focus in InputText so rapid Enter / Shift+Enter stepping stays smooth
+            // without releasing host keyboard focus (Esc or clicking outside deactivates cleanly)
+            ImGui::SetKeyboardFocusHere(-1);
+        }
+
+        // Helper for Natural List Order mouse-wheel stepping (wheel DOWN = +1, UP = -1)
+        auto handleSearchWheel = [&](bool hovered) {
+            if (!hovered || state.search_match_count <= 0) return;
+            const float wheel = ImGui::GetIO().MouseWheel;
+            if (wheel < 0.0f) {
+                StepDocumentSearchMatch(state, +1);
+            } else if (wheel > 0.0f) {
+                StepDocumentSearchMatch(state, -1);
+            }
+        };
+
+        // Match counter readout [ 3 / 12 ] with Natural List Order wheel stepping
+        ImGui::SameLine(0.0f, 6.0f);
+        {
+            char count_buf[32];
+            const bool has_query = (state.search_query[0] != '\0');
+            if (!has_query) {
+                std::snprintf(count_buf, sizeof(count_buf), "--");
+            } else if (state.search_match_count <= 0) {
+                std::snprintf(count_buf, sizeof(count_buf), "0 / 0");
+            } else {
+                const int display_idx = ImClamp(state.search_active_index, 0, state.search_match_count - 1) + 1;
+                std::snprintf(count_buf, sizeof(count_buf), "%d / %d", display_idx, state.search_match_count);
+            }
+
+            const float fh = ImGui::GetFrameHeight();
+            const ImVec2 c_pos = ImGui::GetCursorScreenPos();
+            ImGui::InvisibleButton("##dv_search_counter", ImVec2(counter_w, fh));
+            const bool cnt_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (cnt_hov && state.search_match_count > 1) {
+                DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_ResizeNS);
+            }
+            handleSearchWheel(cnt_hov);
+
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            const ImVec2 c_max(c_pos.x + counter_w, c_pos.y + fh);
+            const ImU32 bg_col = ImGui::GetColorU32(cnt_hov && state.search_match_count > 0 ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg);
+            dl->AddRectFilled(c_pos, c_max, bg_col, ImGui::GetStyle().FrameRounding);
+
+            ImU32 txt_col = ImGui::GetColorU32(ImGuiCol_Text);
+            if (!has_query) {
+                txt_col = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+            } else if (state.search_match_count <= 0) {
+                const ImVec4 win_bg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+                const bool is_light = (win_bg.x * 0.299f + win_bg.y * 0.587f + win_bg.z * 0.114f) > 0.55f;
+                txt_col = is_light ? IM_COL32(190, 48, 48, 255) : IM_COL32(235, 110, 105, 255);
+            }
+            const ImVec2 txt_sz = ImGui::CalcTextSize(count_buf);
+            dl->AddText(ImVec2(c_pos.x + (counter_w - txt_sz.x) * 0.5f, c_pos.y + (fh - txt_sz.y) * 0.5f), txt_col, count_buf);
+
+            DocViewerDetail::ShowDelayedTip(DocViewerDetail::GetItemIDCompat(), cnt_hov,
+                "**Match Counter**\n\nRoll mouse wheel down for next match, up for previous.");
+        }
+
+        // Previous Match [caret-up] & Next Match [caret-down] repeating steppers
+        const bool has_matches = (state.search_match_count > 0);
+        ImGui::SameLine(0.0f, 4.0f);
+        DocViewerDetail::PushButtonRepeatCompat(true);
+        if (DocViewerDetail::ToolbarGlyphButton("##dv_search_prev", DocViewerDetail::ToolbarGlyph_CaretUp, state,
+                                                "**Previous Match** (`Shift+Enter`)\n\nClick or roll mouse wheel to step through matches.",
+                                                ImVec2(step_btn_w, 0.0f), !has_matches)) {
+            if (has_matches) StepDocumentSearchMatch(state, -1);
+        }
+        {
+            const bool prev_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (prev_hov && has_matches && ImGui::GetIO().MouseWheel != 0.0f) {
+                DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_ResizeNS);
+            }
+            handleSearchWheel(prev_hov);
+        }
+
+        ImGui::SameLine(0.0f, 2.0f);
+        if (DocViewerDetail::ToolbarGlyphButton("##dv_search_next", DocViewerDetail::ToolbarGlyph_CaretDown, state,
+                                                "**Next Match** (`Enter`)\n\nClick or roll mouse wheel to step through matches.",
+                                                ImVec2(step_btn_w, 0.0f), !has_matches)) {
+            if (has_matches) StepDocumentSearchMatch(state, +1);
+        }
+        {
+            const bool next_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (next_hov && has_matches && ImGui::GetIO().MouseWheel != 0.0f) {
+                DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_ResizeNS);
+            }
+            handleSearchWheel(next_hov);
+        }
+        DocViewerDetail::PopButtonRepeatCompat();
+
+        // [Aa] Case-sensitivity toggle
+        ImGui::SameLine(0.0f, 6.0f);
+        if (state.search_case_sensitive) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+        }
+        if (ImGui::Button("Aa##dv_search_case", ImVec2(case_btn_w, 0.0f))) {
+            state.search_case_sensitive = !state.search_case_sensitive;
+        }
+        if (state.search_case_sensitive) {
+            ImGui::PopStyleColor();
+        }
+        {
+            const bool case_hov = ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+            if (case_hov) DocViewerDetail::SetToolbarCursor(state, ImGuiMouseCursor_Hand);
+            DocViewerDetail::ShowDelayedTip(DocViewerDetail::GetItemIDCompat(), case_hov,
+                state.search_case_sensitive
+                    ? "**Match Case:** ON\n\nClick to switch to case-insensitive search."
+                    : "**Match Case:** OFF\n\nClick to enable case-sensitive search.");
+        }
+        if (state._search_last_case_sensitive != state.search_case_sensitive) {
+            state._search_last_case_sensitive = state.search_case_sensitive;
+            state.search_active_index         = 0;
+            state.search_pending_scroll       = (state.search_query[0] != '\0');
+        }
+
+        // [X] Close Find bar (preserves query text, clears highlights)
+        ImGui::SameLine(0.0f, 4.0f);
+        if (DocViewerDetail::ToolbarGlyphButton("##dv_search_close", DocViewerDetail::ToolbarGlyph_Close, state,
+                                                "**Close Find Bar**\n\nHides search bar and clears highlights (preserves query text).",
+                                                ImVec2(close_btn_w, 0.0f))) {
+            CloseDocumentSearch(state);
+        }
+    }
+
+    if (cfg.showHeaderRow1 || cfg.showHeaderRow2 || state.search_open) {
         ImGui::ImGeeCompat::SetWindowFontScale(1.0f);
         ImGui::Separator();
     }
@@ -1767,10 +2062,44 @@ inline bool DocumentViewer(
 #endif
         };
 
-        ImGui::MarkdownExt(markdown_text, markdown_len, &md_cfg, true);
+        state.search_match_ys.clear();
+        const size_t active_query_len = state.search_open ? std::strlen(state.search_query) : 0u;
+        MarkdownDetail::MarkdownSearchContext search_ctx;
+        if (state.search_open && active_query_len > 0u) {
+            search_ctx.query         = state.search_query;
+            search_ctx.queryLen      = active_query_len;
+            search_ctx.caseSensitive = state.search_case_sensitive;
+            search_ctx.activeIndex   = state.search_active_index;
+            search_ctx.matchCount    = 0;
+            search_ctx.matchLocalYs  = &state.search_match_ys;
+            search_ctx.viewportWin   = vp_win;
+        }
+        {
+            MarkdownDetail::ScopedMarkdownSearchContext search_scope(
+                (state.search_open && active_query_len > 0u) ? &search_ctx : nullptr);
+            ImGui::MarkdownExt(markdown_text, markdown_len, &md_cfg, true);
+        }
+        if (state.search_open && active_query_len > 0u) {
+            state.search_match_count = search_ctx.matchCount;
+            if (state.search_match_count <= 0) {
+                state.search_active_index   = 0;
+                state.search_pending_scroll = false;
+            } else {
+                if (state.search_active_index >= state.search_match_count) {
+                    state.search_active_index = 0;
+                } else if (state.search_active_index < 0) {
+                    state.search_active_index = state.search_match_count - 1;
+                }
+            }
+        } else {
+            state.search_match_count    = 0;
+            state.search_pending_scroll = false;
+        }
 
         DocViewerDetail::GetActiveRenderContext() = prev_ctx;
 #else
+        state.search_match_count    = 0;
+        state.search_pending_scroll = false;
         ImGui::TextWrapped("%.*s", static_cast<int>(markdown_len), markdown_text);
 #endif
 
@@ -1783,6 +2112,18 @@ inline bool DocumentViewer(
                 ImGui::SetScrollY((std::max)(0.0f, target_y - top_pad_y));
                 state.pending_scroll_toc_index = -1;
             }
+        }
+
+        // Same-frame auto-scroll to active search match (zoom-invariant local Y)
+        if (state.search_pending_scroll &&
+            state.search_active_index >= 0 &&
+            static_cast<size_t>(state.search_active_index) < state.search_match_ys.size())
+        {
+            const float match_y = state.search_match_ys[static_cast<size_t>(state.search_active_index)];
+            const float vp_h    = ImGui::GetWindowHeight();
+            const float target_scroll_y = (std::max)(0.0f, match_y - vp_h * 0.35f);
+            ImGui::SetScrollY(target_scroll_y);
+            state.search_pending_scroll = false;
         }
 
         // Sync active_toc_index with manual user scrolling

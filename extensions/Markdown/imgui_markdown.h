@@ -938,6 +938,271 @@ namespace ImGui
             if( s.rfind( "right", 0 ) == 0 ) return MarkdownImageFloat::Right;
             return MarkdownImageFloat::None; // None == clear all/both
         }
+
+        // --------------------------------------------------------------------
+        // In-Document Live Search Context (v1.2.0)
+        // Renders highlights BEHIND text glyphs via GetCursorScreenPos() +
+        // CalcTextSize() before ImGui::TextUnformatted().
+        // --------------------------------------------------------------------
+        struct MarkdownSearchContext
+        {
+            const char*         query         = nullptr;
+            size_t              queryLen      = 0;
+            bool                caseSensitive = false;
+            int                 activeIndex   = 0;        // 0-based active match index
+            int                 matchCount    = 0;        // Output: total matches seen this frame
+            std::vector<float>* matchLocalYs  = nullptr;  // Output: viewport-local Y per match
+            ImGuiWindow*        viewportWin   = nullptr;  // Target scroll viewport (nullptr = current window)
+            bool                darkSurface   = false;    // True inside dark code blocks even on light themes
+        };
+
+        inline MarkdownSearchContext*& GetActiveSearchContext()
+        {
+            static MarkdownSearchContext* s_Ctx = nullptr;
+            return s_Ctx;
+        }
+
+        inline bool SearchCharEq( char a, char b, bool caseSensitive )
+        {
+            if( caseSensitive ) return a == b;
+            return std::tolower( static_cast<unsigned char>( a ) ) == std::tolower( static_cast<unsigned char>( b ) );
+        }
+
+        inline const char* FindSearchMatch( const char* hay, const char* hayEnd, const char* needle, size_t needleLen, bool caseSensitive )
+        {
+            if( !hay || !hayEnd || !needle || needleLen == 0 ) return nullptr;
+            const size_t hayLen = ( hayEnd > hay ) ? static_cast<size_t>( hayEnd - hay ) : 0u;
+            if( hayLen < needleLen ) return nullptr;
+            const size_t limit = hayLen - needleLen;
+            for( size_t i = 0; i <= limit; ++i )
+            {
+                size_t j = 0;
+                while( j < needleLen && SearchCharEq( hay[i + j], needle[j], caseSensitive ) )
+                {
+                    ++j;
+                }
+                if( j == needleLen )
+                {
+                    return hay + i;
+                }
+            }
+            return nullptr;
+        }
+
+        inline void DrawSearchHighlightRect( ImDrawList* dl, const ImVec2& rMin, const ImVec2& rMax, bool isActive, bool darkSurface )
+        {
+            if( !dl ) return;
+            ImGuiWindow* win = ImGui::GetCurrentWindow();
+            if( win && ( rMax.y < win->ClipRect.Min.y || rMin.y > win->ClipRect.Max.y ) )
+            {
+                return;
+            }
+            const ImVec4 winBg = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+            const bool isLight = !darkSurface && ( ( winBg.x * 0.299f + winBg.y * 0.587f + winBg.z * 0.114f ) > 0.55f );
+
+            const ImU32 fillCol = isLight
+                ? ( isActive ? IM_COL32( 255, 170, 38, 220 ) : IM_COL32( 255, 232, 85, 185 ) )
+                : ( isActive ? IM_COL32( 255, 148, 24, 155 ) : IM_COL32( 255, 210, 48, 86 ) );
+            const ImU32 borderCol = isLight
+                ? IM_COL32( 198, 92, 0, 240 )
+                : IM_COL32( 255, 225, 110, 235 );
+
+            const float rounding = 2.0f;
+            dl->AddRectFilled( rMin, rMax, fillCol, rounding );
+            if( isActive )
+            {
+                AddRectCompat( dl, rMin, rMax, borderCol, rounding, 0, 1.0f );
+            }
+        }
+
+        inline void HighlightSearchMatchesOnSingleLine( MarkdownSearchContext* sc, ImGuiWindow* vpWin, ImDrawList* dl,
+                                                        const char* lineStart, const char* lineEnd,
+                                                        const ImVec2& basePos, float lineH )
+        {
+            const char* scan = lineStart;
+            while( scan < lineEnd )
+            {
+                const char* hit = FindSearchMatch( scan, lineEnd, sc->query, sc->queryLen, sc->caseSensitive );
+                if( !hit ) break;
+
+                const float x0 = basePos.x + ImGui::CalcTextSize( lineStart, hit, false ).x;
+                const float w  = ImGui::CalcTextSize( hit, hit + sc->queryLen, false ).x;
+                const int idx = sc->matchCount++;
+                if( sc->matchLocalYs && vpWin )
+                {
+                    sc->matchLocalYs->push_back( basePos.y - vpWin->Pos.y + vpWin->Scroll.y );
+                }
+                const float padX = 1.5f;
+                const float padY = 0.5f;
+                DrawSearchHighlightRect(
+                    dl,
+                    ImVec2( x0 - padX, basePos.y - padY ),
+                    ImVec2( x0 + w + padX, basePos.y + lineH + padY ),
+                    ( idx == sc->activeIndex ),
+                    sc->darkSurface );
+
+                scan = hit + sc->queryLen;
+            }
+        }
+
+        inline void HighlightSearchMatchesBeforeText( const char* text, const char* text_end = nullptr )
+        {
+            MarkdownSearchContext* sc = GetActiveSearchContext();
+            if( !sc || !sc->query || sc->queryLen == 0 || !text ) return;
+            if( !text_end ) text_end = text + std::strlen( text );
+            if( text_end <= text || static_cast<size_t>( text_end - text ) < sc->queryLen ) return;
+
+            // Fast path: skip all font measurement if this segment has zero matches
+            if( !FindSearchMatch( text, text_end, sc->query, sc->queryLen, sc->caseSensitive ) ) return;
+
+            ImGuiWindow* win = ImGui::GetCurrentWindow();
+            if( !win ) return;
+            ImDrawList* dl = win->DrawList;
+            ImGuiWindow* vpWin = sc->viewportWin ? sc->viewportWin : win;
+
+            const ImVec2 basePos = ImGui::GetCursorScreenPos();
+            const float lineH = ImGui::GetTextLineHeight();
+
+            // Check if ImGui text wrapping is active and this segment actually wraps across lines
+            if( win->DC.TextWrapPos >= 0.0f )
+            {
+                const float wrapLimitX = ( win->DC.TextWrapPos > 0.0f )
+                    ? ( win->Pos.x - win->Scroll.x + win->DC.TextWrapPos )
+                    : ( basePos.x + ImGui::GetContentRegionAvail().x );
+                const float totalW = ImGui::CalcTextSize( text, text_end, false ).x;
+                if( wrapLimitX > basePos.x + 1.0f && ( basePos.x + totalW ) > wrapLimitX + 0.5f )
+                {
+                    ImFont* font = ImGui::GetFont();
+                    const float fontScale = ImGui::GetFontScale( false );
+                    const float lineStepY = ImGui::GetTextLineHeightWithSpacing();
+                    const float contStartX = win->Pos.x - win->Scroll.x + win->DC.Indent.x;
+                    float curX = basePos.x;
+                    float curY = basePos.y;
+                    const char* seg = text;
+                    while( seg < text_end )
+                    {
+                        const float availW = ImMax( 16.0f, wrapLimitX - curX );
+                        const char* segEnd = CalcWordWrapPositionCompat( font, fontScale, seg, text_end, availW );
+                        if( segEnd <= seg )
+                        {
+                            ++segEnd;
+                            while( segEnd < text_end && ( ( *segEnd & 0xC0 ) == 0x80 ) ) ++segEnd;
+                        }
+                        HighlightSearchMatchesOnSingleLine( sc, vpWin, dl, seg, segEnd, ImVec2( curX, curY ), lineH );
+                        seg = segEnd;
+                        while( seg < text_end && *seg == ' ' ) ++seg;
+                        curX = contStartX;
+                        curY += lineStepY;
+                    }
+                    return;
+                }
+            }
+
+            HighlightSearchMatchesOnSingleLine( sc, vpWin, dl, text, text_end, basePos, lineH );
+        }
+
+        inline void RenderTextWithSearchHighlight( const char* text, const char* text_end = nullptr )
+        {
+            HighlightSearchMatchesBeforeText( text, text_end );
+            ImGui::TextUnformatted( text, text_end );
+        }
+
+        inline void HighlightSearchMatchesInCapsule( const char* text, size_t len, const ImVec2& itemMin, const ImVec2& itemMax )
+        {
+            MarkdownSearchContext* sc = GetActiveSearchContext();
+            if( !sc || !sc->query || sc->queryLen == 0 || !text || len < sc->queryLen ) return;
+
+            const char* scan = text;
+            const char* end  = text + len;
+            bool anyHit = false;
+            bool isActive = false;
+            ImGuiWindow* win = ImGui::GetCurrentWindow();
+            ImGuiWindow* vpWin = sc->viewportWin ? sc->viewportWin : win;
+
+            while( scan < end )
+            {
+                const char* hit = FindSearchMatch( scan, end, sc->query, sc->queryLen, sc->caseSensitive );
+                if( !hit ) break;
+                const int idx = sc->matchCount++;
+                anyHit = true;
+                if( idx == sc->activeIndex ) isActive = true;
+                if( sc->matchLocalYs && vpWin )
+                {
+                    sc->matchLocalYs->push_back( itemMin.y - vpWin->Pos.y + vpWin->Scroll.y );
+                }
+                scan = hit + sc->queryLen;
+            }
+            if( anyHit && win && win->DrawList )
+            {
+                if( !( itemMax.y < win->ClipRect.Min.y || itemMin.y > win->ClipRect.Max.y ) )
+                {
+                    const ImU32 haloCol = isActive ? IM_COL32( 255, 160, 32, 245 ) : IM_COL32( 255, 215, 64, 210 );
+                    const float pad = isActive ? 2.0f : 1.0f;
+                    AddRectCompat( win->DrawList,
+                        ImVec2( itemMin.x - pad, itemMin.y - pad ),
+                        ImVec2( itemMax.x + pad, itemMax.y + pad ),
+                        haloCol, 4.0f, 0, isActive ? 2.0f : 1.5f );
+                }
+            }
+        }
+
+        struct ScopedSearchDarkSurface
+        {
+            MarkdownSearchContext* ctx  = nullptr;
+            bool                   prev = false;
+            ScopedSearchDarkSurface()
+            {
+                ctx = GetActiveSearchContext();
+                if( ctx )
+                {
+                    prev = ctx->darkSurface;
+                    ctx->darkSurface = true;
+                }
+            }
+            ~ScopedSearchDarkSurface()
+            {
+                if( ctx ) ctx->darkSurface = prev;
+            }
+        };
+    } // namespace MarkdownDetail
+
+#ifndef IMGEE_TEXT_SEARCH_HOOK_DEFINED
+#define IMGEE_TEXT_SEARCH_HOOK_DEFINED
+    namespace Detail {
+        typedef void (*TextSearchHighlightHookFn)(const char* text, const char* text_end);
+        inline TextSearchHighlightHookFn& GetTextSearchHighlightHook() {
+            static TextSearchHighlightHookFn s_Fn = nullptr;
+            return s_Fn;
+        }
+    } // namespace Detail
+#endif
+
+    namespace MarkdownDetail {
+        struct ScopedMarkdownSearchContext
+        {
+            MarkdownSearchContext*            prevCtx  = nullptr;
+            Detail::TextSearchHighlightHookFn prevHook = nullptr;
+
+            explicit ScopedMarkdownSearchContext( MarkdownSearchContext* ctx )
+            {
+                prevCtx  = GetActiveSearchContext();
+                prevHook = Detail::GetTextSearchHighlightHook();
+                GetActiveSearchContext() = ctx;
+                if( ctx && ctx->query && ctx->queryLen > 0 )
+                {
+                    Detail::GetTextSearchHighlightHook() = &HighlightSearchMatchesBeforeText;
+                }
+                else
+                {
+                    Detail::GetTextSearchHighlightHook() = nullptr;
+                }
+            }
+            ~ScopedMarkdownSearchContext()
+            {
+                GetActiveSearchContext()             = prevCtx;
+                Detail::GetTextSearchHighlightHook() = prevHook;
+            }
+        };
     } // namespace MarkdownDetail
 
     inline const std::vector<MarkdownRenderedLineSpan>& GetLastMarkdownRenderedLines()
@@ -964,7 +1229,7 @@ namespace ImGui
                 {
                     MarkdownDetail::PrepareLineStartForFloats();
                 }
-                ImGui::TextUnformatted( text_, text_end_ );
+                MarkdownDetail::RenderTextWithSearchHighlight( text_, text_end_ );
                 if( text_end_ > text_ )
                 {
                     MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
@@ -1017,7 +1282,7 @@ namespace ImGui
                 }
             }
             
-            ImGui::TextUnformatted( text_, endLine );
+            MarkdownDetail::RenderTextWithSearchHighlight( text_, endLine );
             if( endLine > text_ )
             {
                 MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
@@ -1033,7 +1298,7 @@ namespace ImGui
                 {
                     endLine++;
                 }
-                ImGui::TextUnformatted( text_, endLine );
+                MarkdownDetail::RenderTextWithSearchHighlight( text_, endLine );
                 if( endLine > text_ )
                 {
                     MarkdownDetail::RecordRenderedTextLineSpan( ImGui::GetItemRectMin(), ImGui::GetItemRectMax() );
@@ -1484,12 +1749,12 @@ namespace ImGui
                 ImGuiWindow* win = ImGui::GetCurrentWindow();
                 float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
                 ImGui::PushTextWrapPos( wrap_local_x );
-                ImGui::TextUnformatted( line_str.c_str() );
+                MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
                 ImGui::PopTextWrapPos();
             }
             else
             {
-                ImGui::TextUnformatted( line_str.c_str() );
+                MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
             }
             ImGui::PopStyleColor();
             return;
@@ -1516,12 +1781,12 @@ namespace ImGui
                     ImGuiWindow* win = ImGui::GetCurrentWindow();
                     float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
                     ImGui::PushTextWrapPos( wrap_local_x );
-                    ImGui::TextUnformatted( line_str.c_str() );
+                    MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
                     ImGui::PopTextWrapPos();
                 }
                 else
                 {
-                    ImGui::TextUnformatted( line_str.c_str() );
+                    MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
                 }
                 ImGui::PopStyleColor();
                 return;
@@ -1534,12 +1799,12 @@ namespace ImGui
                     ImGuiWindow* win = ImGui::GetCurrentWindow();
                     float wrap_local_x = wrap_screen_x - ( win->Pos.x - win->Scroll.x );
                     ImGui::PushTextWrapPos( wrap_local_x );
-                    ImGui::TextUnformatted( line_str.c_str() );
+                    MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
                     ImGui::PopTextWrapPos();
                 }
                 else
                 {
-                    ImGui::TextUnformatted( line_str.c_str() );
+                    MarkdownDetail::RenderTextWithSearchHighlight( line_str.c_str(), line_str.c_str() + line_str.size() );
                 }
                 ImGui::PopStyleColor();
                 return;
@@ -1580,7 +1845,7 @@ namespace ImGui
                         ++seg_end;
                         while( seg_end < text_end && ( ( *seg_end & 0xC0 ) == 0x80 ) ) ++seg_end;
                     }
-                    ImGui::TextUnformatted( seg, seg_end );
+                    MarkdownDetail::RenderTextWithSearchHighlight( seg, seg_end );
                     seg = seg_end;
                     if( seg < text_end )
                     {
@@ -1596,7 +1861,7 @@ namespace ImGui
             }
             else
             {
-                ImGui::TextUnformatted( text_start, text_end );
+                MarkdownDetail::RenderTextWithSearchHighlight( text_start, text_end );
             }
             ImGui::PopStyleColor();
 
@@ -2205,6 +2470,7 @@ namespace ImGui
         }
         else
         {
+            MarkdownDetail::ScopedSearchDarkSurface dark_code_search;
             float wrap_screen_x = start_pos.x + avail_width - pad_x;
             const char* p = code_;
             const char* end = code_ + codeLength_;
@@ -7060,7 +7326,7 @@ namespace ImGui
         formatInfo.type = MarkdownFormatType::LINK;
         mdConfig_.formatCallback( formatInfo, true );
         ImGui::PushTextWrapPos( -1.0f );
-        ImGui::TextUnformatted( text_, text_end_ );
+        MarkdownDetail::RenderTextWithSearchHighlight( text_, text_end_ );
         ImGui::PopTextWrapPos();
 
         bool bThisItemHovered = ImGui::IsItemHovered();
