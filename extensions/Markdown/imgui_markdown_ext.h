@@ -1364,10 +1364,12 @@ namespace ImGui {
     // callout blocks ('> [!NOTE]', '[!INFO]', '[!TIP]', '[!IMPORTANT]', '[!WARNING]', '[!CAUTION]',
     // with either multi-line or same-line inline bodies) into <blockquote> / <callout> blocks.
     // Peels exactly one '>' level per MarkdownExt pass so nested quotes & callouts compose cleanly.
-    inline bool PreprocessMarkdownBlockquotesAndAlerts(const char* text, size_t len, std::string& out) {
+    inline bool PreprocessMarkdownBlockquotesAndAlerts(const char* text, size_t len, std::string& out, const MarkdownConfig* config = nullptr) {
         if (!text || len == 0 || memchr(text, '>', len) == nullptr) {
             return false;
         }
+
+        const bool gt_is_emphasis = (config && config->emphasisChars && std::strchr(config->emphasisChars, '>') != nullptr);
 
         out.reserve(len + 128);
         bool any_replaced = false;
@@ -1625,7 +1627,11 @@ namespace ImGui {
             }
 
             // 5. Blockquote / GFM Alert line ('>' with 0..3 leading spaces):
-            if (lead_cols <= 3 && lead_idx < line_len && lptr[lead_idx] == '>') {
+            //    When host config registers '>' in emphasisChars (e.g. ">>Important:>>"),
+            //    require '>' to be followed by EOL, ' ', or '\t' so tight ">>text" / ">text"
+            //    remains inline emphasis while "> text", bare ">", and "> [!NOTE]" still work.
+            if (lead_cols <= 3 && lead_idx < line_len && lptr[lead_idx] == '>' &&
+                (!gt_is_emphasis || lead_idx + 1 >= line_len || lptr[lead_idx + 1] == ' ' || lptr[lead_idx + 1] == '\t')) {
                 size_t content_p = lead_idx + 1;
                 if (content_p < line_len && (lptr[content_p] == ' ' || lptr[content_p] == '\t')) {
                     ++content_p;
@@ -3187,7 +3193,7 @@ namespace ImGui {
         }
 
         std::string processed_quotes;
-        bool has_quotes = PreprocessMarkdownBlockquotesAndAlerts(markdown_text, markdown_len, processed_quotes);
+        bool has_quotes = PreprocessMarkdownBlockquotesAndAlerts(markdown_text, markdown_len, processed_quotes, config);
         const char* text_q = has_quotes ? processed_quotes.c_str() : markdown_text;
         size_t len_q = has_quotes ? processed_quotes.length() : markdown_len;
 

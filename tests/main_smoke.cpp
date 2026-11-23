@@ -3108,6 +3108,53 @@ int main(int argc, char** argv) {
                     CompleteHeadlessRenderTextures();
                 }
             }
+
+            // 7g. Respect custom '>' emphasis delimiter in PreprocessMarkdownBlockquotesAndAlerts:
+            {
+                ImGui::MarkdownConfig s9Cfg;
+                s9Cfg.emphasisChars = "*_$><`~^";
+
+                const std::string s9OnlyEmph = ">>Important:>> _not_ ok `.acf`\n>> >> marker\n>tight\n";
+                std::string s9OnlyOut;
+                IMGEE_TEST_CHECK(!ImGui::PreprocessMarkdownBlockquotesAndAlerts(
+                    s9OnlyEmph.c_str(), s9OnlyEmph.size(), s9OnlyOut, &s9Cfg));
+
+                const std::string s9MixedDoc =
+                    ">>Important:>> _not_ ok `.acf`\n"
+                    ">> >> marker line\n\n"
+                    "> [!NOTE]\n"
+                    "> Callout body stays intact\n\n"
+                    "> Standard spaced blockquote\n"
+                    ">\n"
+                    "> > Nested spaced blockquote\n";
+                std::string s9MixedOut;
+                IMGEE_TEST_CHECK(ImGui::PreprocessMarkdownBlockquotesAndAlerts(
+                    s9MixedDoc.c_str(), s9MixedDoc.size(), s9MixedOut, &s9Cfg));
+                IMGEE_TEST_CHECK(s9MixedOut.find(">>Important:>> _not_ ok `.acf`\n") != std::string::npos);
+                IMGEE_TEST_CHECK(s9MixedOut.find(">> >> marker line\n") != std::string::npos);
+                IMGEE_TEST_CHECK(s9MixedOut.find("<blockquote>\n>Important") == std::string::npos);
+                IMGEE_TEST_CHECK(s9MixedOut.find("<callout type=note>\nCallout body stays intact\n</callout>") != std::string::npos);
+                IMGEE_TEST_CHECK(s9MixedOut.find("<blockquote>\nStandard spaced blockquote\n\n> Nested spaced blockquote\n</blockquote>") != std::string::npos);
+
+                // Default config (without '>' in emphasisChars) still treats tight ">text" as blockquote
+                const std::string s9Tight = ">tight quote\n";
+                std::string s9TightOut;
+                IMGEE_TEST_CHECK(ImGui::PreprocessMarkdownBlockquotesAndAlerts(
+                    s9Tight.c_str(), s9Tight.size(), s9TightOut));
+                IMGEE_TEST_CHECK(s9TightOut.find("<blockquote>\ntight quote\n</blockquote>") != std::string::npos);
+
+                // Live MarkdownExt render pass with custom '>' emphasisChars verifies stack integrity
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(520.0f, 260.0f), ImGuiCond_Always);
+                ImGui::Begin("CustomGtEmphWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                StackSnapshot s9Snap = StackSnapshot::Capture();
+                ImGui::MarkdownExt(s9MixedDoc, &s9Cfg);
+                s9Snap.VerifyBalanced("CustomGtEmphWin");
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            }
         }
     }
 
