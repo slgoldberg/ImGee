@@ -218,11 +218,19 @@ For clean namespace symmetry with `ImGui::TimedTooltip::Config`, the configurati
 | :--- | :--- | :--- | :--- |
 | `boldFont` | `ImFont*` | `nullptr` | **[Semantic]** Font used for bold emphasis (`**bold**` / `__bold__`). (Falls back to `headingFormats[3].font`.) |
 | `italicFont` | `ImFont*` | `nullptr` | **[Semantic]** Font used for true italics (`*italic*` / `_italic_`). (Falls back to `ImGuiCol_TextDisabled` if null.) |
+| `boldItalicFont` | `ImFont*` | `nullptr` | **[Semantic]** Font used for combined bold-italic (`***text***`). (Falls back to `boldFont` or `italicFont`.) |
 | `monoFont` | `ImFont*` | `nullptr` | **[Semantic]** Font used for monospace code spans (`` `code` ``) and `<mono>` / `<code>` tags. (Falls back to ambient font if null.) |
+| `regularFont` | `ImFont*` | `nullptr` | **[Semantic]** Base body font used by `<regular>` / `<sans>` tags. (Falls back to ambient font if null.) |
+| `captionFont` | `ImFont*` | `nullptr` | **[Semantic]** Optional font override for image and lightbox captions (defaults to `ImFontRole::Small` or `0.875x` scale). |
 | `h1Font` | `ImFont*` | `nullptr` | **[Semantic]** Font used for H1 headers (`# Header`). (Falls back to `headingFormats[0].font`.) |
 | `h2Font` | `ImFont*` | `nullptr` | **[Semantic]** Font used for H2 headers (`## Header`). (Falls back to `headingFormats[1].font`.) |
 | `h3Font` | `ImFont*` | `nullptr` | **[Semantic]** Font used for H3 headers (`### Header`). (Falls back to `headingFormats[2].font`.) |
 | `bulletSpacing` | `float` | `0.0f` (`4.0f` active) | Horizontal gap in pixels between the bullet circle glyph and the following text. |
+| `wrapWidth` | `float` | `0.0f` | `0.0f` = wrap at `GetContentRegionAvail().x`; `> 0.0f` = explicit wrap width; `< 0.0f` = no auto-wrap (single line per `\n`). |
+| `underlineWithUnderscores` | `bool` | `false` | When true, `__text__` renders as underline instead of bold. |
+| `tableFlags` | `ImGuiTableFlags` | `0` | Optional table flags override (`0` = default GFM styling: Borders, RowBg, SizingStretchProp, NoSavedSettings). |
+| `tableStateCallback` | `MarkdownTableStateCallback*` | `nullptr` | Optional notification callback invoked when a user sorts or resizes a GFM table. |
+| `tableTooltipCallback` | `MarkdownTableTooltipCallback*` | `nullptr` | Optional delayed-tooltip sink for interactive table controls and lightbox hints (silent if `nullptr` without `TimedTooltip`). |
 | `codeBlockCallback` | `MarkdownCodeBlockCallback*` | `nullptr` | Optional host callback to customize syntax coloring, lexing, and custom token layout for fenced code blocks. |
 | `codeBlockDescriptionCallback` | `const char* (*)(const char*, size_t, void*)` | `nullptr` | Optional host callback returning tooltip documentation for custom or recognized code block languages. |
 | `setClipboardTextFn` | `void (*)(const char*, void*)` | `nullptr` | Optional host callback to forward code block copies directly to OS-level system clipboards (e.g. macOS NSPasteboard). |
@@ -291,7 +299,7 @@ void Initialize() {
   * **Responsive Width Clamping & Soft-Wrapping:** Dynamically hugs content lines while clamping maximum container width to available window space (`avail_width`). Wrapped continuation lines flow naturally without horizontal overflow.
   * **CommonMark 4.5 Indentation Stripping:** When code blocks are nested inside list items or indented sections, leading indentation matching the opening fence is automatically stripped from code content, preventing code from being pushed awkwardly to the right.
   * **Indented Closing Fences:** Supports closing fences indented by >= 4 spaces or tabs without swallowing subsequent markdown.
-  * **Language Badge (Steve TextLink):** Renders the language identifier on the left of the header bar. Formats recognized by built-in highlighters (`lua`, `cpp`, `markdown`, `plaintext`) or host callbacks are color-branded (Lua blue, C++ cobalt, Markdown teal, Plain text slate, Custom purple); unrecognized languages are styled in muted neutral charcoal. Hovering triggers `ImGuiMouseCursor_Hand`; clicking toggles an informative persistent tooltip (e.g. `"C++ format (Syntax highlighted)"`).
+  * **Language Badge:** Renders the language identifier on the left of the header bar. Formats recognized by built-in highlighters (`lua`, `cpp`, `markdown`, `plaintext`) or host callbacks are color-branded (Lua blue, C++ cobalt, Markdown teal, Plain text slate, Custom purple); unrecognized languages are styled in muted neutral charcoal. Hovering triggers `ImGuiMouseCursor_Hand`; clicking toggles an informative persistent tooltip (e.g. `"C++ format (Syntax highlighted)"`).
   * **Animated Raw / Preview Toggle:** For `markdown` or `md` containers, renders an animated sliding toggle switch (`Raw [===O] Preview`) with smooth thumb easing, mouse-wheel scrub support, and live re-entrant formatting (including nested child code blocks). In scrollable viewports, mouse-wheel auto-defeat prevents accidental toggles while navigating long documents.
   * **One-Click Vector Clipboard Copy:** Integrated procedural vector copy button on the far right with a transient 1.5s `Copied!` visual feedback state, `ImGuiMouseCursor_Hand` hover cursor, and optional host `setClipboardTextFn` forwarding. Scoped via `ImGuiStorage` to ensure multiple code blocks in the same window maintain their feedback independently without cross-talk.
   * **Tabstop Expansion:** Universal 4-character column-aligned tabstop expansion (`tabSize = 4`).
@@ -394,22 +402,24 @@ mdConfig.userData = &myMarkdownString;
 ```
 
 #### 7. Built-in Image Services (Tiers 1, 2 & 3)
-Images in Markdown (`![alt text](url)`) are resolved automatically via ImGee's built-in 3-tier image service (`ImGui::MarkdownImageService`), bridging seamlessly to `ImgWindow` when present and requiring zero boilerplate callbacks:
+Images in Markdown (`![alt text](url)`) are resolved automatically via ImGee's built-in 3-tier image service (`ImGui::MarkdownImageService`), backed by `ImGee::HostBackend` / `ImGui::SetNamedTextureResolver` in standalone Dear ImGui apps (and bridging automatically to `ImgWindow` whenever `ImgWindow.h` is present):
 
 1. **Tier 1: In-Memory Named Textures (`texture://name` or `name`):**
-   * Pre-register memory textures (cockpit gauges, avionics icons, branding):
+   * Register a named texture resolver once at startup (standalone via `ImGui::SetNamedTextureResolver(...)` or `ImGee::HostBackend::ResolveNamedTexture`, or automatically via `ImgWindow::RegisterNamedTexture(...)` when hosted in `ImgWindow`):
      ```cpp
-     ImgWindow::RegisterNamedTexture("acme_logo", myTexId, ImVec2(64, 64));
+     ImGui::SetNamedTextureResolver([](const char* name, ImVec2* outSize) -> ImTextureID {
+         return MyTextureRegistry_Find(name, outSize);
+     });
      ```
    * Markdown references like `![Logo](texture://acme_logo)` or `![Logo](acme_logo)` resolve instantly with zero disk I/O.
 2. **Tier 2: Local Disk Images:**
    * Referenced via relative or absolute paths: `![Airplane](imgui_demo.jpg)` or `![Diagram](./Resources/diagram.png)`.
-   * Automatically searched relative to the active working directory, the X-Plane system root, and the calling plugin's directory (including `/Resources`, `/images`, and `/notes`).
-   * Decoded safely via ImGee's isolated internal `stb_image` wrapper (forcing 4-channel RGBA8 for Metal/Vulkan hardware safety with zero host symbol collisions), uploaded via `ImgWindow::CreateTexture()`, and cached in VRAM with negative caching to prevent disk thrashing.
+   * Automatically searched relative to `mdConfig.baseDir`, `ImGee::HostBackend::ResolveAssetPath`, the active working directory, and (when hosted in X-Plane/`ImgWindow`) the system root and calling plugin directory (including `/Resources`, `/images`, and `/notes`).
+   * Decoded safely via ImGee's isolated internal `stb_image` wrapper (forcing 4-channel RGBA8 for Metal/Vulkan hardware safety with zero host symbol collisions), uploaded via `ImGee::HostBackend::CreateTextureRGBA8` (or `ImgWindow::CreateTexture()` when bridged), and cached in VRAM with negative caching to prevent disk thrashing.
 3. **Tier 3: Asynchronous Remote Web Images (`http://`, `https://`):**
    * Referenced directly via web URLs: `![Badge](https://img.shields.io/badge/X--Plane-12.00+-blue.png)`.
-   * **Zero-Stall Sim Loop:** Network downloads and CPU image decompression run completely off-thread in the background, keeping the simulation loop running smoothly at 60+ FPS.
-   * **Main-Thread GPU Upload:** Decoded pixel buffers are handed off to the main render thread and uploaded via `ImgWindow::CreateTexture()` without blocking frame rendering.
+   * **Zero-Stall Sim Loop:** Network downloads and CPU image decompression run completely off-thread in the background, keeping the render loop running smoothly at 60+ FPS.
+   * **Main-Thread GPU Upload:** Decoded pixel buffers are handed off to the main render thread and uploaded via `ImGee::HostBackend::CreateTextureRGBA8` (or `ImgWindow::CreateTexture()` when bridged) without blocking frame rendering.
    * **Transient Loading State:** While in flight, the renderer displays a subtle disabled indicator (`( Loading https://... )`) which seamlessly converts to the rendered image once ready.
    * **Zero External Dependencies:** Dynamically resolves system `libcurl` on macOS/Linux and native `WinINet` on Windows without requiring any downstream plugins to modify their linker flags or `CMakeLists.txt`.
    * **Custom Fetch Overrides:** Host plugins with dedicated HTTP managers can register a custom downloader via `ImGui::MarkdownImageService::SetRemoteFetchCallback(...)`.
@@ -480,8 +490,6 @@ ImVec2 requiredSize = ImGui::MD::CalcTextSize(widgetId, 1, docString, wrapWidth,
 // Use the size to configure window bounds or child frames:
 ImGui::SetNextWindowSize(requiredSize);
 ```
-
----
 
 ---
 
@@ -670,7 +678,7 @@ Both inline angle-bracket modifiers (`![Alt](<diagram.png =68% center>)`), Pando
 * **Figure Captions:** Add `caption` / `figcaption` to display the `[alt]` text centered beneath `[img_x .. img_x + img_w]`, `caption="Figure 1: **Signal** Routing"` for custom inline-Markdown captions, or `nocaption` to suppress captions on an individual image when `mdConfig.showImageCaptions = true`.
 * **Same-Context Lightbox Overlay with Zoom & Pan:** Add `lightbox` (or `zoom` / `expand`, with `nolightbox` opt-out and `mdConfig.enableImageLightbox` global default) to enable click-to-enlarge thumbnails with a `Hand` cursor affordance and delayed instructional tooltip. Clicking opens a dimmed, aspect-fit overlay inside the **same `ImGuiContext` and clamped strictly to the host window's bounds** (zero secondary OS windows):
   * **Top-Right Hover Zoom Strip:** Hovering inside the lightbox (or whenever zoomed away from `100%`) reveals a sleek dark-glass pill strip (`[-]  [100%]  [+]  [↺]`) docked immediately to the left of `[X]` for `25%` stepping (`50%..400%`) and 1-click A/B reset/restore.
-  * **Wheel Zoom, Drag-to-Pan, & Backdrop-Only Dismiss:** Roll the mouse wheel over the enlarged image to zoom smoothly (`10%` per notch), click-and-drag (`ResizeAll` cursor) to pan zoomed artwork clipped cleanly inside the image frame, or stationary-click the image to toggle `100% <-> 200%` zoom. Only backdrop clicks outside the image/controls, `[X]`, or `Esc` close the lightbox.
+  * **Wheel Zoom, Drag-to-Pan, & Backdrop-Only Dismiss:** Roll the mouse wheel over the enlarged image to zoom smoothly (`10%` per notch), click-and-drag (`ResizeAll` cursor) to pan zoomed artwork clipped cleanly inside the image frame, or stationary-click the image to toggle `100% <-> 200%` zoom. Only backdrop clicks outside the image/controls, `[X]`, or `Esc` (when routed by the host) close the lightbox.
 
 ```markdown
 ![Figure 1: **AFDS** Mode Panel](<afds_panel.png =68% center caption lightbox>)
@@ -806,7 +814,7 @@ bool ImGui::DelayedTooltipMD(const std::string& markdown_text, float wrap_width 
 * **Rich Markdown Text on Button Faces:**
   Labels with `**bold**`, `_italic_`, `<col red>Warning</col>`, or `<code>mono</code>` render the native ImGui button frame with the multi-formatted Markdown text centered inside.
 * **Vector Icon Button Faces:**
-  If the button label includes an icon tag (`<icon caret-up />`), an emoji shortcode (`:undo: Reset`), raw Unicode (`▲##up`), or Steven's raw-fallback link macro (`#[^](ICON_CARET_UP)`), it renders the procedural vector icon directly on the button face.
+  If the button label includes an icon tag (`<icon caret-up />`), an emoji shortcode (`:undo: Reset`), raw Unicode (`▲##up`), or a raw-fallback link macro (`#[^](ICON_CARET_UP)`), it renders the procedural vector icon directly on the button face.
   * **Pure icon buttons** (e.g. `Button("<icon caret-up />##up")`) default to square geometry matching `ImGui::GetFrameHeight()`.
   * **Icon + Text buttons** (e.g. `Button(":gear: Settings")` or `Button("<icon undo color=#ff5555 /> Revert")`) auto-size to fit both the icon and text with standard inner item spacing.
   * **No font dependencies:** Never displays missing-glyph diamond boxes (`?`).

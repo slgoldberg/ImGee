@@ -33,8 +33,8 @@ Unlike standard Dear ImGui tooltips which move with the mouse and can flicker, o
   * Isolates tooltip state and wheel-selection latches per `ImGuiContext*` so multi-window applications hosting independent `ImGuiContext` instances on the same frame never interfere with one another.
   * **Foreground-Widget Hover Priority:** When a button sits on the same line as a full-width background `Selectable(..., ImGuiSelectableFlags_SpanAllColumns)`, `TimedTooltip` automatically gives tooltip priority to the earlier foreground widget on the row without requiring manual hover-suppression flags.
 * **Plain Text & Markdown Support (Order-Independent):**
-  * Native auto-wrapping plain-text via `Text(...)`, single-line non-wrapping plain-text via `TextUnformatted(...)`, rich auto-wrapping Markdown via `TextMD(...)`, and single-line non-wrapping Markdown via `TextUnformattedMD(...)`.
-  * `imgui_tooltip_ext.h` and `imgui_markdown_ext.h` can be `#include`d in **either order** and the `TextMD` / `TextUnformattedMD` bridge is synthesized automatically.
+  * Native auto-wrapping plain-text via `Text(...)`, single-line non-wrapping plain-text via `TextUnformatted(...)`, rich auto-wrapping Markdown via `TextMD(...)`, and single-line non-wrapping Markdown via `TextMDUnformatted(...)`.
+  * `imgui_tooltip_ext.h` and `imgui_markdown_ext.h` can be `#include`d in **either order** and the `TextMD` / `TextMDUnformatted` bridge is synthesized automatically.
 
 <br clear="all"/>
 
@@ -70,7 +70,7 @@ ImGui::TimedTooltip::TextMD("Locks **Frame Sync** to the master clock. *Requires
 ```
 
 > [!TIP]
-> **Forgiving Aliases:** Prefer explicit sub-namespaces? `ImGui::TimedTooltip::Markdown::Text(...)` and `ImGui::TimedTooltip::MD::Text(...)` work too! If you prefer flipping the order (`ImGui::Markdown::TimedTooltip::Text`), that works identically. Clickable links inside tooltips are supported via `TextMDLink(...)`.
+> **Forgiving Aliases:** Prefer explicit sub-namespaces? `ImGui::TimedTooltip::Markdown::Text(...)` and `ImGui::TimedTooltip::MD::Text(...)` work too! If you prefer flipping the order (`ImGui::Markdown::TimedTooltip::Text`), that works identically. For explicit click-to-toggle Markdown tooltips attached to a preceding item (such as an info label or passive status badge), use `TextMDLink(...)`.
 
 ---
 
@@ -82,7 +82,7 @@ The `TooltipConfig` (aliased as `ImGui::TimedTooltip::Config`) controls timing, 
 
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `hover_delay_cycles` | `int` | `65` | Frame cycles the mouse must hover before the tooltip appears (~1.0s at 60fps). |
+| `hover_delay_cycles` | `int` | `25` | Frame cycles the mouse must hover before the tooltip appears (~0.4s at 60fps). |
 | `max_display_cycles` | `int` | `504` | Frame cycles before the tooltip auto-dismisses. Set negative to disable auto-hide. |
 | `grace_period_cycles`| `int` | `12` | Allowable frame cycles off the widget before cancelling hover state. |
 | `size_skew_multiplier`| `float` | `0.5f` | Extra cycles added to display timeout per pixel of vertical height. |
@@ -95,7 +95,10 @@ The `TooltipConfig` (aliased as `ImGui::TimedTooltip::Config`) controls timing, 
 | `frame_padding`      | `ImVec2` | `(2.0f, 1.0f)` | Internal padding for frame elements inside the tooltip. |
 | `indent_spacing`     | `float` | `20.0f` | Standard indent spacing between nested list levels. |
 | `bullet_spacing`     | `float` | `4.0f` | **[Markdown Tooltips Only]** Gap in pixels between bullet glyph and following text when rendering rich lists via `TextMD`. (Ignored for plain-text tooltips.) |
-| `font_scale`         | `float` | `0.0f` | Window font scale multiplier (`0.0f` = automatically inherit the ambient font scale from the calling parent window; `>0.0f` = explicit scale override). |
+| `font_scale_policy`  | `TooltipFontScalePolicy` | `TooltipFontScale_Damped` | Font-zoom scaling policy: `TooltipFontScale_Damped` (default damped curve with `0.90x` floor and `1.65x` ceiling), `TooltipFontScale_FixedChrome` (strict `1.0x`), or `TooltipFontScale_LinearInherit` (`1:1` parent scale). |
+| `font_scale_multiplier` | `float` | `1.0f` | Relative multiplier applied on top of `font_scale_policy` (protected by a `0.75x` minimum legibility floor). |
+| `font_scale`         | `float` | `0.0f` | Absolute font scale override (`0.0f` = use `font_scale_policy` + `font_scale_multiplier`; `>0.0f` = bypass policy curve, clamped to `[0.75f, 2.25f]`). |
+| `font`               | `ImFont*` | `nullptr` | Optional explicit font for tooltip body text (`nullptr` resolves base UI `ImFontRole::Regular` / `io.FontDefault`). |
 | `bg_color`           | `ImVec4` | Solid yellow | Window and popup background color (`#FFF299`, 100% opaque `alpha = 1.0f`). |
 | `border_color`       | `ImVec4` | Dark yellow | Tooltip border outline color (`#CCBF66`). |
 | `text_color`         | `ImVec4` | Jet black | Tooltip text and separator color (`#000000`). |
@@ -196,12 +199,11 @@ In modern **physically linear GPU compositing** pipelines (Metal, Vulkan, Direct
 
 To ensure crisp, high-contrast dark typography without background wash-out across both gamma and linear renderers, `TooltipConfig::bg_color` defaults to **`1.0f` solid opacity** (`ImVec4(1.0f, 0.95f, 0.6f, 1.0f)`).
 
-### 2. Automatic Ambient Font Scale Inheritance & Base-Font Isolation
-When `TooltipConfig::font_scale` is left at `0.0f` (the default), the tooltip engine automatically queries and inherits the ambient window font scale of the calling widget while isolating the tooltip's base font against transient caller `PushFont(...)` scopes:
+### 2. Damped Ambient Font Scale Inheritance & Base-Font Isolation
+When `TooltipConfig::font_scale` is left at `0.0f` (the default), the tooltip engine evaluates the calling window's ambient font scale through `TooltipConfig::font_scale_policy` while isolating the tooltip's base font against transient caller `PushFont(...)` scopes:
 * **Base-Font Isolation (`TooltipConfig::font == nullptr`):** Resolves `ImGui::GetFont(ImFontRole::Regular)` via an order-independent `TimedTooltip <-> Typography` bridge (falling back to `io.FontDefault`, then `io.Fonts->Fonts[0]` when `io.FontDefault` is null) for both dry-run `perfect_size` pre-measurement and tooltip window rendering. Calling `TimedTooltip::Text` or `TextMD` inside a compact toolbar's `PushFont(...)` block keeps body text aligned with 14px inline bold, italic, and monospace spans.
-* **Custom Window Zoom:** If a child window or floating palette is zoomed to 124%, hovering a widget inside that window renders the tooltip scaled at that exact same 124% factor.
-* **Accessibility / Senior Citizen Mode:** If a global or per-window 17pt font mode is active, the tooltip inherits the enlarged scale seamlessly.
-* **Pre-Calculation Accuracy:** Both `TextProxyV` and the 2-pass Markdown size pre-calculator (`MD::CalcMarkdownSize`) measure wrap boundaries and vertical heights using the isolated base font and inherited scale factor, guaranteeing zero text clipping and zero scrollbar flutter on Frame 1.
+* **Damped Default Curve (`TooltipFontScale_Damped`):** Gently compresses zoomed-out windows down to a protective `0.90x` floor (preventing unreadable microprint) and ramps zoomed-in windows sub-linearly (`slope = 0.55`) up to a `1.65x` ceiling so tooltips stay comfortable without turning into screen-filling slabs at `250%` document zoom. Switch `font_scale_policy` (or `SetDefaultFontScalePolicy(...)`) to `TooltipFontScale_FixedChrome` for strict `1.0x` tooltips or `TooltipFontScale_LinearInherit` for `1:1` parent coupling.
+* **Pre-Calculation Accuracy:** Both `TextProxyV` and the 2-pass Markdown size pre-calculator (`MD::CalcMarkdownSize`) measure wrap boundaries and vertical heights using the isolated base font and effective scale factor, guaranteeing zero text clipping and zero scrollbar flutter on Frame 1.
 
 ---
 
@@ -215,8 +217,8 @@ namespace ImGui {
         bool Text(const TooltipConfig* config, const char* fmt, ...);
         bool Text(const std::string& text, const TooltipConfig* config = nullptr);
 
-        // Single-line / Non-Wrapping Plain Text (mirrors ImGui::TextUnformatted):
-        bool TextUnformatted(const char* text, const char* text_end = nullptr, const TooltipConfig* config = nullptr);
+        // Single-line / Non-Wrapping Plain Text (never wraps unless '\n' is present):
+        bool TextUnformatted(const char* text, const TooltipConfig* config = nullptr);
         bool TextUnformatted(const std::string& text, const TooltipConfig* config = nullptr);
 
         // High-level Plain Text Proxy (explicit ID and hover state):
@@ -225,16 +227,20 @@ namespace ImGui {
         bool TextProxy(ImGuiID id, bool is_hovered, const std::string& text, const TooltipConfig* config = nullptr);
         bool TextProxy(const char* str_id, bool is_hovered, const char* fmt, ...);
         bool TextProxy(const char* str_id, bool is_hovered, const std::string& text, const TooltipConfig* config = nullptr);
-        bool TextUnformattedProxy(ImGuiID id, bool is_hovered, const char* text, const char* text_end = nullptr, const TooltipConfig* config = nullptr);
 
         // High-level Markdown (requires imgui_markdown_ext.h in either include order; returns true when displayed):
         bool TextMD(const char* fmt, ...);
         bool TextMD(const TooltipConfig* config, const char* fmt, ...);
         bool TextMD(const std::string& markdown_text, const TooltipConfig* config = nullptr);
 
-        // Single-line / Non-Wrapping Markdown (never wraps unless \n or PushTextWrapPos is active):
-        bool TextUnformattedMD(const char* text, const char* text_end = nullptr, const TooltipConfig* config = nullptr);
-        bool TextUnformattedMD(const std::string& markdown_text, const TooltipConfig* config = nullptr);
+        // Explicit Click-to-Toggle Markdown Tooltip Chaser (attaches toggle-on-click to preceding item):
+        bool TextMDLink(const char* fmt, ...);
+        bool TextMDLink(const TooltipConfig* config, const char* fmt, ...);
+        bool TextMDLink(const std::string& markdown_text, const TooltipConfig* config = nullptr);
+
+        // Single-line / Non-Wrapping Markdown (never auto-wraps; single line per '\n'):
+        bool TextMDUnformatted(const char* markdown_text, const TooltipConfig* config = nullptr);
+        bool TextMDUnformatted(const std::string& markdown_text, const TooltipConfig* config = nullptr);
 
         // High-level Markdown Proxy (explicit ID and hover state):
         bool TextMDProxy(ImGuiID id, bool is_hovered, const char* fmt, ...);
@@ -242,7 +248,6 @@ namespace ImGui {
         bool TextMDProxy(const char* str_id, bool is_hovered, const char* fmt, ...);
         bool TextMDProxy(ImGuiID id, bool is_hovered, const std::string& markdown_text, const TooltipConfig* config = nullptr);
         bool TextMDProxy(const char* str_id, bool is_hovered, const std::string& markdown_text, const TooltipConfig* config = nullptr);
-        bool TextUnformattedMDProxy(ImGuiID id, bool is_hovered, const char* text, const char* text_end = nullptr, const TooltipConfig* config = nullptr);
 
         // Explicitly opt the preceding widget into click-to-toggle tooltip behavior for the current frame:
         void ToggleOnClick(bool enable = true);

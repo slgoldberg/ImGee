@@ -3,7 +3,7 @@
 
 **ImGee** turns stock [Dear ImGui](https://github.com/ocornut/imgui) from a game-debugger overlay into a tactile, ergonomic immediate-mode UI system for desktop applications, studio and audio/CAD tools, game engines, developer utilities, and simulators in **a single header `#include`** -- with zero `.cpp` files to compile and zero CMake changes.
 
-Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the mouse scroll-wheel, leaves interactive buttons on a dead `Arrow` cursor, and renders missing-glyph `?` boxes for Unicode symbols, **ImGee** gives you polite stationary `TimedTooltip`s, mouse-wheel sliders/combos/pulldowns with 1-click Reset-with-Undo (`↺`/`↻`), 270° rotary dimmer knobs, animated toggle switches, CommonMark + sortable GFM tables, text-wrapping image floats with interactive zoom/pan lightboxes, a turnkey `DocumentViewer`, semantic typography (`ImFontRole` & `StyledText`), curated color themes (`Charcoal`, `Rusty`), and a zero-font procedural vector icon engine.
+Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the mouse scroll-wheel, leaves interactive buttons on a dead `Arrow` cursor, and renders missing-glyph `?` boxes for Unicode symbols, **ImGee** gives you polite stationary `TimedTooltip`s, mouse-wheel sliders/combos/pulldowns with 1-click Reset-with-Undo (`↺`/`↻`), 270° rotary dimmer knobs, animated toggle switches, CommonMark + sortable GFM tables, text-wrapping image floats with interactive zoom/pan lightboxes, a turnkey `DocumentViewer`, semantic typography (`ImFontRole` & `StyledText`), curated color themes (`Charcoal`, `Rusty`, `Paper Light`), and a zero-font procedural vector icon engine.
 
 ![ImGee in Action: Standalone DocumentViewer combining 1.0x header toolbars, section-jump pulldown with 1-click scroll reset, opacity and theme controls, right-floated schematic, and GFM callouts](docs/images/fig_doc_viewer.png)
 
@@ -30,7 +30,7 @@ ImGee is divided into two complementary architectural categories plus curated co
 ImGee/
 ├── extensions/          # Stateful subsystems (TimedTooltip, Markdown, Typography, Viewport, DocViewer)
 ├── widgets/             # Immediate-mode UI controls + procedural vector icons (.h only)
-└── themes/              # Curated color palettes (Charcoal, Rusty)
+└── themes/              # Curated color palettes (Charcoal, Rusty, Paper Light)
 ```
 
 ### 1. Flagship Extensions (`extensions/`)
@@ -82,7 +82,8 @@ In official Dear ImGui extensions and ecosystem projects (such as `implot`, `img
 Heavyweight subsystems encapsulate their APIs cleanly inside second-level sub-namespaces under `ImGui`:
 * `ImGui::TimedTooltip::`
 * `ImGui::Markdown::` (with official shorthand alias `ImGui::MD::`)
-* `ImGui::Typography::`
+
+*(Lightweight typography helpers such as `ImGui::ImFontRole`, `ImGui::SetFontRole`, `ImGui::ScopedFontRole`, and `ImGui::StyledText` live directly in `ImGui::` alongside standard text APIs.)*
 
 ```cpp
 ImGui::TimedTooltip::Text("Hover-delayed stationary tooltip.");
@@ -195,7 +196,7 @@ ImGee/
 └── themes/                           # Curated Color Palettes
     ├── README.md                     # Theme Palettes Overview
     ├── includes.h                    # Themes Roll-Up Header
-    └── imgui_styles.h                # StyleColorsCharcoal(), StyleColorsRusty(), ApplyDefaultTheme()
+    └── imgui_styles.h                # StyleColorsCharcoal(), StyleColorsRusty(), StyleColorsPaperLight(), ApplyDefaultTheme()
 ```
 
 ---

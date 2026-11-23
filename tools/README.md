@@ -2,18 +2,18 @@
 
 This directory contains developer tooling and build scripts for the ImGee suite:
 
-* **`generate_manual.py`**: Automated PDF manual generator built on Python and ReportLab. It compiles Markdown documents across `docs/`, `extensions/`, `widgets/`, and `themes/` into publication-grade reference manuals with table of contents, running headers and footers, syntax-highlighted code blocks, and 2x Retina screenshots with floating thumbnail layout parity.
-* **`render_gallery.cpp`**: Standalone headless renderer for macOS. It creates an offscreen OpenGL context via CGL and renders all 18 ImGee showcase scenes directly into 2x Retina PNG screenshots (`docs/images/fig_*.png`) in sub-second execution time with zero display windows.
+* **`generate_manual.py`**: Automated PDF manual generator built on Python, ReportLab, and Pillow. It compiles Markdown documents across `docs/`, `extensions/`, `widgets/`, and `themes/` into publication-grade reference manuals with table of contents, running headers and footers, syntax-highlighted code blocks, and 2x Retina screenshots -- automatically preferring `docs/images/light/fig_*.png` light-theme specimen cards on white PDF pages when available (falling back to `docs/images/fig_*.png`).
+* **`render_gallery.cpp`**: Standalone headless renderer for macOS. It creates an offscreen OpenGL context via CGL and renders all 18 ImGee showcase scenes into 2x Retina RGBA PNGs with 4px tight transparent margins for both Dark Studio (`docs/images/fig_*.png`) and Paper Light (`docs/images/light/fig_*.png`) palettes with zero display windows.
 * **`fonts/`**: Vendored SIL Open Font License (OFL) monospace typefaces (`RobotoMono-Medium.ttf`, `RobotoMono-Bold.ttf`) used by `generate_manual.py` for code block rendering and typography.
 
 ---
 
 ## 1. Generating Documentation PDFs
 
-The manual generator requires Python 3 with ReportLab:
+The manual generator requires Python 3 with ReportLab and Pillow:
 
 ```bash
-pip install reportlab
+pip install reportlab pillow
 ```
 
 ### Build All Manuals
@@ -54,8 +54,12 @@ cmake --build . --config Release
 
 ### Running the Generator
 ```bash
-# Render all 18 showcase figures into docs/images/
-./render_gallery
+# Render all 18 showcase figures for both Dark Studio (docs/images/) and Paper Light (docs/images/light/):
+./render_gallery --theme all   # (default)
+
+# Or render a single palette pass:
+./render_gallery --theme dark
+./render_gallery --theme light
 ```
 
-Output figures are saved directly to `docs/images/fig_*.png`.
+Dark figures are saved to `docs/images/fig_*.png` and Paper Light specimen cards are saved to `docs/images/light/fig_*.png` (picked up automatically by `generate_manual.py` for white-page PDF manuals).

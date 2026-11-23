@@ -83,6 +83,8 @@ namespace ImGui {
     void EndZoomedViewport();
 
     // Compact [-][100%][+] toolbar cluster rendered at 1.0x:
+    // - [-] and [+] enable ImGui ButtonRepeat while held down
+    // - [ 100% ] clicks toggle default_zoom <-> last_zoom (A/B undo) and supports mouse-wheel zoom on hover
     bool ZoomViewportControls(ZoomableViewportState& state, const char* id_suffix = "##imgee_zoom_ctrl");
 }
 ```

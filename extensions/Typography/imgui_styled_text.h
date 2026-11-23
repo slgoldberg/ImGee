@@ -596,7 +596,7 @@ namespace ImGui {
                     std::string closeTag = "</pill>";
                     const char* closePos = std::strstr(tag_end, closeTag.c_str());
                     if (closePos && closePos < text_end) {
-                        std::string innerText(tag_end, closePos - tag_end);
+                        std::string innerText(tag_end, static_cast<size_t>(closePos - tag_end));
                         if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
 #if defined(IMGUI_STYLED_TEXT_HAS_BADGES)
                         if (isMono) ImGui::PushFontRole(ImFontRole::Monospace);
@@ -671,7 +671,7 @@ namespace ImGui {
                     std::string closeTag = "</badge>";
                     const char* closePos = std::strstr(tag_end, closeTag.c_str());
                     if (closePos && closePos < text_end) {
-                        std::string innerText(tag_end, closePos - tag_end);
+                        std::string innerText(tag_end, static_cast<size_t>(closePos - tag_end));
                         if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
 #if defined(IMGUI_STYLED_TEXT_HAS_BADGES)
                         if (isMono) ImGui::PushFontRole(ImFontRole::Monospace);
@@ -696,7 +696,7 @@ namespace ImGui {
                 std::string closeTag = (tagName == "kbd") ? "</kbd>" : "</key>";
                 const char* closePos = std::strstr(tag_end, closeTag.c_str());
                 if (closePos && closePos < text_end) {
-                    std::string innerText(tag_end, closePos - tag_end);
+                    std::string innerText(tag_end, static_cast<size_t>(closePos - tag_end));
                     if (needSameLine) ImGui::SameLine(0.0f, 0.0f);
 #if defined(IMGUI_STYLED_TEXT_HAS_BADGES)
                     ImGui::PushFontRole(ImFontRole::Monospace);
@@ -790,7 +790,7 @@ namespace ImGui {
                     std::string closeTag = "</icon>";
                     const char* closePos = std::strstr(tag_end, closeTag.c_str());
                     if (closePos && closePos < text_end) {
-                        std::string inner(tag_end, closePos - tag_end);
+                        std::string inner(tag_end, static_cast<size_t>(closePos - tag_end));
                         if (iconName.empty()) iconName = NormalizeIconName(inner.c_str());
                         if (!iconName.empty()) {
                             if (needSameLine) ImGui::SameLine(0.0f, 0.0f);

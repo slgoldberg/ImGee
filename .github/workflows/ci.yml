@@ -82,7 +82,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends g++-mingw-w64-x86-64-win32 binutils-mingw-w64-x86-64
 
-      - name: Verify every header compiles standalone (-Wall -Wextra -Werror)
+      - name: Verify every header compiles standalone (-Wall -Wextra -Wsign-conversion -Werror)
         if: matrix.toolchain != 'msvc'
         shell: bash
         run: |
@@ -131,16 +131,16 @@ jobs:
 
           for hdr in "${HEADERS[@]}"; do
             echo "[Standalone Header Check] $CXX_BIN -> $hdr"
-            printf '#include "%s"\n' "$hdr" | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Werror \
+            printf '#include "%s"\n' "$hdr" | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Wsign-conversion -Werror \
               -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -I. -isystem "$IMGUI_ABS" -x c++ -
           done
 
           echo "[Standalone Opt-Out Check] $CXX_BIN -> extensions/Markdown/imgui_markdown_ext.h (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS)"
-          printf '#include "extensions/Markdown/imgui_markdown_ext.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Werror \
+          printf '#include "extensions/Markdown/imgui_markdown_ext.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Wsign-conversion -Werror \
             -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -I. -isystem "$IMGUI_ABS" -x c++ -
 
           echo "[Standalone Opt-Out Check] $CXX_BIN -> extensions/DocViewer/imgui_doc_viewer.h (-DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES)"
-          printf '#include "extensions/DocViewer/imgui_doc_viewer.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Werror \
+          printf '#include "extensions/DocViewer/imgui_doc_viewer.h"\n' | "$CXX_BIN" -std=c++17 -fsyntax-only -Wall -Wextra -Wsign-conversion -Werror \
             -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS -DIMGEE_DISABLE_WIDGETS -DIMGEE_DISABLE_ICONS -DIMGEE_DISABLE_THEMES -I. -isystem "$IMGUI_ABS" -x c++ -
 
       - name: Configure CMake test suite (Native GCC / Clang / MSVC)

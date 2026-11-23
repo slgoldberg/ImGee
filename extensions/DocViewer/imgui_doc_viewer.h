@@ -1565,14 +1565,22 @@ inline bool DocumentViewer(
                     "Rusty (Bronze)",
                     "ImGui Dark",
                     "ImGui Classic",
+#if defined(IMGUI_STYLES_H) && !defined(IMGEE_DISABLE_THEMES) && !defined(CONTRIB_DISABLE_THEMES)
+                    "Paper Light"
+#else
                     "ImGui Light"
+#endif
                 };
                 static const char* const kThemeTips[DocumentViewerTheme_COUNT] = {
                     "**Charcoal (Default)**\nSleek modern slate and graphite studio palette.",
                     "**Rusty (Bronze)**\nWarm low-glare bronze and terracotta palette.",
                     "**ImGui Dark**\nStock Dear ImGui dark color scheme.",
                     "**ImGui Classic**\nClassic Dear ImGui indigo color scheme.",
+#if defined(IMGUI_STYLES_H) && !defined(IMGEE_DISABLE_THEMES) && !defined(CONTRIB_DISABLE_THEMES)
+                    "**Paper Light**\nClean, high-contrast publication light color scheme."
+#else
                     "**ImGui Light**\nHigh-contrast daytime light color scheme."
+#endif
                 };
 
                 ImGui::AlignTextToFramePadding();

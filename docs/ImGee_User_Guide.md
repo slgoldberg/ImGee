@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.1.0)
+## Comprehensive Developer & User Manual (v1.1.1)
 
 ---
 
@@ -16,7 +16,7 @@ Stock `Dear ImGui` is a brilliant immediate-mode canvas engineered primarily for
 
 * **Polite Stationary `TimedTooltip`s:** Dwell-verified, stationary sticky-note tooltips with viewport clamping, scroll dismissal, damped zoom scaling, and full Markdown formatting.
 * **Tactile Immediate-Mode UI Controls:** Mouse-wheel sliders, combos, and directional `SelectPulldown`s with "Lens UI" tooltip latching, 1-click Reset-with-Undo (`↺` / `↻`), 270° rotary dimmer knobs with `OFF` detents, animated toggle switches, non-blocking file dialogs, and active OS cursor affordances (`Hand`, `ResizeNS`, `ResizeEW`).
-* **Rich Markdown, GFM Tables & Semantic Typography:** Interactive CommonMark with sortable/resizable GFM tables, async 3-tier image loading (memory, disk, and off-thread HTTP/HTTPS) with text-wrapping floats and zoom/pan lightboxes, a turnkey `DocumentViewer`, `ImFontRole` semantic typography, baseline-aligned `StyledText`, status `<pill>` / `<badge>` / `<kbd>` capsules, curated color themes (`Charcoal`, `Rusty`), and a zero-font procedural vector icon engine.
+* **Rich Markdown, GFM Tables & Semantic Typography:** Interactive CommonMark with sortable/resizable GFM tables, async 3-tier image loading (memory, disk, and off-thread HTTP/HTTPS) with text-wrapping floats and zoom/pan lightboxes, a turnkey `DocumentViewer`, `ImFontRole` semantic typography, baseline-aligned `StyledText`, status `<pill>` / `<badge>` / `<kbd>` capsules, curated color themes (`Charcoal`, `Rusty`, `Paper Light`), and a zero-font procedural vector icon engine.
 
 ### Ecosystem Relationship: Standalone `ImGee` & Turnkey `ImgWindow` Integration
 * **`ImGee`** ([`slgoldberg/ImGee`](https://github.com/slgoldberg/ImGee)) is a **100% generic, standalone Dear ImGui UI toolkit** (`v1.84` through `v1.92+`), living in its own dedicated GitHub repository alongside Lua's **LuiGee** and potential future language bindings. Born in high-workload studio and flight-simulation environments, nothing in ImGee's core requires X-Plane or any specific windowing backend.
@@ -38,7 +38,7 @@ ImGee/
 ├── docs/                          # ImGee User Guide & UX Design Manifesto (MD + PDF)
 ├── extensions/                    # Flagship Subsystems (TimedTooltip, Markdown, Typography, Viewport, DocViewer)
 ├── widgets/                       # Immediate-Mode UI Controls, File Dialogs & Vector Icons
-└── themes/                        # Curated Color Palettes (Charcoal, Rusty)
+└── themes/                        # Curated Color Palettes (Charcoal, Rusty, Paper Light)
 ```
 
 ---
@@ -81,10 +81,11 @@ In official Dear ImGui extensions and ecosystem projects (such as `implot`, `img
 * **Zero Cognitive Overhead:** Developers are not forced to memorize artificial root namespaces (such as `extgui::` or `imgee::`) or manage scattered `using namespace` directives.
 
 ### 3.2 Second-Level Sub-Namespaces for Subsystems
-While extending `namespace ImGui` is essential, placing heavy packages directly into the root risks colliding with future Dear ImGui core functions. ImGee cleanly encapsulates its extensions within **second-level sub-namespaces**:
+While extending `namespace ImGui` is essential, placing heavy packages directly into the root risks colliding with future Dear ImGui core functions. ImGee cleanly encapsulates its multi-function subsystems within **second-level sub-namespaces**:
 * `ImGui::TimedTooltip::`
 * `ImGui::Markdown::` (with official shorthand alias `ImGui::MD::`)
-* `ImGui::Typography::`
+
+*(Typography helpers such as `ImGui::ImFontRole`, `ImGui::SetFontRole`, `ImGui::ScopedFontRole`, and `ImGui::StyledText` live directly in `ImGui::` alongside standard text APIs.)*
 
 Sub-namespaces allow extensions to reuse Dear ImGui's standard vocabulary without ambiguity:
 ```cpp
@@ -208,7 +209,7 @@ To guide developers through the suite, this manual is structured into dedicated,
   * **[Directional Popups & SelectPulldown](#107-directional-popups-item-anchoring--selectpulldown-imgui_popup_menush)**: Directional blossoming popups, headroom queries, and 1-line selectors with Lens UI.
   * **[Clickable Links & Copy Buttons](#108-clickable-links-cursor-affordances--copy-buttons-imgui_clickable_linksh--imgui_copy_buttonh)**: Active `Hand` cursor wrappers, click-to-toggle tooltips, and anti-twitch clipboard buttons.
   * **[Non-Blocking File Dialogs & Pickers](#109-non-blocking-file-dialogs--toolbar-pickers-imgui_file_dialogh)**: Non-blocking `OpenFileDialog`, `SaveFileDialog`, and inline `FilePickerCombo`.
-  * **[Curated Color Themes](#1010-curated-color-themes-themesimgui_stylesh)**: Turnkey `Charcoal` and `Rusty` palettes replacing Dear ImGui's stock neon blue.
+  * **[Curated Color Themes](#1010-curated-color-themes-themesimgui_stylesh)**: Turnkey `Charcoal`, `Rusty`, and `Paper Light` palettes replacing Dear ImGui's stock neon blue.
 * **Part III: Reference & Standards**
   * **[Appendix A: Preprocessor Opt-Out Configuration](#appendix-a-preprocessor-opt-out-configuration--build-matrix)**: Granular `IMGEE_DISABLE_*` switches for binary size and symbol isolation.
   * **Companion Standard: [The ImGee UX Design Manifesto](ImGee_UX_Design_Manifesto.md)** (`ImGee_UX_Design_Manifesto.pdf`): Canonical human factors and interaction engineering tenets.
@@ -260,8 +261,8 @@ The **Autopilot Flight Director System** (AFDS) manages aircraft trajectory.
 ### Status Annunciations
 | Mode | Status | Armed | Minimum Speed |
 | :--- | :---: | :---: | :--- |
-| **LNAV** | <badge-success>ENGAGED</badge-success> | Yes | `V2 + 15` |
-| **VNAV** | <badge-warning>ARMED</badge-warning> | Yes | `250 KTS` |
+| **LNAV** | <badge=success>ENGAGED</badge> | Yes | `V2 + 15` |
+| **VNAV** | <badge=warning>ARMED</badge> | Yes | `250 KTS` |
 | **ILS** | <badge>STANDBY</badge> | No | `VREF + 5` |
 
 > [!NOTE]
@@ -413,7 +414,7 @@ When your desktop application, studio tool, or plugin includes a user manual, re
 
 ![Standalone Markdown DocumentViewer: Two-row 1.0x header chrome, section-jump pulldown with 1-click scroll reset, opacity and theme controls, and zoomed Markdown body](images/fig_doc_viewer.png)
 
-* **Two-Row `1.0x` Header Chrome:** Keeps the responsive title, repeating `[-]` / `[+]` zoom steppers, mouse-wheel `Zoom` slider (`50%..250%`), 1-click A/B zoom reset/undo (`↺` / `↻`), Table-of-Contents `SelectPulldown` with 1-click scroll-to-top / return-to-reading-spot (`↺` / `↻`), zero-shift `Opacity:` + `Transparent` controls, and 5-preset `Theme:` picker (`Charcoal (Default)`, `Rusty (Bronze)`, `ImGui Dark`, `ImGui Classic`, `ImGui Light`) crisp at `1.0x` scale while zooming document prose independently.
+* **Two-Row `1.0x` Header Chrome:** Keeps the responsive title, repeating `[-]` / `[+]` zoom steppers, mouse-wheel `Zoom` slider (`50%..250%`), 1-click A/B zoom reset/undo (`↺` / `↻`), Table-of-Contents `SelectPulldown` with 1-click scroll-to-top / return-to-reading-spot (`↺` / `↻`), zero-shift `Opacity:` + `Transparent` controls, and 5-preset `Theme:` picker (`Charcoal (Default)`, `Rusty (Bronze)`, `ImGui Dark`, `ImGui Classic`, `Paper Light`) crisp at `1.0x` scale while zooming document prose independently.
 * **Automatic Section Jump, Scroll Return, & `#heading-slug` Links:** Scans `#`, `##`, and `###` ATX headings (skipping fenced code blocks and blockquotes) into the Row 2 TOC pulldown, pairs it with a `ResetButton` (`showScrollResetButton = true`) that jumps cleanly to the top of the document and restores your exact previous `ScrollY` spot in one click, and intercepts internal `[Jump](#section-slug)` links to scroll directly to the matching section.
 * **Optional Host Window Hooks:** Exposes clean boolean flags and function-pointer callbacks in `DocumentViewerConfig` (`showFitButton`, `showCursorToggle`, `showPopOutButton`, `showVrButton`, `showCloseButton`, `showReloadButton`, `externalPdfPath`) with zero platform SDK dependencies.
 
@@ -661,9 +662,10 @@ if (ImGui::OpenFileDialog("Load Workspace Preset", &s_ShowOpen, &s_ChosenPath, "
 Stock `ImGui::StyleColorsDark()` uses a harsh 2015 electric-blue developer palette. ImGee includes refined, balanced palettes engineered for legible typography and comfortable long sessions:
 
 ```cpp
-ImGui::ApplyDefaultTheme();   // Applies Charcoal Slate (canonical ImGee default)
-ImGui::StyleColorsCharcoal(); // Understated studio graphite & cool platinum accents
-ImGui::StyleColorsRusty();    // Warm low-glare bronze / terracotta with soft ivory text
+ImGui::ApplyDefaultTheme();     // Applies Charcoal Slate (canonical ImGee default)
+ImGui::StyleColorsCharcoal();   // Understated studio graphite & cool platinum accents
+ImGui::StyleColorsRusty();      // Warm low-glare bronze / terracotta with soft ivory text
+ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 ```
 
 ![Curated Color Themes: Charcoal studio slate default and Rusty warm bronze side-by-side](images/fig_themes_comparison.png)
@@ -685,7 +687,7 @@ ImGui::StyleColorsRusty();    // Warm low-glare bronze / terracotta with soft iv
 | :--- | :--- |
 | `IMGEE_DISABLE_EXTENSIONS` | Excludes `Typography`, `Markdown`, `TimedTooltip`, `ZoomableViewport`, and `DocumentViewer`. |
 | `IMGEE_DISABLE_WIDGETS` | Excludes all immediate-mode widgets in `widgets/`. |
-| `IMGEE_DISABLE_THEMES` | Excludes `StyleColorsCharcoal` / `StyleColorsRusty` in `themes/`. |
+| `IMGEE_DISABLE_THEMES` | Excludes `StyleColorsCharcoal` / `StyleColorsRusty` / `StyleColorsPaperLight` in `themes/`. |
 | `IMGEE_DISABLE_TIMED_TOOLTIP` | Excludes stationary delayed tooltip engine. |
 | `IMGEE_DISABLE_MARKDOWN` | Excludes Markdown parser, GFM tables, and callouts. |
 | `IMGEE_DISABLE_TYPOGRAPHY` | Excludes `ImFontRole` and `ImGui::StyledText`. |
@@ -712,4 +714,4 @@ ImGui::StyleColorsRusty();    // Warm low-glare bronze / terracotta with soft iv
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.1.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.1.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

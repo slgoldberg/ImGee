@@ -16,9 +16,9 @@ The test harness is built to prove ImGee's core architectural contracts:
 | :--- | :--- |
 | **`main_smoke.cpp`** | Comprehensive functional test suite. Exercises all widgets (toggles, knobs, pulldowns, dials, spinners, pills, links, copy buttons), extensions (TimedTooltip, Markdown with floating layout and lightbox pan/zoom, Viewport, DocViewer), themes, and typography. |
 | **`tu_external_stbi_a.cpp`** / **`b.cpp`** | Verifies that ImGee's internal `stb_image` symbols do not conflict with user applications linking their own independent copy of `stb_image`. |
-| **`tu_force_relative.cpp`** | Verifies that headers compile cleanly when included via relative and non-standard search paths. |
+| **`tu_force_relative.cpp`** | Verifies `IMGEE_FILEPATHS_FORCE_RELATIVE=1`, ensuring leading `/` on Markdown image URLs is stripped and resolved strictly relative to `baseDir` / CWD rather than an absolute OS root path. |
 | **`tu_hostile_macros.cpp`** | Verifies resilience against hostile preprocessor macros defined before ImGee headers (e.g. `#define min(...)`, `#define max(...)`, `#define wrap(...)`). |
-| **`tu_no_tooltip.cpp`** | Validates that widgets, Markdown, and DocViewer degrade cleanly to standard ImGui tooltips when `IMGEE_DISABLE_TIMED_TOOLTIP` is active. |
+| **`tu_no_tooltip.cpp`** | Validates UX Rule #6 silent fallback when `IMGEE_DISABLE_TIMED_TOOLTIP` is active: interactive Markdown tables and lightbox images compile cleanly, never spawn stock instant-pop `ImGui::SetTooltip` windows (`##Tooltip_00`), and still honor custom `tableTooltipCallback` hooks. |
 | **`tu_no_typography.cpp`** | Validates Markdown and widget layout when `IMGEE_DISABLE_TYPOGRAPHY` is active. |
 | **`tu_no_widgets_icons.cpp`** | Validates that extensions function when specific widget families or vector icons are excluded. |
 | **`tu_reverse_order_knobs.cpp`** | Tests inverse include ordering between knobs, sliders, and core headers. |

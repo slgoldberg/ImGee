@@ -552,7 +552,7 @@ namespace ImGui {
         bool any_replaced = false;
         bool in_fence = false;
         char fence_char = '\0';
-        int fence_len = 0;
+        size_t fence_len = 0;
 
         size_t i = 0;
         while (i < len) {
@@ -562,7 +562,7 @@ namespace ImGui {
                 while (fscan < len && (text[fscan] == ' ' || text[fscan] == '\t' || text[fscan] == '>')) ++fscan;
                 if (fscan < len && (text[fscan] == '`' || text[fscan] == '~')) {
                     char fc = text[fscan];
-                    int fl = 0;
+                    size_t fl = 0;
                     while (fscan + fl < len && text[fscan + fl] == fc) ++fl;
                     if (fl >= 3) {
                         if (!in_fence) {
@@ -594,7 +594,7 @@ namespace ImGui {
             //    - Otherwise (inline code span like `:plane:`, `<icon ... />`, `#[^](ICON)`):
             //      PRESERVE VERBATIM! Do NOT expand shortcodes or macros inside code spans.
             if (text[i] == '`') {
-                int backtick_count = 0;
+                size_t backtick_count = 0;
                 while (i + backtick_count < len && text[i + backtick_count] == '`') {
                     ++backtick_count;
                 }
@@ -603,7 +603,7 @@ namespace ImGui {
                     size_t close_pos = std::string::npos;
                     while (k < len && text[k] != '\n' && text[k] != '\r') {
                         if (text[k] == '`') {
-                            int match_len = 0;
+                            size_t match_len = 0;
                             while (k + match_len < len && text[k + match_len] == '`') ++match_len;
                             if (match_len == backtick_count) {
                                 close_pos = k;
@@ -1728,7 +1728,7 @@ namespace ImGui {
         bool any_replaced = false;
         bool in_fence = false;
         char fence_char = '\0';
-        int fence_len = 0;
+        size_t fence_len = 0;
 
         size_t i = 0;
         while (i < len) {
@@ -1749,7 +1749,7 @@ namespace ImGui {
 
             if (lead < line_len && (lptr[lead] == '`' || lptr[lead] == '~')) {
                 char fc = lptr[lead];
-                int fl = 0;
+                size_t fl = 0;
                 while (lead + fl < line_len && lptr[lead + fl] == fc) ++fl;
                 if (fl >= 3) {
                     if (!in_fence) {

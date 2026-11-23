@@ -18,8 +18,8 @@ Unlike full Markdown documents (which enforce paragraph margins, headers, block 
    Inline badges, pills, `<kbd>` keycaps, and icons automatically compute font metrics (`Font->Ascent`, `Font->Descent`) to align their visual center with the surrounding text baseline, completely eliminating vertical text jitter.
 5. **Universal Procedural Vector Icons**:
    Full integration with `imgui_icons.h` -- supports `<icon caret-up />`, emoji shortcodes (`:gear:`), raw Unicode glyphs (`▲`, `↺`), and named memory textures.
-6. **Layout Pre-Measurement (`ImGui::CalcTextStyledSize`)**:
-   Calculates exact rendered dimensions in pixels without drawing to the screen.
+6. **Layout Pre-Measurement**:
+   For measuring wrapped multi-line rich text or Markdown blocks prior to rendering, use `ImGui::MD::CalcSize(...)` (aliased as `ImGui::MD::CalcTextSize(...)`) in `extensions/Markdown/imgui_markdown_ext.h`.
 
 ---
 
@@ -136,7 +136,7 @@ ImGui::StyledTextWrapped("Notice: Route clearance is <i>pending</i> from <color=
 | **Badges** | `<badge=primary>v1.14</badge>` | Inline rounded badge pill |
 | **Pills** | `<pill color=#2ecc71>ARMED</pill>` | Interactive status pill with background color |
 | **Keys** | `<kbd>Ctrl+C</kbd>` | 3D-styled keyboard keycap |
-| **Textures** | `<img name="my_logo" width=24 height=24 />` | In-memory texture registered via `ImGui::RegisterNamedTexture` (or `ImgWindow::RegisterMemoryImage`) |
+| **Textures** | `<img name="my_logo" width=24 height=24 />` | Named texture resolved via `ImGui::SetNamedTextureResolver` / `ImGee::HostBackend::ResolveNamedTexture` (or `ImgWindow::RegisterNamedTexture` / `RegisterMemoryImage` when hosted in `ImgWindow`) |
 | **Vector Icons**| `<icon caret-up />`, `:gear:`, `▲` | Procedural vector icon from `imgui_icons.h` |
 
 ---
@@ -165,12 +165,15 @@ ImGui::MonoText("ICAO: %s | SQUAWK: %04d", callsign, squawk);
 
 ## 4. In-Memory Image & Icon Integration
 
-The StyledText engine directly integrates with named memory textures (`ImGui::RegisterNamedTexture` / `ImGui::MarkdownImageService`, or `ImgWindow::RegisterMemoryImage` when `ImgWindow` is present) and procedural vector icons.
+The StyledText engine integrates directly with named textures (resolved via `ImGui::SetNamedTextureResolver` or `ImGee::HostBackend::ResolveNamedTexture`, and automatically bridged to `ImgWindow::RegisterNamedTexture` / `ImgWindow::RegisterMemoryImage` when `ImgWindow.h` is present) as well as procedural vector icons.
 
 ### In-Memory Textures (`<img ... />`)
 ```cpp
-// Register a pre-uploaded GPU texture by name:
-ImGui::RegisterNamedTexture("status_beacon", myBeaconTexId, ImVec2(20, 20));
+// Register a named-texture resolver callback in standalone Dear ImGui apps:
+ImGui::SetNamedTextureResolver([](const char* name, ImVec2* outSize) -> ImTextureID {
+    return MyTextureRegistry_Find(name, outSize);
+});
+// (Or set ImGee::HostBackend::ResolveNamedTexture via ImGee::SetHostBackend(...).)
 
 // 1. Render inline with text:
 ImGui::StyledText("Server: <img name='status_beacon' width=20 height=20 /> ONLINE");
@@ -198,12 +201,13 @@ ImGui::StyledText("Heading: ▲ 180° | Pitch: ▼ -2.5° | Revert: ↺");
 
 ---
 
-## 5. Pre-Measurement (`CalcTextStyledSize`)
+## 5. Pre-Measurement for Wrapped Rich Text
 
-When calculating window bounds, stationary tooltip geometry, or layout columns, compute the exact size without rendering:
+`StyledText` is an immediate-mode inline renderer without a standalone size-measurement pass. When calculating floating window bounds, stationary tooltip geometry, or wrapped column heights before drawing, use `ImGui::MD::CalcSize(...)` (aliased as `ImGui::MD::CalcTextSize(...)`) from the companion Markdown extension, which supports `<pill>`, `<badge>`, `<kbd>`, `<icon>`, and `<color>` tags:
 
 ```cpp
-ImVec2 size = ImGui::CalcTextStyledSize("Transponder: <pill color=green>ACTIVE</pill>", 300.0f);
+ImVec2 size = ImGui::MD::CalcSize(ImGui::GetID("transponder_tip"), 1,
+                                  "Transponder: <pill color=green>ACTIVE</pill>", 300.0f);
 // size.x = total rendered width in pixels
 // size.y = total rendered height in pixels
 ```

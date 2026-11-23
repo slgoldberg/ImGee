@@ -330,7 +330,8 @@ A zero-texture, zero-font procedural vector engine that submits crisp antialiase
 // 1. Inline baseline-aligned vector icons:
 ImGui::Icon("plane");
 ImGui::SameLine();
-ImGui::Icon("gear", 16.0f, &ImVec4(0.96f, 0.77f, 0.41f, 1.0f));
+const ImVec4 amber(0.96f, 0.77f, 0.41f, 1.0f);
+ImGui::Icon("gear", 16.0f, &amber);
 
 // 2. Square icon-only and icon + label push buttons (with Hand cursor & TimedTooltip):
 if (ImGui::IconButton("##zoom_in", "plus", ImVec2(0, 0), "Zoom In")) {

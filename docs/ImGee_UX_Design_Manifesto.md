@@ -2,7 +2,7 @@
 ## Ergonomics, Cognitive Affordances, and Human Factors for Simulation User Interfaces
 
 **Authors & Architecture:** Steven L. Goldberg (@slgoldberg) & the Antigravity Engineering Team  
-**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee) • **Version:** v1.1.0 (Living Standard • Nov 2026)
+**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee) • **Version:** v1.1.1 (Living Standard • Nov 2026)
 
 ---
 
@@ -194,7 +194,7 @@ In a desktop simulator cockpit, tooltips should act like a calm, polite flight i
 ```
       Stock Dear ImGui Tooltips                     ImGee TimedTooltips
    ─────────────────────────────────           ─────────────────────────────────
-   • Fires instantly on 1-pixel brush          • Dwell timeout (500 ms) verifies intent
+   • Fires instantly on 1-pixel brush          • Dwell timeout (~400 ms) verifies intent
    • Bounces dynamically with mouse            • Anchored statically to widget bounds
    • Occludes adjacent controls & targets      • Floats clearly beside the active item
    • Forces user to swat mouse away            • Auto-dismisses on timeout or clean exit
@@ -214,11 +214,11 @@ In a desktop simulator cockpit, tooltips should act like a calm, polite flight i
 
 To resolve these defects, ImGee mandates the **Stationary TimedTooltip Architecture**:
 
-* **Deliberate Dwell Verification:** Assistance is presented only after the cursor rests motionless over an element for a deliberate dwell threshold (default 500 ms). Rapid traversals across the cockpit produce complete visual tranquility.
+* **Deliberate Dwell Verification:** Assistance is presented only after the cursor rests motionless over an element for a deliberate dwell threshold (default 25 frames, ~400 ms at 60fps). Rapid traversals across the cockpit produce complete visual tranquility.
 * **Stationary Anchor Placement:** Tooltips are anchored solidly to the widget's physical bounding box (`ItemRectMin` / `ItemRectMax`). The text stays completely still, allowing the eye to read without chasing a moving target.
 * **Polite Auto-Dismissal:** After an ergonomic reading duration (e.g. 8 -- 10 seconds), the tooltip cleanly dismisses itself. The pilot does not need to swat the mouse away to clear the panel.
 * **Rich Markdown Formatting (`TimedTooltip::MD::Text`):** Tooltips are not restricted to plain text; they support formatted headers, bold labels, colorized status pills (`<pill>`), code blocks, and keyboard shortcut tags (`<kbd>`).
-* **Non-Modal Interactive Chasers (`TextMDLink`):** Allows inline documentation links and expandable detail views that remain accessible without vanishing beneath the user's cursor.
+* **Click-to-Toggle Chasers (`TimedTooltip::TextMDLink`):** Allows passive labels, badges, and help triggers to toggle a stationary Markdown tooltip ON or OFF immediately on click without waiting for the hover dwell timer.
 
 ---
 
@@ -244,7 +244,7 @@ Color and formatting are not decorative; in aviation interfaces, they are semant
   * **Capsule Tags (`<pill>`, `<badge>`, `<backdrop>`):** Define physical rounded boundaries with semantic background fills. Used for operational status (`<pill color=#2ecc71>ACTIVE</pill>`) and hardware states.
   * **Text Style Tags (`<style>`, `<col>`, `<cam>`):** Modulate typography (font, weight, color) without injecting container boxes.
   * **Template Aliases (`<tip>`, `<hotkey>`):** Provide turnkey, standardized visual stamps for operational guidance and keybindings.
-* **Font-Scale Invariance:** Window chrome, status bars, and title bars must maintain a stable 1.0x baseline scale (`SetUnscaledChrome`), ensuring operational controls and indicators remain rock-solid regardless of internal document zoom.
+* **Font-Scale Invariance:** Window chrome, status bars, and title bars must maintain a stable 1.0x baseline scale (`BeginZoomedViewport` / `EndZoomedViewport`), ensuring operational controls and indicators remain rock-solid regardless of internal document zoom.
 
 ---
 <!-- pagebreak -->
@@ -262,7 +262,7 @@ Here are the **Seven Promises** every developer must uphold:
 > *"I promise that I will never use legacy `ImGui::SetTooltip()` in my codebase again."*
 
 * **The Commitment:**  
-  I will use `ImGui::TimedTooltip::*` exclusively for all contextual guidance, or pass structured tooltip arrays directly into ImGee's turnkey controls (`SelectPulldown`, `MouseWheelCombo`, `ButtonTooltip`, `ToolbarToggleButton`).
+  I will use `ImGui::TimedTooltip::*` exclusively for all contextual guidance, or pass structured tooltip strings/arrays directly into ImGee's turnkey controls (`SelectPulldown`, `MouseWheelCombo`, `ToggleButton`, `ToggleButtons`, `ButtonMD`).
 * **Why It Matters to the User:**  
   Pilots sweep their mouse across your windows dozens of times per flight. By banishing instantaneous zero-dwell popups, you ensure your plugin never flickers in their peripheral vision or induces false warning reflexes. By anchoring tooltips statically, you ensure they can read your documentation with zero eye strain.
 

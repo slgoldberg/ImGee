@@ -2723,6 +2723,243 @@ int main(int argc, char** argv) {
             renderWideLbFrame(false);
             IMGEE_TEST_CHECK(!ImGui::IsMarkdownLightboxOpen());
         }
+
+        // 7. v1.1.0 Fix-Wave Regression Suite:
+        //    (a) KnobWithReset 1-click Reset + Undo (v_last / can_restore) & is_modified-scoped reset_tooltip
+        //    (b) StyledText literal unrecognized closing tags (</cam>) & inline color= auto-pop
+        //    (c) TimedTooltip conditional-call frame-gap reset (>1 frame gap restarts dwell timer)
+        //    (d) DocumentViewer collapsed-hyphen #slug anchor matching (-- -> -) + deferred resolution
+        //    (e) Multi-line syntax-highlighted code token wrapping (DefaultRenderCodeLine)
+        {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+            auto setS7Mouse = [&](float mx, float my, bool down) {
+                io.AddMousePosEvent(mx, my);
+                io.AddMouseButtonEvent(0, down);
+            };
+#else
+            auto setS7Mouse = [&](float mx, float my, bool down) {
+                io.MousePos = ImVec2(mx, my);
+                io.MouseDown[0] = down;
+            };
+#endif
+
+            // 7a. KnobWithReset 1-click Reset-with-Undo (v_last) + custom reset_tooltip scoped to is_modified:
+            {
+                float knobVal = 0.35f;
+                const float knobDef = 0.80f;
+                float knobLast = knobDef;
+                ImVec2 resetBtnCenter(0.0f, 0.0f);
+                ImGui::TimedTooltip::TooltipConfig s7TipCfg = ImGui::TimedTooltip::GetConfig();
+                s7TipCfg.hover_delay_cycles = 1;
+                s7TipCfg.grace_period_cycles = 0;
+                ImGui::TimedTooltip::SetDefaultTooltipConfig(&s7TipCfg);
+
+                ImGuiID capturedTipId = 0;
+                auto drawKnobFrame = [&](bool measureResetCenter) {
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(420.0f, 180.0f), ImGuiCond_Always);
+                    ImGui::Begin("KnobResetUndoRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    StackSnapshot kSnap = StackSnapshot::Capture();
+                    const ImVec2 kStart = ImGui::GetCursorScreenPos();
+                    const float frameH = ImGui::GetFrameHeight();
+                    const float kRad = ImMax(8.0f, frameH * 0.75f);
+                    const float kDiam = kRad * 2.0f;
+                    const float innerSp = ImGui::GetStyle().ItemInnerSpacing.x;
+                    (void)ImGui::KnobWithReset(
+                        "Gain##s7_knob", &knobVal, knobDef, 0.0f, 1.0f, "%.0f%%",
+                        0.0f, 0.01f, "Custom reset gain!", ImGuiKnobFlags_NoValueText, &knobLast);
+                    if (measureResetCenter) {
+                        resetBtnCenter = ImVec2(kStart.x + kDiam + innerSp + frameH * 0.5f,
+                                                kStart.y + kDiam * 0.5f);
+                    }
+                    capturedTipId = ImGui::TimedTooltip::GetActiveTooltipID();
+                    kSnap.VerifyBalanced("KnobResetUndoRegWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                };
+
+                // Measure reset button position while modified (0.35 != 0.80):
+                setS7Mouse(2.0f, 2.0f, false);
+                drawKnobFrame(true);
+
+                // Hover reset button while modified -> custom reset_tooltip activates:
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, false);
+                drawKnobFrame(false);
+                drawKnobFrame(false);
+                drawKnobFrame(false);
+                const ImGuiID modTipId = capturedTipId;
+                IMGEE_TEST_CHECK(modTipId != 0);
+                const ImGuiID modTextHash = ImGui::TimedTooltip::GetTooltipStateMap()[modTipId].last_text_hash;
+
+                // Click 1: Reset modified 0.35f -> default 0.80f (saves 0.35f into knobLast):
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, true);
+                drawKnobFrame(false);
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, false);
+                drawKnobFrame(false);
+                IMGEE_TEST_CHECK(std::fabs(knobVal - knobDef) < 0.001f);
+                IMGEE_TEST_CHECK(std::fabs(knobLast - 0.35f) < 0.001f);
+
+                // Hover reset button while at default with undo available -> tooltip MUST switch off custom reset_tooltip:
+                setS7Mouse(2.0f, 2.0f, false);
+                drawKnobFrame(false);
+                drawKnobFrame(false);
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, false);
+                drawKnobFrame(false);
+                drawKnobFrame(false);
+                drawKnobFrame(false);
+                const ImGuiID undoTipId = capturedTipId;
+                IMGEE_TEST_CHECK(undoTipId != 0);
+                const ImGuiID undoTextHash = ImGui::TimedTooltip::GetTooltipStateMap()[undoTipId].last_text_hash;
+                IMGEE_TEST_CHECK(undoTextHash != modTextHash);
+
+                // Click 2: 1-click Undo restores previous 0.35f from knobLast:
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, true);
+                drawKnobFrame(false);
+                setS7Mouse(resetBtnCenter.x, resetBtnCenter.y, false);
+                drawKnobFrame(false);
+                IMGEE_TEST_CHECK(std::fabs(knobVal - 0.35f) < 0.001f);
+
+                ImGui::TimedTooltip::SetDefaultTooltipConfig(nullptr);
+                ImGui::TimedTooltip::ClearActiveTooltip();
+                setS7Mouse(2.0f, 2.0f, false);
+            }
+
+            // 7b. StyledText unrecognized closing tags (</cam>) rendered literally + inline color= auto-pop:
+            {
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(520.0f, 220.0f), ImGuiCond_Always);
+                ImGui::Begin("StyledTextRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                StackSnapshot stSnap = StackSnapshot::Capture();
+                ImDrawList* stDl = ImGui::GetWindowDrawList();
+
+                const int vBase0 = stDl->VtxBuffer.Size;
+                ImGui::StyledText("Prefix  Suffix");
+                const int vBaseDelta = stDl->VtxBuffer.Size - vBase0;
+
+                const int vTag0 = stDl->VtxBuffer.Size;
+                ImGui::StyledText("Prefix </cam> Suffix");
+                const int vTagDelta = stDl->VtxBuffer.Size - vTag0;
+                IMGEE_TEST_CHECK(vTagDelta > vBaseDelta);
+
+                // Inline color= attribute on opening formatting tags must auto-pop on closing tag without leaking color stack:
+                ImGui::StyledText("<b color=#ff8800>Bold Orange</b> <mono color=#40c0ff>Mono Cyan</mono> <i color=green>Italic Green</i>");
+
+                stSnap.VerifyBalanced("StyledTextRegWin");
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            }
+
+            // 7c. TimedTooltip conditional-call frame-gap reset (>1 frame gap restarts dwell timer):
+            {
+                ImGui::TimedTooltip::TooltipConfig gapCfg = ImGui::TimedTooltip::GetConfig();
+                gapCfg.hover_delay_cycles = 5;
+                ImGui::TimedTooltip::ClearActiveTooltip();
+                ImGuiID condTipId = 0;
+
+                auto runCondFrame = [&](bool callTip, bool& outShown) {
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                    ImGui::Begin("CondTipGapWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    condTipId = ImGui::GetID("##s7_cond_tip");
+                    outShown = false;
+                    if (callTip) {
+                        outShown = ImGui::TimedTooltip::TextProxy(condTipId, true, &gapCfg, "Conditional frame-gap tip");
+                    }
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                };
+
+                bool shown = false;
+                setS7Mouse(60.0f, 60.0f, false);
+                // Hover for 4 frames (just under hover_delay_cycles = 5):
+                for (int f = 0; f < 4; ++f) {
+                    runCondFrame(true, shown);
+                    IMGEE_TEST_CHECK(!shown);
+                }
+                // Skip calling TextProxy for 2 frames (frame gap > 1):
+                runCondFrame(false, shown);
+                runCondFrame(false, shown);
+
+                // Re-entering on frame 1..4 MUST NOT instant-pop (timer reset by frame gap!):
+                for (int f = 0; f < 4; ++f) {
+                    runCondFrame(true, shown);
+                    IMGEE_TEST_CHECK(!shown);
+                }
+                // Frame 5 of continuous hover shows cleanly:
+                runCondFrame(true, shown);
+                IMGEE_TEST_CHECK(shown);
+                ImGui::TimedTooltip::ClearActiveTooltip();
+                setS7Mouse(2.0f, 2.0f, false);
+            }
+
+            // 7d. DocumentViewer collapsed-hyphen #slug anchor matching (-- -> -) + deferred resolution:
+            {
+                std::string hyphenDoc = "# 1. Overview\n\n";
+                for (int p = 0; p < 12; ++p) hyphenDoc += "Overview filler paragraph line for scrollable document height.\n\n";
+                hyphenDoc += "## 2. Climb & Cruise\n\n";
+                for (int p = 0; p < 12; ++p) hyphenDoc += "Climb and cruise performance filler paragraph line.\n\n";
+                hyphenDoc += "## 3. Missed Approach -- Holding\n\n";
+                for (int p = 0; p < 12; ++p) hyphenDoc += "Holding pattern notes and missed approach procedure details.\n\n";
+
+                ImGui::DocumentViewerState dvHyphenState;
+                ImGui::DocumentViewerConfig dvHyphenCfg;
+                dvHyphenCfg.title = "Slug Test";
+
+                // Deferred single-hyphen jump before TOC is even parsed:
+                IMGEE_TEST_CHECK(ImGui::JumpToDocumentAnchor(dvHyphenState, "#3-missed-approach-holding"));
+                for (int f = 0; f < 2; ++f) {
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(640.0f, 260.0f), ImGuiCond_Always);
+                    ImGui::Begin("DocViewerSlugRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                    StackSnapshot dvSnap = StackSnapshot::Capture();
+                    (void)ImGui::DocumentViewer("##s7_slug_dv", hyphenDoc, dvHyphenState, &dvHyphenCfg);
+                    dvSnap.VerifyBalanced("DocViewerSlugRegWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+
+                IMGEE_TEST_CHECK(dvHyphenState.toc.size() == 3);
+                IMGEE_TEST_CHECK(dvHyphenState.toc[1].slug == "2-climb--cruise");
+                IMGEE_TEST_CHECK(dvHyphenState.toc[2].slug == "3-missed-approach----holding");
+                IMGEE_TEST_CHECK(dvHyphenState.last_scroll_y > 100.0f);
+                IMGEE_TEST_CHECK(dvHyphenState.active_toc_index == 2);
+
+                // Immediate single-hyphen jump after TOC is populated:
+                IMGEE_TEST_CHECK(ImGui::JumpToDocumentAnchor(dvHyphenState, "#2-climb-cruise"));
+                IMGEE_TEST_CHECK(dvHyphenState.active_toc_index == 1);
+                IMGEE_TEST_CHECK(dvHyphenState.pending_scroll_toc_index == 1);
+            }
+
+            // 7e. Multi-line syntax-highlighted code token wrapping (DefaultRenderCodeLine):
+            {
+                const std::string longCodeMd =
+                    "```cpp\n"
+                    "const char* kLongLiteral = \"This is a deliberately very long C++ string token that must wrap cleanly across multiple visual lines inside a narrow viewport\"; int trailingToken = 42; // and a long trailing comment explaining multi-line syntax highlighting wrap continuity\n"
+                    "```\n";
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(240.0f, 360.0f), ImGuiCond_Always);
+                ImGui::Begin("CodeWrapRegWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                StackSnapshot cwSnap = StackSnapshot::Capture();
+                const float yBefore = ImGui::GetCursorScreenPos().y;
+                const float lineH = ImGui::GetTextLineHeight();
+                ImGui::MD::TextWrapped(longCodeMd);
+                const float yAfter = ImGui::GetCursorScreenPos().y;
+                IMGEE_TEST_CHECK((yAfter - yBefore) > lineH * 4.0f);
+                cwSnap.VerifyBalanced("CodeWrapRegWin");
+                ImGui::End();
+                ImGui::Render();
+                CompleteHeadlessRenderTextures();
+            }
+        }
     }
 
     // Verify ImGee::Shutdown() purges all 4 cached GPU textures via HostBackend::DeleteTexture

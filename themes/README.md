@@ -15,6 +15,8 @@
    * ImGee's canonical default palette. Pairs deep graphite window surfaces with cool platinum/slate interactive frames, subtle 1px borders, and calm steel-blue active highlights so colored status `<badge>`s, `<pill>`s, and GFM callouts stand out cleanly without clashing against neon window chrome.
 2. **Rusty Warm Bronze (`ImGui::StyleColorsRusty`):**
    * Warm bronze, espresso, and terracotta tones with soft ivory text -- designed for dark-room grading suites, evening coding, and low-glare instrument workflows where cool blue light feels harsh against a dark display.
+3. **Paper Light (`ImGui::StyleColorsPaperLight`):**
+   * Crisp, high-contrast publication light palette with warm paper surfaces, deep slate ink typography, and balanced blue accents -- designed for daytime operations, bright-room viewing, and white-page PDF manual figures.
 
 ---
 
@@ -32,6 +34,7 @@ ImGui::ApplyDefaultTheme();
 // Or switch palettes explicitly (pass an optional ImGuiStyle* to populate a separate style struct):
 ImGui::StyleColorsCharcoal();
 ImGui::StyleColorsRusty();
+ImGui::StyleColorsPaperLight();
 ```
 
 ### Preprocessor Opt-Out

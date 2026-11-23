@@ -1454,7 +1454,7 @@ namespace ImGui
             {
                 int spaces = tab_size - ( col % tab_size );
                 if( spaces == 0 ) spaces = tab_size;
-                out.append( spaces, ' ' );
+                out.append( static_cast<size_t>( spaces ), ' ' );
                 col += spaces;
             }
             else
@@ -2180,7 +2180,7 @@ namespace ImGui
                         stripped += ( *ls == '\t' ) ? 4 : 1;
                         ++ls;
                     }
-                    stripped_preview.append( ls, le - ls );
+                    stripped_preview.append( ls, static_cast<size_t>( le - ls ) );
                     if( cp < cend && *cp == '\r' ) { stripped_preview.push_back( *cp ); ++cp; }
                     if( cp < cend && *cp == '\n' ) { stripped_preview.push_back( *cp ); ++cp; }
                 }
@@ -2341,7 +2341,7 @@ namespace ImGui
                     else tip_text = "Plain text (Unrecognized language)";
                 }
 
-                MarkdownDetail::ShowCodeBlockTooltip( (int)code_id + 3, chip_hovered, tip_text, true );
+                MarkdownDetail::ShowCodeBlockTooltip( code_id + 3u, chip_hovered, tip_text, true );
                 ImGui::PopID();
 
                 // Style colors:
@@ -2444,7 +2444,7 @@ namespace ImGui
                                     stripped += ( *ls == '\t' ) ? 4 : 1;
                                     ++ls;
                                 }
-                                clip_text.append( ls, le - ls );
+                                clip_text.append( ls, static_cast<size_t>( le - ls ) );
                                 if( cp < cend && *cp == '\r' ) { clip_text.push_back( *cp ); ++cp; }
                                 if( cp < cend && *cp == '\n' ) { clip_text.push_back( *cp ); ++cp; }
                             }
@@ -2473,7 +2473,7 @@ namespace ImGui
                         const char* copy_tip = is_markdown
                             ? "Copies raw markdown plain text to your clipboard (unformatted text)."
                             : "Copies the contents of this code block to your clipboard.";
-                        MarkdownDetail::ShowCodeBlockTooltip( (int)code_id + 2, btn_hovered, copy_tip, false );
+                        MarkdownDetail::ShowCodeBlockTooltip( code_id + 2u, btn_hovered, copy_tip, false );
                     }
                 }
                 else
@@ -2596,7 +2596,7 @@ namespace ImGui
                 }
                 bool raw_hovered = ImGui::IsItemHovered();
                 if( raw_hovered ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
-                MarkdownDetail::ShowCodeBlockTooltip( (int)code_id + 4, raw_hovered, "Switch to raw markdown text format (Unrendered plain text with markdown syntax).", false );
+                MarkdownDetail::ShowCodeBlockTooltip( code_id + 4u, raw_hovered, "Switch to raw markdown text format (Unrendered plain text with markdown syntax).", false );
 
                 // Zone 2: Switch track (middle)
                 ImVec2 track_pos( toggle_start.x + raw_sz.x + 2.0f * scale + toggle_gap, control_y + ( control_h - toggle_track_h ) * 0.5f );
@@ -2645,7 +2645,7 @@ namespace ImGui
                         }
                     }
                 }
-                MarkdownDetail::ShowCodeBlockTooltip( (int)code_id + 1, track_hovered, "Toggle between raw source markdown and rendered preview (Click or mouse wheel).", false );
+                MarkdownDetail::ShowCodeBlockTooltip( code_id + 1u, track_hovered, "Toggle between raw source markdown and rendered preview (Click or mouse wheel).", false );
 
                 // Zone 3: Preview text button
                 ImVec2 prev_pos( track_pos.x + toggle_track_w + toggle_gap, control_y );
@@ -2662,7 +2662,7 @@ namespace ImGui
                 }
                 bool prev_hovered = ImGui::IsItemHovered();
                 if( prev_hovered ) ImGui::SetMouseCursor( ImGuiMouseCursor_Hand );
-                MarkdownDetail::ShowCodeBlockTooltip( (int)code_id + 5, prev_hovered, "Switch to live rendered markdown preview (Formatted headings, lists, pills, and styles).", false );
+                MarkdownDetail::ShowCodeBlockTooltip( code_id + 5u, prev_hovered, "Switch to live rendered markdown preview (Formatted headings, lists, pills, and styles).", false );
 
                 // Animation smoothing
                 ImGuiID anim_id = ImGui::GetID( "##raw_prev_anim" );
@@ -2975,7 +2975,7 @@ namespace ImGui
             // If cell begins with an HTML-style tag: <tag_name ...>inner_text</tag_name>
             if( *p == '<' )
             {
-                const char* tag_close = (const char*)memchr( p, '>', end - p );
+                const char* tag_close = (const char*)memchr( p, '>', static_cast<size_t>( end - p ) );
                 if( tag_close && tag_close < end )
                 {
                     // Find tag name
@@ -3079,7 +3079,7 @@ namespace ImGui
             if( ( *p == '[' || *p == '{' ) )
             {
                 char close_b = ( *p == '[' ) ? ']' : '}';
-                const char* b_close = (const char*)memchr( p, close_b, end - p );
+                const char* b_close = (const char*)memchr( p, close_b, static_cast<size_t>( end - p ) );
                 if( b_close && b_close + 1 < end && *(b_close + 1) == '(' )
                 {
                     const char* link_text_start = p + 1;
@@ -3164,7 +3164,7 @@ namespace ImGui
             {
                 if( *p == '<' )
                 {
-                    const char* close = (const char*)memchr( p, '>', end - p );
+                    const char* close = (const char*)memchr( p, '>', static_cast<size_t>( end - p ) );
                     if( close && close < end )
                     {
                         p = close + 1;
@@ -3452,7 +3452,7 @@ namespace ImGui
                                 target_sort_col = idx;
                                 if( idx >= 0 && (size_t)idx < headers.size() )
                                 {
-                                    target_col_name = GetCellPlainText( headers[idx] );
+                                    target_col_name = GetCellPlainText( headers[static_cast<size_t>( idx )] );
                                 }
                             }
                             else
@@ -4119,7 +4119,7 @@ namespace ImGui
             st.sortDirection = active_sort_dir;
             if( active_sort_col >= 0 && (size_t)active_sort_col < headers.size() )
             {
-                st.sortColumnName = TableDetail::GetCellPlainText( headers[active_sort_col] );
+                st.sortColumnName = TableDetail::GetCellPlainText( headers[static_cast<size_t>( active_sort_col )] );
             }
             st.hasPreset = metadata.hasPreset;
             bool custom_cols = ImGui::GetStateStorage()->GetBool( col_custom_key, false );
@@ -4313,8 +4313,8 @@ namespace ImGui
                     [&]( size_t a_idx, size_t b_idx ) -> bool {
                         const std::vector<TableCell>& rA = rows[a_idx];
                         const std::vector<TableCell>& rB = rows[b_idx];
-                        TableCell cA = ( (size_t)active_sort_col < rA.size() ) ? rA[active_sort_col] : TableCell();
-                        TableCell cB = ( (size_t)active_sort_col < rB.size() ) ? rB[active_sort_col] : TableCell();
+                        TableCell cA = ( active_sort_col >= 0 && static_cast<size_t>( active_sort_col ) < rA.size() ) ? rA[static_cast<size_t>( active_sort_col )] : TableCell();
+                        TableCell cB = ( active_sort_col >= 0 && static_cast<size_t>( active_sort_col ) < rB.size() ) ? rB[static_cast<size_t>( active_sort_col )] : TableCell();
 
                         int cmp = TableDetail::CompareCells( cA, cB );
                         if( active_sort_dir == (int)ImGuiSortDirection_Descending )
@@ -6478,9 +6478,9 @@ namespace ImGui
 
                         MarkdownTagData tagData;
                         tagData.tagName = markdown_ + tagHeaderStart;
-                        tagData.tagNameLength = nameLen;
+                        tagData.tagNameLength = static_cast<size_t>( nameLen );
                         tagData.tagParam = ( sep != -1 && tagHeaderEnd > sep + 1 ) ? ( markdown_ + sep + 1 ) : nullptr;
-                        tagData.tagParamLength = ( sep != -1 && tagHeaderEnd > sep + 1 ) ? ( tagHeaderEnd - sep - 1 ) : 0;
+                        tagData.tagParamLength = ( sep != -1 && tagHeaderEnd > sep + 1 ) ? static_cast<size_t>( tagHeaderEnd - sep - 1 ) : 0u;
                         while( tagData.tagParamLength > 0 && ( *tagData.tagParam == ' ' || *tagData.tagParam == '\t' ) )
                         {
                             ++tagData.tagParam;
@@ -6506,7 +6506,7 @@ namespace ImGui
                         else
                         {
                             tagData.innerText = markdown_ + openClose + 1;
-                            tagData.innerTextLength = closeStart - ( openClose + 1 );
+                            tagData.innerTextLength = static_cast<size_t>( closeStart - ( openClose + 1 ) );
                         }
                         tagData.config = &mdConfig_;
                         tagData.userData = mdConfig_.userData;
@@ -7489,7 +7489,7 @@ namespace ImGui
 
         if( search_end > search_start )
         {
-            std::string search_slice = markdownText.substr( search_start, search_end - search_start );
+            std::string search_slice = markdownText.substr( static_cast<size_t>( search_start ), static_cast<size_t>( search_end - search_start ) );
             size_t found_pos = search_slice.find( "<!-- table-state:" );
             if( found_pos == std::string::npos )
             {
@@ -7517,21 +7517,21 @@ namespace ImGui
                 size_t close_pos = search_slice.find( "-->", found_pos );
                 if( close_pos != std::string::npos )
                 {
-                    existing_comment_start = (int)( search_start + found_pos );
-                    existing_comment_end = (int)( search_start + close_pos + 3 );
+                    existing_comment_start = static_cast<int>( static_cast<size_t>( search_start ) + found_pos );
+                    existing_comment_end = static_cast<int>( static_cast<size_t>( search_start ) + close_pos + 3u );
 
                     // Include surrounding line delimiters
                     int line_start = existing_comment_start;
-                    while( line_start > 0 && markdownText[line_start - 1] != '\n' && markdownText[line_start - 1] != '\r' )
+                    while( line_start > 0 && markdownText[static_cast<size_t>( line_start - 1 )] != '\n' && markdownText[static_cast<size_t>( line_start - 1 )] != '\r' )
                     {
-                        if( markdownText[line_start - 1] == ' ' || markdownText[line_start - 1] == '\t' )
+                        if( markdownText[static_cast<size_t>( line_start - 1 )] == ' ' || markdownText[static_cast<size_t>( line_start - 1 )] == '\t' )
                             --line_start;
                         else
                             break;
                     }
                     int line_end = existing_comment_end;
-                    if( line_end < text_len && markdownText[line_end] == '\r' ) ++line_end;
-                    if( line_end < text_len && markdownText[line_end] == '\n' ) ++line_end;
+                    if( line_end < text_len && markdownText[static_cast<size_t>( line_end )] == '\r' ) ++line_end;
+                    if( line_end < text_len && markdownText[static_cast<size_t>( line_end )] == '\n' ) ++line_end;
 
                     existing_comment_start = line_start;
                     existing_comment_end = line_end;
@@ -7545,24 +7545,24 @@ namespace ImGui
         {
             if( new_directive.empty() )
             {
-                result.erase( existing_comment_start, existing_comment_end - existing_comment_start );
+                result.erase( static_cast<size_t>( existing_comment_start ), static_cast<size_t>( existing_comment_end - existing_comment_start ) );
             }
             else
             {
                 std::string rep = new_directive + "\n";
-                result.replace( existing_comment_start, existing_comment_end - existing_comment_start, rep );
+                result.replace( static_cast<size_t>( existing_comment_start ), static_cast<size_t>( existing_comment_end - existing_comment_start ), rep );
             }
         }
         else if( !new_directive.empty() )
         {
             int ins_pos = ( t_end > 0 && t_end <= text_len ) ? t_end : r_end;
-            while( ins_pos < text_len && markdownText[ins_pos] != '\n' && markdownText[ins_pos] != '\r' )
+            while( ins_pos < text_len && markdownText[static_cast<size_t>( ins_pos )] != '\n' && markdownText[static_cast<size_t>( ins_pos )] != '\r' )
                 ++ins_pos;
-            if( ins_pos < text_len && markdownText[ins_pos] == '\r' ) ++ins_pos;
-            if( ins_pos < text_len && markdownText[ins_pos] == '\n' ) ++ins_pos;
+            if( ins_pos < text_len && markdownText[static_cast<size_t>( ins_pos )] == '\r' ) ++ins_pos;
+            if( ins_pos < text_len && markdownText[static_cast<size_t>( ins_pos )] == '\n' ) ++ins_pos;
 
             std::string ins = new_directive + "\n";
-            result.insert( ins_pos, ins );
+            result.insert( static_cast<size_t>( ins_pos ), ins );
         }
 
         return result;
