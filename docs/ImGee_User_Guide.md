@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.4.0)
+## Comprehensive Developer & User Manual (v1.4.1)
 
 ---
 
@@ -190,16 +190,60 @@ Every capability described in this manual is **100% active and enabled out of th
 
 *(For projects with strict binary constraints or symbol conflicts, granular `IMGEE_DISABLE_*` opt-outs are documented in [Appendix A](#appendix-a-preprocessor-opt-out-configuration--build-matrix)).*
 
+### 5.6 Quick-Start Interactive Showcase (`imgee_demo.h`)
+Just like stock Dear ImGui ships `ImGui::ShowDemoWindow(bool* p_open)` so you can try every widget in a running app, ImGee provides an optional single-header showcase in `imgee_demo.h`.
+
+To keep production plugins lean, `imgee_demo.h` is **strictly opt-in** -- zero demo code is compiled unless you pull it in via either of two paths:
+
+```cpp
+// Option A: Include imgee_demo.h directly (pulls in imgee.h if needed):
+#include "imgee_demo.h"
+
+// Option B: Enable the showcase through the master umbrella header:
+#define IMGEE_INCLUDE_DEMO
+#include "imgee.h"
+```
+
+Once enabled, call the standalone window helper in normal Dear ImGui apps, or embed the inner content directly inside a host-owned window (such as `ImgWindow`, `FlyWithLua` / `LuiGee`, or `XPPython3` / `PyGee`):
+
+```cpp
+// 1. Standalone Dear ImGui window (mirrors ImGui::ShowDemoWindow):
+static bool s_ShowImGeeDemo = true;
+if (s_ShowImGeeDemo) {
+    ImGui::ShowImGeeDemoWindow(&s_ShowImGeeDemo);
+}
+
+// 2. Host-owned / embedded window (caller owns ImGui::Begin/End or ImgWindow frame):
+if (ImGui::Begin("ImGee Interactive Gallery")) {
+    ImGui::ShowImGeeDemoContent("##Demo");
+}
+ImGui::End();
+```
+
+The showcase organizes the toolkit into **8 live tabs**:
+1. **Themes & Palette:** Live theme switcher (`Charcoal`, `Rusty`, `ImGui Dark`, `ImGui Classic`, `Paper Light`) plus color swatch preview.
+2. **Buttons & Toggles:** `ButtonLink`, `TextLink`, `IconButton`, `ButtonIcon`, `CopyButton`, animated `ToggleButton`, and segmented `ToggleButtons`.
+3. **Badges, Pills & Keycaps:** Auto-contrasting `Badge`, `Pill`, `PillNamed`, and 3D `<kbd>` shortcut chips.
+4. **Knobs, Sliders & Pulldowns:** `Knob` / `KnobWithReset` (with `OFF` detent), `SliderWithReset`, `MouseWheelCombo`, and `SelectPulldownMD`.
+5. **Popups & Menu Strip:** Item-anchored popups (`AboveItem` / `BelowItem`) and a live Hover-Latching Menu Strip (`BeginMenuStrip` / `BeginStripMenu`).
+6. **Tooltips & Vector Icons:** Stationary `TimedTooltip::Text`, `TextMD`, `TextMDLink`, custom `BeginStationaryTooltip` blocks, and the procedural vector icon gallery.
+7. **Markdown, GFM Tables & DocViewer:** Interactive sortable/resizable GFM tables, callouts, and an embedded `DocumentViewer` with live Find whose `theme_index` stays synced with the top-bar theme picker.
+8. **Typography & Diagnostics:** `ImFontRole` hierarchy, baseline-aligned `StyledText`, activity spinners, radial timers, and version diagnostics.
+
+**Non-Destructive Theme Testing (`Restore Host Style`):** When the showcase first opens in an `ImGuiContext*`, it captures a snapshot of your host application's current `ImGuiStyle`. You can freely test-drive `Charcoal`, `Rusty`, or `Paper Light` live and click **`Demo -> Restore Host Style`** at any time to put your application's original palette and metrics back untouched.
+
 ---
 
 ## 6. Orientation Roadmap & User Manual Directory
 
 To guide developers through the suite, this manual is structured into dedicated, modular reference sections:
 
+* **Getting Started**
+  * **[Integration Models & Opt-In Interactive Showcase](#56-quick-start-interactive-showcase-imgee_demoh)**: Single-header include paths, standalone `HostBackend`, `ImgWindow` integration, and the 8-tab `ShowImGeeDemoWindow` / `ShowImGeeDemoContent` showcase.
 * **Part I: Flagship Extensions Suite**
   * **[TimedTooltip Extension](#7-flagship-extension-stationary-timed-tooltips-imgui_tooltip_exth)**: Stationary delayed tooltips, screen-edge clamping, and scroll dismissal.
   * **[Markdown Extension](#8-flagship-extension-rich-markdown-engine--gfm-tables-imgui_markdown_exth)**: CommonMark rendering, GFM tables & callouts, 3-tier floated/lightbox images, and custom tags.
-  * **[Typography & DocumentViewer](#9-foundation-extension-semantic-typography--font-roles-imgui_font_rolesh--imgui_styled_texth)**: `ImFontRole` 9-slot registry, baseline-aligned `StyledText`, and standalone `ImGui::DocumentViewer`.
+  * **[Typography & DocumentViewer](#9-foundation-extension-semantic-typography--font-roles-imgui_font_rolesh--imgui_styled_texth)**: `ImFontRole` 9-slot registry, baseline-aligned `StyledText`, and standalone `ImGui::DocumentViewer` with live Find.
 * **Part II: Immediate-Mode UI Widgets & Themes Catalog**
   * **[Procedural Vector Icons](#101-procedural-vector-icon-engine--glyphs-imgui_iconsh)**: Zero-texture vector engine and `IconButton` / `ButtonIcon`.
   * **[Rotary Knobs & Dimmer Dials](#102-rotary-knobs--dimmer-dials-imgui_knobsh)**: 270° potentiometers with ticks, readout, 2-step `OFF` detents, and 1-click reset.
@@ -207,7 +251,7 @@ To guide developers through the suite, this manual is structured into dedicated,
   * **[Badges, Pills & Status Capsules](#104-badges-pills--status-capsules-imgui_badgesh)**: Badges, pills, named-icon capsules (`PillNamed`), and `<kbd>` keycaps.
   * **[Tactile Animated Toggles](#105-tactile-animated-toggle-switches-imgui_toggle_buttonsh)**: Animated toggle switches and segmented dual toggles with per-state tooltips.
   * **[Activity Spinners & Countdown Dials](#106-procedural-activity-spinners--countdown-dials-imgui_spinnersh)**: Activity spinners, progress rings, and radial countdown timers.
-  * **[Directional Popups & SelectPulldown](#107-directional-popups-item-anchoring--selectpulldown-imgui_popup_menush)**: Directional blossoming popups, headroom queries, and 1-line selectors with Lens UI.
+  * **[Directional Popups, SelectPulldown & Menu Strips](#107-directional-popups-selectpulldown--hover-latching-menu-strips-imgui_popup_menush)**: Directional blossoming popups, 1-line Lens UI selectors, and Hover-Latching Menu Strips.
   * **[Clickable Links & Copy Buttons](#108-clickable-links-cursor-affordances--copy-buttons-imgui_clickable_linksh--imgui_copy_buttonh)**: Active `Hand` cursor wrappers, click-to-toggle tooltips, and anti-twitch clipboard buttons.
   * **[Non-Blocking File Dialogs & Pickers](#109-non-blocking-file-dialogs--toolbar-pickers-imgui_file_dialogh)**: Non-blocking `OpenFileDialog`, `SaveFileDialog`, and inline `FilePickerCombo`.
   * **[Curated Color Themes](#1010-curated-color-themes-themesimgui_stylesh)**: Turnkey `Charcoal`, `Rusty`, and `Paper Light` palettes replacing Dear ImGui's stock neon blue.
@@ -233,7 +277,17 @@ ImGui::TimedTooltip::TextMD(
     "* **Terrain Ahead:** Pull up immediately.\n"
     "* **Glideslope:** Deviation exceeds 1.3 dots."
 );
+
+// 3. Low-level custom widget block (zero-arg EndStationaryTooltip() matches ImGui::EndTooltip()):
+ImGui::Button("Engine Monitor");
+if (ImGui::TimedTooltip::BeginStationaryTooltip("EngineMonitorTip")) {
+    ImGui::Text("EGT: 640 C");
+    ImGui::ProgressBar(0.75f, ImVec2(150.0f, 14.0f));
+    ImGui::TimedTooltip::EndStationaryTooltip(); // Or pass the same ID / str_id
+}
 ```
+
+*(Note: As of `v1.4.0`, `ImGui::TimedTooltip::EndStationaryTooltip()` can be called with zero arguments just like stock `ImGui::EndTooltip()`. The existing `EndStationaryTooltip(ImGuiID)` and `EndStationaryTooltip(const char*)` overloads remain fully supported and resolve the caller's original tooltip ID from an internal per-context stack so font pops and cached sizes always stay balanced.)*
 
 ### Key Tooltip Affordances:
 
@@ -424,15 +478,40 @@ When your desktop application, studio tool, or plugin includes a user manual, re
 static ImGui::DocumentViewerState s_ManualState;
 
 ImGui::DocumentViewerConfig docCfg;
-docCfg.title           = "User Manual & Reference";
-docCfg.baseDir         = "assets/docs";
-docCfg.externalPdfPath = "assets/docs/User_Manual.pdf";
-docCfg.showCloseButton = true;
+docCfg.title                = "User Manual & Reference";
+docCfg.baseDir              = "assets/docs";
+docCfg.externalPdfPath      = "assets/docs/User_Manual.pdf";
+docCfg.showCloseButton      = true;
+docCfg.showSearchButton     = true; // Default: shows Row 2 [Find] toggle
+docCfg.enableSearchShortcut = true; // Default: Ctrl+F / Cmd+F opens & focuses Find bar
 
 if (!ImGui::DocumentViewer("##UserManual", manualMarkdown, s_ManualState, &docCfg)) {
     s_ShowManualWindow = false; // Closed via Row 1 [X] or optional footer Close button
 }
 ```
+
+#### Programmatic Live Search Control (`v1.2.0`)
+If your host window provides its own menu item, toolbar button, or external search trigger, you can drive the viewer's Find bar directly through `DocumentViewerState`:
+
+```cpp
+// Open the inline Find bar and focus/select the query input:
+if (ImGui::MenuItem("Find in Manual...", "Ctrl+F")) {
+    ImGui::OpenDocumentSearch(s_ManualState);
+}
+
+// Step programmatically to the next (+1) or previous (-1) match with circular wrap:
+if (s_ManualState.search_open && s_ManualState.search_match_count > 0) {
+    ImGui::StepDocumentSearchMatch(s_ManualState, +1);
+}
+
+// Close the Find bar & clear highlights (preserves search_query for quick reopen):
+if (hostRequestedCloseSearch) {
+    ImGui::CloseDocumentSearch(s_ManualState);
+}
+```
+
+* **`DocumentViewerConfig` flags:** `showSearchButton` (default `true`) controls the Row 2 magnifying-glass toggle; `enableSearchShortcut` (default `true`) enables `Ctrl+F` / `Cmd+F` when the viewer window is focused.
+* **`DocumentViewerState` fields:** `search_open`, `search_query[128]`, `search_case_sensitive`, `search_match_count`, and `search_active_index` let host code inspect or pre-populate queries cleanly before calling `OpenDocumentSearch(state)`.
 
 ---
 
@@ -588,10 +667,14 @@ ImGui::RadialTimer("Approach Leg", s_LegFraction, 14.0f, 3.0f, IM_COL32(234, 179
 
 Provides precision item-anchored popup placement, upward blossoming for bottom-docked status bars, hover-latching horizontal menu strips (`v1.3.0`), and compact 1-line option selectors with Lens UI mouse-wheel interaction:
 
-![Directional Anchored Popups & SelectPulldown: Scroll pass-through when closed and live wheel stepping when open](images/fig_popup_menus.png)
+![Anchored Pulldowns and Hover-Latching Menu Strips: SelectPulldown scroll pass-through and wheel stepping alongside BeginMenuStrip upward-anchored triggers](images/fig_popup_menus.png)
 
 * **Hover-Latching Menu Strips (`BeginMenuStrip` / `BeginStripMenu` / `EndStripMenu` / `EndMenuStrip`, `v1.3.0`)**:
-  Horizontal toolbar/status-bar menu strips with classic `Begin`/`End` scope pairing (zero C++ callbacks, 1:1 bindable to Lua/Python). Clicking any trigger opens its anchored popup (`AboveItem`, `BelowItem`, or `Auto`) and latches the strip active; gliding over sibling triggers switches menus on the exact same frame with zero extra clicks and zero flicker. Clicking the open trigger toggles closed cleanly, clicking outside or pressing `Esc` unlatches automatically, closed-trigger `TimedTooltip`s suppress while any menu is open (strictly silent fallback when `TimedTooltip` is disabled), and internal state is isolated per `(ImGuiContext*, ImGuiID)` with recycled-context frame guards (`state = nullptr` default). Also exposes `IsMenuStripOpen(str_id)` and `GetMenuStripLastPopupSize(str_id)`.
+  Builds horizontal toolbar or bottom status-bar menu strips using pure Dear ImGui `Begin`/`End` scoping with **zero C++ callbacks** -- making the exact same API trivial to bind 1:1 into Lua (`LuiGee`) and Python (`PyGee`).
+  - **Config & Defaults (`MenuStripConfig`):** `anchor = ImGuiPopupAnchor_Auto` (or `AboveItem` for bottom status bars / `BelowItem` for top toolbars), `align = ImGuiPopupAlign_Auto`, `autoSameLine = true`, `itemSpacingX = -1.0f` (uses `style.ItemSpacing.x`), `showCaret = true`, `flipCaretOnOpen = true`, `matchTriggerWidth = true`, `dynamicCursors = true`, and `popupFlags = 0`.
+  - **Per-Trigger Overrides (`-1` Inherit Sentinels):** `BeginStripMenu(label, tooltip_md, enabled, width, anchor_override, align_override)` defaults both overrides to `-1`, which inherits `MenuStripConfig::anchor` / `align`. Pass an explicit `ImGuiPopupAnchor` or `ImGuiPopupAlign` enum value on an individual trigger when one edge menu needs different alignment (for example, right-aligning the last menu in a narrow bar).
+  - **Automatic State & Queries:** Pass `state = nullptr` (the default) for automatic internal per-`(ImGuiContext*, ImGuiID)` storage with recycled-context frame guards, or pass a caller-owned `MenuStripState*` to inspect `is_latched` / `active_menu_index` directly. Query strip state from anywhere in the same window with `ImGui::IsMenuStripOpen(str_id)` and `ImGui::GetMenuStripLastPopupSize(str_id)` (useful for headroom checks or disabling conflicting background gestures while a strip menu is open).
+  - **Interaction Guarantees:** Clicking any trigger opens its anchored popup and latches the strip; gliding over any sibling trigger switches popups on the exact same frame with zero extra clicks and zero dual-popup overlap. Clicking the active trigger again toggles it closed; clicking outside or pressing `Esc` unlatches automatically; and closed-trigger `TimedTooltip`s are suppressed while any menu is open (staying strictly silent when `TimedTooltip` is disabled).
 * **Item-Anchored Popups (`OpenPopupAtItem` & `BeginAnchoredPopup`)**:
   Positions dropdowns relative to the preceding item's bounding box (`GetItemRectMin`/`Max`). Supports `ImGuiPopupAnchor_BelowItem` (standard dropdown) or `ImGuiPopupAnchor_AboveItem` (blossoms upward for bottom bars and docks) with font-scale invariance, `(ImGuiContext*, ImGuiID)` isolation, and muscle-memory toggle protection.
 * **1-Line Option Selector (`SelectPulldown` / `SelectPulldownMD`)**:
@@ -601,11 +684,43 @@ Provides precision item-anchored popup placement, upward blossoming for bottom-d
   - **Dynamic Cursor Cues & Caret Clipping**: Shows `ImGuiMouseCursor_Hand` when closed, switches to `ImGuiMouseCursor_ResizeNS` across both the open list and opener button while stepping, and clips long preview labels cleanly before the right-docked vector caret.
 
 ```cpp
+// 1. 1-line option selector with Lens UI tooltips and circular wheel wrapping:
 static int s_SelectedCam = 1;
 const char* const kCamModes[] = { "Circle", "Spot", "Tower", "Cockpit" };
 const char* const kCamTips[]  = { "**Circle**\nFollow aircraft", "**Spot**\nFixed distance chase", "**Tower**\nAirport tower view", "**Cockpit**\nPilot 3D cockpit" };
 if (ImGui::SelectPulldownMD("##CameraMode", &s_SelectedCam, kCamModes, 4, kCamTips, 150.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true /* wrap */)) {
     UpdateCamera(s_SelectedCam);
+}
+
+// 2. Hover-latching bottom status-bar menu strip (pure Begin/End, zero callbacks):
+ImGui::MenuStripConfig stripCfg;
+stripCfg.anchor = ImGuiPopupAnchor_AboveItem; // Blossom upward from bottom bar
+stripCfg.align  = ImGuiPopupAlign_Left;
+
+if (ImGui::BeginMenuStrip("##StatusBarStrip", &stripCfg)) {
+    if (ImGui::BeginStripMenu("View", "Camera **view modes** and zoom controls.")) {
+        if (ImGui::MenuItem("Cockpit 3D")) SetView(0);
+        if (ImGui::MenuItem("External Circle")) SetView(1);
+        ImGui::EndStripMenu();
+    }
+    if (ImGui::BeginStripMenu("Track", "Target tracking options.")) {
+        if (ImGui::MenuItem("User Aircraft")) SetTarget(0);
+        if (ImGui::MenuItem("Nearest AI"))    SetTarget(1);
+        ImGui::EndStripMenu();
+    }
+    // Right-align only the final trigger while inheriting anchor (-1):
+    if (ImGui::BeginStripMenu("Presets", "Saved presets.", true, 0.0f,
+                              /*anchor_override=*/-1, ImGuiPopupAlign_Right)) {
+        if (ImGui::MenuItem("Quick-View 1")) LoadPreset(1);
+        ImGui::EndStripMenu();
+    }
+    ImGui::EndMenuStrip();
+}
+
+// Optional headroom / active-menu queries (using the same strip str_id):
+if (ImGui::IsMenuStripOpen("##StatusBarStrip")) {
+    ImVec2 popupSz = ImGui::GetMenuStripLastPopupSize("##StatusBarStrip");
+    (void)popupSz; // Use for layout headroom or suppressing background hover
 }
 ```
 
@@ -719,4 +834,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.4.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.4.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

@@ -2,7 +2,7 @@
 ## Ergonomics, Cognitive Affordances, and Human Factors for Simulation User Interfaces
 
 **Authors & Architecture:** Steven L. Goldberg (@slgoldberg) & the Antigravity Engineering Team  
-**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee) • **Version:** v1.4.0 (Living Standard • Nov 2026)
+**Custodian:** ImGee Platform (ImGee / ImgWindow / LuiGee / PyGee) • **Version:** v1.4.1 (Living Standard • Nov 2026)
 
 ---
 
@@ -247,6 +247,26 @@ Color and formatting are not decorative; in aviation interfaces, they are semant
 * **Font-Scale Invariance:** Window chrome, status bars, and title bars must maintain a stable 1.0x baseline scale (`BeginZoomedViewport` / `EndZoomedViewport`), ensuring operational controls and indicators remain rock-solid regardless of internal document zoom.
 
 ---
+
+## 10. In-Document Live Search (`v1.2.0`)
+
+Searching inside a flight manual, checklist, or reference guide is usually a quick lookup performed mid-task. A clunky find bar that washes out text, traps simulator hotkeys, or makes stepping through hits awkward breaks the user's focus just as badly as a jittery tooltip.
+
+* **Draw Highlights Behind Text Glyphs:** Search highlights must always be painted onto the draw list *before* text glyphs are submitted, never as a translucent overlay drawn on top. Drawing behind the glyphs keeps letters razor-sharp and legible in both dark studio themes and high-contrast light themes (`Paper Light`), as well as inside dark fenced code blocks, with a crisp `1 px` outline distinguishing the active hit from passive matches.
+* **Clean Keyboard Focus Handoff (`Enter` vs. `Esc`):** While stepping through matches with rapid `Enter` or `Shift+Enter`, the search input must retain keyboard focus so the user never leaks stray keystrokes to the host simulator. The moment the user presses `Esc` or clicks outside the bar, keyboard focus and `io.WantTextInput` must release cleanly back to the host application so flight controls and global shortcuts resume immediately.
+* **Natural List Order on Match Counters:** Hovering the `[ 3 / 12 ]` match counter or Prev/Next steppers displays `ImGuiMouseCursor_ResizeNS`. Rolling the mouse wheel **down** advances forward (`+1`) to the next match down the document with circular wrapping, keeping wheel direction consistent with every other list control in ImGee.
+
+---
+
+## 11. Hover-Latching Menu Strips (`v1.3.0`)
+
+Status bars and compact toolbars often place several related popup menus side by side (`View`, `Track`, `Overlays`, `Presets`). Treating each trigger as an isolated popup forces two clicks to switch between adjacent menus (one to close the first menu, a second to open the next) and turns routine browsing into tedious clicking.
+
+* **Frame-Exact Glide Switching:** Clicking any trigger opens its anchored popup and latches the strip active. While latched, moving the pointer onto any enabled sibling trigger closes the previous menu and opens the hovered sibling on the exact same frame -- with zero extra clicks, zero 1-frame empty flash, and zero dual-popup overlap.
+* **Muscle-Memory Toggle Close:** Clicking the currently open trigger toggles the menu closed and unlatches the strip cleanly without bouncing it back open on mouse release. Clicking outside the strip or pressing `Esc` unlatches the strip automatically.
+* **Silent Tooltip Suppression While Open:** Closed triggers may carry stationary `TimedTooltip`s when the strip is idle, but the instant *any* menu in the strip is open, hover tooltips on all triggers must go completely silent so a delayed help card never pops up over an active dropdown or blocks the menu you are trying to read. When `TimedTooltip` is compiled out, menu-strip triggers stay strictly silent rather than falling back to stock instant-pop tooltips.
+
+---
 <!-- pagebreak -->
 
 # Part II: The Developer's Covenant
@@ -368,6 +388,8 @@ Before releasing any UI update or downstream plugin, verify the implementation a
 - [ ] **Container Pass-Through:** When closed, does the pulldown allow wheel events to scroll the parent container?
 - [ ] **TimedTooltip Integration:** Are all tooltips stationary, dwell-verified, and Markdown-capable?
 - [ ] **Contrast Verification:** Does the styling engine guarantee legible text across light and dark backgrounds?
+- [ ] **Live Search Ergonomics:** Are search highlights drawn behind text glyphs, does `Esc` release keyboard focus cleanly to the host, and does wheel-down step forward (`+1`) on the match counter?
+- [ ] **Menu Strip Discipline:** Do latched menu strips glide-switch in a single frame without dual-popup overlap, toggle closed on re-clicking the active trigger, and suppress trigger tooltips while any menu is open?
 
 ---
 

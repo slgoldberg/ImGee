@@ -1327,7 +1327,7 @@ int main(int argc, char** argv) {
     }
 
     // ========================================================================
-    // SCENE 4: SelectPulldown Menus -- Closed vs Open (fig_popup_menus.png)
+    // SCENE 4: SelectPulldown & Hover-Latching Menu Strip (fig_popup_menus.png)
     // ========================================================================
     {
         const char* const kNavSrc[] = { "FMS1 (Primary)", "FMS2 (Cross-Side)", "VOR1 / LOC1", "VOR2 / LOC2" };
@@ -1337,6 +1337,11 @@ int main(int argc, char** argv) {
         ImVec2 closedBtnPos(0.0f, 0.0f);
         ImVec2 openBtnCenter(0.0f, 0.0f);
         ImVec2 openPopupCursor(0.0f, 0.0f);
+
+        ImGui::MenuStripConfig sc4StripCfg;
+        sc4StripCfg.anchor    = ImGuiPopupAnchor_AboveItem;
+        sc4StripCfg.align     = ImGuiPopupAlign_Left;
+        sc4StripCfg.showCaret = true;
 
         for (int f = 0; f < 6; ++f) {
             if (f == 1) {
@@ -1351,28 +1356,44 @@ int main(int argc, char** argv) {
 
             io.DeltaTime = 1.0f / 60.0f;
             ImGui::NewFrame();
-            BeginShowcaseCard("##sc4", "Anchored Pulldown Menus (SelectPulldown)",
-                              "Closed pulldowns pass scroll events to parent panels; open menus cycle live via mouse wheel", 520.0f);
+            BeginShowcaseCard("##sc4", "Anchored Pulldowns & Hover-Latching Menu Strips",
+                              "SelectPulldown (scroll pass-through / live wheel) and BeginMenuStrip (glide-switch triggers)", 540.0f);
 
             ImGui::Columns(2, "##sc4_cols", false);
+            ImGui::SetColumnWidth(0, 268.0f);
             ImGui::PushFontRole(ImGui::ImFontRole::Small);
-            ImGui::TextDisabled("CLOSED (Scroll Pass-Through)");
+            ImGui::TextDisabled("CLOSED PULLDOWN (Scroll Pass-Through)");
             ImGui::PopFontRole();
-            ImGui::SelectPulldown("##nav_closed", &closedIdx, kNavSrc, 4, nullptr, 210.0f);
-            closedBtnPos = ImVec2(ImGui::GetItemRectMin().x + 155.0f, ImGui::GetItemRectMax().y - 5.0f);
+            ImGui::SelectPulldown("##nav_closed", &closedIdx, kNavSrc, 4, nullptr, 224.0f);
+            closedBtnPos = ImVec2(ImGui::GetItemRectMin().x + 165.0f, ImGui::GetItemRectMax().y - 5.0f);
+
+            ImGui::Dummy(ImVec2(0.0f, 34.0f));
+            ImGui::PushFontRole(ImGui::ImFontRole::Small);
+            ImGui::TextDisabled("HOVER-LATCHING MENU STRIP (AboveItem)");
+            ImGui::PopFontRole();
+            if (ImGui::BeginMenuStrip("##sc4_menu_strip", &sc4StripCfg)) {
+                if (ImGui::BeginStripMenu("View"))    { ImGui::EndStripMenu(); }
+                if (ImGui::BeginStripMenu("Track"))   { ImGui::EndStripMenu(); }
+                if (ImGui::BeginStripMenu("Presets")) { ImGui::EndStripMenu(); }
+                ImGui::EndMenuStrip();
+            }
+            ImGui::Dummy(ImVec2(0.0f, 3.0f));
+            ImGui::PushFontRole(ImGui::ImFontRole::Small);
+            ImGui::TextDisabled("Click to latch; glide siblings to switch");
+            ImGui::PopFontRole();
 
             ImGui::NextColumn();
             ImGui::PushFontRole(ImGui::ImFontRole::Small);
-            ImGui::TextDisabled("OPEN (Wheel Stepping Unlocked)");
+            ImGui::TextDisabled("OPEN PULLDOWN (Wheel Stepping)");
             ImGui::PopFontRole();
             const ImVec2 pOpen = ImGui::GetCursorScreenPos();
-            ImGui::SelectPulldown("##cam_open", &openIdx, kCamModes, 5, nullptr, 210.0f);
+            ImGui::SelectPulldown("##cam_open", &openIdx, kCamModes, 5, nullptr, 224.0f);
             if (f == 0) {
                 openBtnCenter = ImVec2(pOpen.x + 90.0f, pOpen.y + ImGui::GetFrameHeight() * 0.5f);
-                openPopupCursor = ImVec2(pOpen.x + 165.0f, pOpen.y + ImGui::GetFrameHeight() + 50.0f);
+                openPopupCursor = ImVec2(pOpen.x + 175.0f, pOpen.y + ImGui::GetFrameHeight() + 50.0f);
             }
             ImGui::Columns(1);
-            ImGui::Dummy(ImVec2(0.0f, 138.0f)); // Generous room inside card framing the anchored popup
+            ImGui::Dummy(ImVec2(0.0f, 44.0f)); // Generous room inside card framing the anchored popup
 
             if (f == 5) {
                 DrawShowcaseCursor(ImGui::GetForegroundDrawList(), closedBtnPos, ImGuiMouseCursor_Hand);
@@ -1384,12 +1405,12 @@ int main(int argc, char** argv) {
 
         finishAndExportScene({
             4,
-            "Anchored Pulldown Menus (`SelectPulldown`)",
+            "Anchored Pulldowns & Hover-Latching Menu Strips",
             "widgets/imgui_popup_menus.h",
-            "`ImGui::SelectPulldown`, `ImGui::BeginAnchoredPopup`",
+            "`ImGui::SelectPulldown`, `ImGui::BeginMenuStrip`, `ImGui::BeginStripMenu`",
             "fig_popup_menus.png",
-            "ImGui::SelectPulldown(\"##nav_src\", &navIdx, kNavSources, 4, nullptr, 210.0f);\n"
-            "ImGui::SelectPulldown(\"##cam_mode\", &camIdx, kCamModes, 5, kCamTooltips, 210.0f);",
+            "ImGui::SelectPulldown(\"##cam_mode\", &camIdx, kCamModes, 5, kCamTooltips, 210.0f);\n"
+            "if (ImGui::BeginMenuStrip(\"##bar\", &cfg)) { if (ImGui::BeginStripMenu(\"View\")) { ImGui::EndStripMenu(); } ImGui::EndMenuStrip(); }",
             ImVec2(0, 0), 0, 0
         });
 
