@@ -3615,6 +3615,106 @@ int main(int argc, char** argv) {
                 ImGeeDemoDetail::GetForcedTabIndex() = -1;
                 ImGui::StyleColorsDark();
             }
+
+            // 7l. Stationary Tooltip EndStationaryTooltip(const char*) & Zero-Arg EndStationaryTooltip() Regression:
+            //     Verifies BeginStationaryTooltip(str_id) + EndStationaryTooltip(str_id) and
+            //     BeginStationaryTooltip(str_id) + EndStationaryTooltip() pop the pushed tooltip font,
+            //     preserve balanced Dear ImGui stacks, record last_size under caller's hash_A, and
+            //     never create an orphan hash_B map entry by re-hashing inside "##TT_<hash_A>".
+            {
+                ImGui::TimedTooltip::ClearActiveTooltip();
+                ImGui::TimedTooltip::Config s14Cfg = ImGui::TimedTooltip::GetConfig();
+                s14Cfg.hover_delay_cycles = 2;
+
+                auto s14SetMouse = [&](float mx, float my) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+                    io.AddMousePosEvent(mx, my);
+                    io.AddMouseButtonEvent(0, false);
+#else
+                    io.MousePos = ImVec2(mx, my);
+                    io.MouseDown[0] = false;
+#endif
+                };
+
+                auto runS14Case = [&](const char* strId, bool useZeroArgEnd) {
+                    ImGui::TimedTooltip::ClearActiveTooltip();
+                    ImVec2 btnCenter(0.0f, 0.0f);
+                    ImGuiID expectedHashA = 0;
+                    ImGuiID wrongHashB = 0;
+                    int shownFrames = 0;
+                    bool sawFontPushedInside = false;
+
+                    // Frame 0: capture button screen center and caller window's hash_A without hovering
+                    s14SetMouse(2.0f, 2.0f);
+                    io.DeltaTime = 1.0f / 60.0f;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(320.0f, 140.0f), ImGuiCond_Always);
+                    ImGui::Begin("StationaryEndTooltipTestWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    ImGui::Button("Hover Target");
+                    const ImVec2 rMin = ImGui::GetItemRectMin();
+                    const ImVec2 rMax = ImGui::GetItemRectMax();
+                    btnCenter = ImVec2((rMin.x + rMax.x) * 0.5f, (rMin.y + rMax.y) * 0.5f);
+                    expectedHashA = ImGui::GetID(strId);
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+
+                    const size_t mapSizeBefore = ImGui::TimedTooltip::GetTooltipStateMap().size();
+                    IMGEE_TEST_CHECK(ImGui::TimedTooltip::GetTooltipStateMap().find(expectedHashA) ==
+                                     ImGui::TimedTooltip::GetTooltipStateMap().end());
+
+                    // Hover steadily across dwell + multiple display frames
+                    s14SetMouse(btnCenter.x, btnCenter.y);
+                    for (int frameIdx = 0; frameIdx < s14Cfg.hover_delay_cycles + 5; ++frameIdx) {
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 140.0f), ImGuiCond_Always);
+                        ImGui::Begin("StationaryEndTooltipTestWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        StackSnapshot s14Snap = StackSnapshot::Capture();
+
+                        ImGui::Button("Hover Target");
+                        if (ImGui::TimedTooltip::BeginStationaryTooltip(strId, &s14Cfg)) {
+                            ++shownFrames;
+                            wrongHashB = ImGui::GetID(strId);
+                            IMGEE_TEST_CHECK(wrongHashB != expectedHashA);
+                            if (ImGui::TimedTooltip::GetTooltipStateMap().at(expectedHashA).font_pushed) {
+                                sawFontPushedInside = true;
+                            }
+                            ImGui::TextUnformatted("Stationary tooltip regression test body.");
+                            ImGui::Dummy(ImVec2(140.0f, 36.0f));
+                            if (useZeroArgEnd) {
+                                ImGui::TimedTooltip::EndStationaryTooltip();
+                            } else {
+                                ImGui::TimedTooltip::EndStationaryTooltip(strId);
+                            }
+                            IMGEE_TEST_CHECK(!ImGui::TimedTooltip::GetTooltipStateMap().at(expectedHashA).font_pushed);
+                        }
+
+                        s14Snap.VerifyBalanced(useZeroArgEnd ? "StationaryEndZeroArg" : "StationaryEndStrId");
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+
+                    const auto& ttMap = ImGui::TimedTooltip::GetTooltipStateMap();
+                    IMGEE_TEST_CHECK(shownFrames >= 3);
+                    IMGEE_TEST_CHECK(sawFontPushedInside);
+                    IMGEE_TEST_CHECK(wrongHashB != 0 && wrongHashB != expectedHashA);
+                    IMGEE_TEST_CHECK(ttMap.find(expectedHashA) != ttMap.end());
+                    IMGEE_TEST_CHECK(ttMap.find(wrongHashB) == ttMap.end());
+                    IMGEE_TEST_CHECK(ttMap.size() == mapSizeBefore + 1u);
+                    const auto& savedState = ttMap.at(expectedHashA);
+                    IMGEE_TEST_CHECK(!savedState.font_pushed);
+                    IMGEE_TEST_CHECK(savedState.last_size.x >= 35.0f && savedState.last_size.y >= 20.0f);
+                    IMGEE_TEST_CHECK(ImGui::TimedTooltip::Detail::GetActiveTooltipIdStackMap()[ImGui::GetCurrentContext()].empty());
+                    ImGui::TimedTooltip::ClearActiveTooltip();
+                };
+
+                runS14Case("s14_str_test", false);
+                runS14Case("s14_zero_arg_test", true);
+            }
         }
     }
 

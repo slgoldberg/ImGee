@@ -41,7 +41,9 @@
 #else
     #include "imgui_internal.h"
 #endif
+#include <map>
 #include <unordered_map>
+#include <vector>
 #include <string>
 #include <cmath>
 #include <algorithm>
@@ -275,6 +277,10 @@ namespace TimedTooltip {
             if (font->FontSize > 0.0f) return font->FontSize;
 #endif
             return 0.0f;
+        }
+        inline std::map<ImGuiContext*, std::vector<ImGuiID>>& GetActiveTooltipIdStackMap() {
+            static std::map<ImGuiContext*, std::vector<ImGuiID>> s_ActiveIdStacks;
+            return s_ActiveIdStacks;
         }
     } // namespace Detail
 
@@ -599,6 +605,7 @@ else // only *add* to max timeout if it's not very short per above:
             }
             // Once Begin() is called, always return true so caller invokes EndStationaryTooltip()
             // to properly close the window and pop styles, avoiding 1-frame titlebar blips on appearance.
+            Detail::GetActiveTooltipIdStackMap()[ImGui::GetCurrentContext()].push_back(hash_id);
             return true;
         }
         
@@ -618,6 +625,10 @@ else // only *add* to max timeout if it's not very short per above:
     }
 
     inline void EndStationaryTooltip(ImGuiID hash_id) {
+        auto& active_stack = Detail::GetActiveTooltipIdStackMap()[ImGui::GetCurrentContext()];
+        if (!active_stack.empty() && active_stack.back() == hash_id) {
+            active_stack.pop_back();
+        }
         TooltipState& state = GetTooltipStateMap()[hash_id];
         
         // Capture size mathematically so the next frame can calculate the skew ratio!
@@ -637,7 +648,19 @@ else // only *add* to max timeout if it's not very short per above:
     }
 
     inline void EndStationaryTooltip(const char* str_id) {
+        auto& active_stack = Detail::GetActiveTooltipIdStackMap()[ImGui::GetCurrentContext()];
+        if (!active_stack.empty()) {
+            EndStationaryTooltip(active_stack.back());
+            return;
+        }
         EndStationaryTooltip(ImGui::GetID(str_id));
+    }
+
+    inline void EndStationaryTooltip() {
+        auto& active_stack = Detail::GetActiveTooltipIdStackMap()[ImGui::GetCurrentContext()];
+        if (!active_stack.empty()) {
+            EndStationaryTooltip(active_stack.back());
+        }
     }
 
     using Config = TooltipConfig;

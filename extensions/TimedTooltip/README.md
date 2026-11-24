@@ -143,14 +143,14 @@ ImGui::TimedTooltip::TextMD(&wideConfig, "### System Status\n* Bus 1: **Normal**
 ```
 
 ### Pattern C: Low-Level Custom Layout Blocks
-For completely custom tooltip content containing arbitrary ImGui widgets, use `BeginStationaryTooltip` and `EndStationaryTooltip`:
+For completely custom tooltip content containing arbitrary ImGui widgets, use `BeginStationaryTooltip` and `EndStationaryTooltip` (matching stock `ImGui::EndTooltip()`, the zero-arg `EndStationaryTooltip()` closes the active tooltip automatically; the `const char*` and `ImGuiID` overloads remain supported as well):
 
 ```cpp
 ImGui::Button("Engine Monitor");
 if (ImGui::TimedTooltip::BeginStationaryTooltip("EngineMonitorTooltip")) {
     ImGui::Text("EGT: 640 C");
     ImGui::ProgressBar(0.75f, ImVec2(150, 15));
-    ImGui::TimedTooltip::EndStationaryTooltip("EngineMonitorTooltip");
+    ImGui::TimedTooltip::EndStationaryTooltip();
 }
 ```
 
@@ -264,6 +264,7 @@ namespace ImGui {
         bool BeginStationaryTooltipProxy(ImGuiID id, bool is_hovered, const Config* cfg = nullptr);
         bool BeginStationaryTooltip(ImGuiID id, const Config* cfg = nullptr);
         bool BeginStationaryTooltip(const char* str_id, const Config* cfg = nullptr);
+        void EndStationaryTooltip();
         void EndStationaryTooltip(ImGuiID id);
         void EndStationaryTooltip(const char* str_id);
         void ClearActiveTooltip();
