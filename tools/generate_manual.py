@@ -1865,13 +1865,24 @@ if __name__ == "__main__":
             footer=args.footer or default_footer
         )
     else:
+        imgee_ver = "1.4.2"
+        imgee_h_path = os.path.join(repo_root, "imgee.h")
+        if os.path.isfile(imgee_h_path):
+            try:
+                with open(imgee_h_path, "r", encoding="utf-8", errors="ignore") as vf:
+                    vm = re.search(r'#define\s+IMGEE_VERSION\s+"([^"]+)"', vf.read())
+                    if vm:
+                        imgee_ver = vm.group(1)
+            except Exception:
+                pass
+
         if build_imgee and imgee_docs:
             imgee_out = os.path.join(docs_dir, "ImGee_User_Guide.pdf")
             generate_pdf(
                 imgee_out,
                 imgee_docs,
                 title=args.title or "ImGee: Modern Ergonomic UI Toolkit for Dear ImGui",
-                subtitle=args.subtitle or "Comprehensive Developer & User Manual • ImGee v1.1.0",
+                subtitle=args.subtitle or f"Comprehensive Developer & User Manual • ImGee v{imgee_ver}",
                 header=args.header or "ImGee: Modern Ergonomic UI Toolkit for Dear ImGui -- User Guide",
                 footer=args.footer or default_footer
             )
@@ -1882,7 +1893,7 @@ if __name__ == "__main__":
                 manifesto_out,
                 manifesto_docs,
                 title=args.title or "The ImGee UX Design Manifesto",
-                subtitle=args.subtitle or "Ergonomics, Cognitive Affordances, and Human Factors for User Interfaces • ImGee v1.1.0",
+                subtitle=args.subtitle or f"Ergonomics, Cognitive Affordances, and Human Factors for User Interfaces • ImGee v{imgee_ver}",
                 header=args.header or "The ImGee UX Design Manifesto -- Platform Standard",
                 footer=args.footer or default_footer
             )

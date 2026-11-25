@@ -72,7 +72,7 @@ inline const char* DefaultMarkdownPlaygroundText() {
     return
         "# ImGee Markdown & GFM Table Playground\n\n"
         "Edit this Markdown live to test **bold**, *italic*, `inline code`, "
-        "<badge=success>LIVE</badge> <pill=info>v1.4.0</pill> <kbd>Ctrl+F</kbd>, "
+        "<badge=success>LIVE</badge> <pill=info>v" IMGEE_VERSION "</pill> <kbd>Ctrl+F</kbd>, "
         "and procedural icons like :plane: and :gear:.\n\n"
         "> [!TIP]\n"
         "> Hover any table header or resize border below to see `v1.3.0` delayed "
@@ -350,7 +350,7 @@ inline void RenderTabOverviewAndThemes(ImGeeDemoState& st) {
     ImGui::StyledTextUnformatted(
         "Inline <b>bold</b>, <i>italic</i>, <mono>monospace</mono>, "
         "<color=cyan>tinted prose</color>, <badge=success>OK</badge>, "
-        "<pill=info>v1.4.0</pill>, and <kbd>Ctrl+F</kbd> with baseline alignment.");
+        "<pill=info>v" IMGEE_VERSION "</pill>, and <kbd>Ctrl+F</kbd> with baseline alignment.");
 #else
     RenderDisabledBanner("Typography / StyledText", "IMGEE_DISABLE_TYPOGRAPHY");
 #endif

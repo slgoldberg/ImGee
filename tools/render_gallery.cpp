@@ -20,6 +20,7 @@
 #include <ImageIO/ImageIO.h>
 
 #include "imgee.h"
+#include "imgee_demo.h"
 #include "imgui_internal.h"
 
 #include <algorithm>
@@ -2254,6 +2255,83 @@ int main(int argc, char** argv) {
             "ImGui::DocumentViewer(\"##Manual\", manualMarkdown, s_ManualState, &cfg);",
             ImVec2(0, 0), 0, 0
         });
+    }
+
+    // ========================================================================
+    // SCENES 19..26: Opt-In Interactive Showcase (imgee_demo.h) -- All 8 Tabs
+    // ========================================================================
+    {
+        static const char* const kDemoTabTitles[8] = {
+            "Tab 1: Overview & Themes",
+            "Tab 2: Sliders, Toggles & Knobs",
+            "Tab 3: Menus, Pulldowns & Links",
+            "Tab 4: Tooltips, Badges & Spinners",
+            "Tab 5: Vector Icons",
+            "Tab 6: Markdown & GFM Tables",
+            "Tab 7: DocumentViewer & Find",
+            "Tab 8: File Dialog & Diagnostics"
+        };
+        static const float kDemoTabHeights[8] = {
+            395.0f, // Tab 1: Overview & Themes
+            425.0f, // Tab 2: Sliders, Toggles & Knobs
+            395.0f, // Tab 3: Menus, Pulldowns & Links
+            375.0f, // Tab 4: Tooltips, Badges & Spinners
+            355.0f, // Tab 5: Vector Icons (8 cols x 3 rows at 1140px)
+            565.0f, // Tab 6: Markdown & GFM Tables (shows full preview + fenced code block)
+            500.0f, // Tab 7: DocumentViewer & Find
+            345.0f  // Tab 8: File Dialog & Diagnostics
+        };
+
+        const int targetDemoTheme = s_GalleryLightPass ? 4 : 0; // 4 = Paper Light, 0 = Charcoal
+        const char* demoScopeId   = s_GalleryLightPass ? "##gallery_imgee_demo_light" : "##gallery_imgee_demo_dark";
+        const char* hostWinTitle  = s_GalleryLightPass
+            ? "ImGee Interactive Showcase (v" IMGEE_VERSION ")##sc_demo_host_light"
+            : "ImGee Interactive Showcase (v" IMGEE_VERSION ")##sc_demo_host_dark";
+        for (int tabIdx = 0; tabIdx < 8; ++tabIdx) {
+            ImGeeDemoDetail::GetForcedTabIndex() = tabIdx;
+            for (int f = 0; f < 4; ++f) {
+                io.DeltaTime = 1.0f / 60.0f;
+                ImGui::NewFrame();
+                ApplyGalleryTheme();
+
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8.0f);
+                ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+                ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(1140.0f, kDemoTabHeights[tabIdx]), ImGuiCond_Always);
+                if (ImGui::Begin(hostWinTitle, nullptr,
+                                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar |
+                                 ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse)) {
+                    const ImGuiID demoId = ImGui::GetID(demoScopeId);
+                    ImGeeDemoDetail::ImGeeDemoState& demoSt = ImGeeDemoDetail::GetOrCreateDemoState(demoId);
+                    ImGeeDemoDetail::ApplyDemoTheme(demoSt, targetDemoTheme);
+                    if (tabIdx == 6 && f == 0) {
+                        std::snprintf(demoSt.doc_state.search_query, sizeof(demoSt.doc_state.search_query), "%s", "ImGee");
+                        ImGui::OpenDocumentSearch(demoSt.doc_state);
+                        demoSt.doc_state.search_focus_requested = false; // Avoid blinking caret artifacts
+                    }
+                    ImGui::ShowImGeeDemoContent(demoScopeId);
+                }
+                ImGui::End();
+                ImGui::PopStyleVar(2);
+                ImGui::Render();
+            }
+
+            char fileBuf[64];
+            std::snprintf(fileBuf, sizeof(fileBuf), "fig_demo_tab%d.png", tabIdx + 1);
+            finishAndExportScene({
+                19 + tabIdx,
+                std::string("Interactive Showcase -- ") + kDemoTabTitles[tabIdx],
+                "imgee_demo.h",
+                "`ImGui::ShowImGeeDemoWindow`, `ImGui::ShowImGeeDemoContent`",
+                fileBuf,
+                "#include \"imgee_demo.h\"\n"
+                "ImGui::ShowImGeeDemoWindow(&show_demo);",
+                ImVec2(0, 0), 0, 0
+            });
+        }
+        ImGeeDemoDetail::GetForcedTabIndex() = -1;
+        ApplyGalleryTheme();
     }
 
     }; // runAllScenes

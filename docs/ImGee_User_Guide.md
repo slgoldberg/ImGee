@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.4.1)
+## Comprehensive Developer & User Manual (v1.4.2)
 
 ---
 
@@ -220,17 +220,57 @@ if (ImGui::Begin("ImGee Interactive Gallery")) {
 ImGui::End();
 ```
 
-The showcase organizes the toolkit into **8 live tabs**:
-1. **Themes & Palette:** Live theme switcher (`Charcoal`, `Rusty`, `ImGui Dark`, `ImGui Classic`, `Paper Light`) plus color swatch preview.
-2. **Buttons & Toggles:** `ButtonLink`, `TextLink`, `IconButton`, `ButtonIcon`, `CopyButton`, animated `ToggleButton`, and segmented `ToggleButtons`.
-3. **Badges, Pills & Keycaps:** Auto-contrasting `Badge`, `Pill`, `PillNamed`, and 3D `<kbd>` shortcut chips.
-4. **Knobs, Sliders & Pulldowns:** `Knob` / `KnobWithReset` (with `OFF` detent), `SliderWithReset`, `MouseWheelCombo`, and `SelectPulldownMD`.
-5. **Popups & Menu Strip:** Item-anchored popups (`AboveItem` / `BelowItem`) and a live Hover-Latching Menu Strip (`BeginMenuStrip` / `BeginStripMenu`).
-6. **Tooltips & Vector Icons:** Stationary `TimedTooltip::Text`, `TextMD`, `TextMDLink`, custom `BeginStationaryTooltip` blocks, and the procedural vector icon gallery.
-7. **Markdown, GFM Tables & DocViewer:** Interactive sortable/resizable GFM tables, callouts, and an embedded `DocumentViewer` with live Find whose `theme_index` stays synced with the top-bar theme picker.
-8. **Typography & Diagnostics:** `ImFontRole` hierarchy, baseline-aligned `StyledText`, activity spinners, radial timers, and version diagnostics.
-
 **Non-Destructive Theme Testing (`Restore Host Style`):** When the showcase first opens in an `ImGuiContext*`, it captures a snapshot of your host application's current `ImGuiStyle`. You can freely test-drive `Charcoal`, `Rusty`, or `Paper Light` live and click **`Demo -> Restore Host Style`** at any time to put your application's original palette and metrics back untouched.
+
+#### Visual Tour of All 8 Interactive Tabs
+
+<img src="images/fig_demo_tab1.png" align="right" width="310" alt="Tab 1: Overview & Themes"/>
+
+**1. Overview & Themes:** Switch live between `Charcoal`, `Rusty`, `ImGui Dark`, `ImGui Classic`, and `Paper Light`, inspect active palette swatches, preview baseline-aligned `StyledText`, toggle runtime UX settings, and click **Restore Host Style** to revert cleanly.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab2.png" align="right" width="310" alt="Tab 2: Sliders, Toggles & Knobs"/>
+
+**2. Sliders, Toggles & Knobs:** Test mouse-wheel `SliderWithReset`, `PercentSliderWithReset`, and `MouseWheelCombo` alongside animated `ToggleButton` switches, segmented `ToggleButtons`, and 270-degree `Knob`, `KnobWithReset`, and two-step `OFF` `DimmerKnob` controls.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab3.png" align="right" width="310" alt="Tab 3: Menus, Pulldowns & Links"/>
+
+**3. Menus, Pulldowns & Links:** Try `SelectPulldownMD` (scroll pass-through when closed, Lens UI wheel tooltips when open), an upward-anchored Hover-Latching Menu Strip (`BeginMenuStrip` / `BeginStripMenu`), `*Link` hand-cursor controls, and `CopyButton` / `CopyLastItemButton`.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab4.png" align="right" width="310" alt="Tab 4: Tooltips, Badges & Spinners"/>
+
+**4. Tooltips, Badges & Spinners:** Experiment with dwell-timed stationary Markdown `TimedTooltip`s, auto-contrasting `Badge` and `Pill` / `PillNamed` capsules, 3D `<kbd>` keycaps, procedural `Spinner`s, and live `RadialTimer` / `CountdownTimer` dials.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab5.png" align="right" width="310" alt="Tab 5: Vector Icons"/>
+
+**5. Vector Icons:** Search and resize all 24 built-in procedural vector icons (`DrawVectorIcon`), test custom tinting, try `IconButton` / `ButtonIcon`, and click any tile to copy its Markdown `:icon:` shortcode to the clipboard.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab6.png" align="right" width="310" alt="Tab 6: Markdown & GFM Tables"/>
+
+**6. Markdown & GFM Tables:** Edit live CommonMark side-by-side with rendered output featuring inline `<badge>` / `<pill>` / `<kbd>` / `:icon:` tags, GFM alert callout cards, tristate sortable and drag-resizable tables with delayed column tooltips, and copyable fenced code blocks.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab7.png" align="right" width="310" alt="Tab 7: DocumentViewer & Find"/>
+
+**7. DocumentViewer & Find:** Test-drive an embedded `DocumentViewer` with `50%-250%` zoom, ATX Table-of-Contents jumping, live In-Document Search (`Ctrl+F`) drawing highlights behind text glyphs, and two-way theme synchronization with the showcase's top bar.
+
+<br clear="all"/>
+
+<img src="images/fig_demo_tab8.png" align="right" width="310" alt="Tab 8: File Dialog & Diagnostics"/>
+
+**8. File Dialog & Diagnostics:** Exercise non-blocking `FilePickerCombo`, `OpenFileDialog`, and `SaveFileDialog` modals alongside live `IMGEE_VERSION`, `IMGUI_VERSION`, `HostBackend` callback status, and active subsystem compile-time flags.
+
+<br clear="all"/>
 
 ---
 
@@ -834,4 +874,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.4.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.4.2 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

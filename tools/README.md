@@ -3,7 +3,8 @@
 This directory contains developer tooling and build scripts for the ImGee suite:
 
 * **`generate_manual.py`**: Automated PDF manual generator built on Python, ReportLab, and Pillow. It compiles Markdown documents across `docs/`, `extensions/`, `widgets/`, and `themes/` into publication-grade reference manuals with table of contents, running headers and footers, syntax-highlighted code blocks, and 2x Retina screenshots -- automatically preferring `docs/images/light/fig_*.png` light-theme specimen cards on white PDF pages when available (falling back to `docs/images/fig_*.png`).
-* **`render_gallery.cpp`**: Standalone headless renderer for macOS. It creates an offscreen OpenGL context via CGL and renders all 18 ImGee showcase scenes into 2x Retina RGBA PNGs with 4px tight transparent margins for both Dark Studio (`docs/images/fig_*.png`) and Paper Light (`docs/images/light/fig_*.png`) palettes with zero display windows.
+* **`generate_dashboard.py`**: Zero-dependency Python script that introspects the repository (`IMGEE_VERSION`, header counts, exact LOC, git dates, screenshot coverage, and PDF page counts) and emits the self-contained `docs/index.html` At-a-Glance Visual Dashboard (works both offline via `file://` and live at `https://slgoldberg.github.io/ImGee/`). Run alongside `generate_manual.py` before every release.
+* **`render_gallery.cpp`**: Standalone headless renderer for macOS. It creates an offscreen OpenGL context via CGL and renders all 26 ImGee showcase scenes (18 widget/extension cards + all 8 `imgee_demo.h` tabs) into 2x Retina RGBA PNGs with 4px tight transparent margins for both Dark Studio (`docs/images/fig_*.png`) and Paper Light (`docs/images/light/fig_*.png`) palettes with zero display windows.
 * **`fonts/`**: Vendored SIL Open Font License (OFL) monospace typefaces (`RobotoMono-Medium.ttf`, `RobotoMono-Bold.ttf`) used by `generate_manual.py` for code block rendering and typography.
 
 ---

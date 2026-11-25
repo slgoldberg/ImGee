@@ -14,6 +14,7 @@ Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the
 
 ## 📖 Documentation & Guides
 
+* **[At-a-Glance Visual Dashboard (GitHub Pages)](https://slgoldberg.github.io/ImGee/)** • **[(Offline Local Copy)](docs/index.html)**: Self-contained visual browser covering all 20 feature headers, live repo metrics, Dark Studio / Paper Light switching, and an interactive 8-tab `imgee_demo.h` showcase viewer.
 * **[Comprehensive ImGee User Manual (Markdown)](docs/ImGee_User_Guide.md)** • **[(PDF Manual)](docs/ImGee_User_Guide.pdf)**: Full API reference, copy-pasteable C++ examples, typography tables, and architectural details.
 * **[The ImGee UX Design Manifesto (Markdown)](docs/ImGee_UX_Design_Manifesto.md)** • **[(PDF Standard)](docs/ImGee_UX_Design_Manifesto.pdf)**: Human-factors principles, cursor & wheel affordance laws, "Lens UI" focus latching, and developer checklists.
 * **Component Reference Guides:** [Extensions Suite](extensions/README.md) • [Immediate-Mode UI Widgets](widgets/README.md) • [Curated Color Themes](themes/README.md)
@@ -172,6 +173,7 @@ ImGee/
 ├── stb_image.h                       # Vendored stb_image implementation wrapped inside ImGeeStbi
 ├── LICENSE                           # Open-Source License (BSD 3-Clause)
 ├── docs/
+│   ├── index.html                    # Self-contained At-a-Glance Visual Dashboard (GitHub Pages & offline)
 │   ├── ImGee_User_Guide.md           # Comprehensive User Manual (Source)
 │   ├── ImGee_User_Guide.pdf          # Compiled Publication-Grade Manual
 │   ├── ImGee_UX_Design_Manifesto.md  # Human Factors & Ergonomics Standard (Source)
