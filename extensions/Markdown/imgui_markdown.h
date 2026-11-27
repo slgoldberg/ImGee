@@ -1775,8 +1775,16 @@ namespace ImGui
         }
     }
 
-    inline void DefaultRenderCodeLine( const std::string& line_str, bool is_lua, bool is_cpp, float wrap_screen_x = -FLT_MAX, float scale = 1.0f )
+    inline void DefaultRenderCodeLine( const std::string& line_str, bool is_lua, bool is_cpp, float wrap_screen_x = -FLT_MAX, float scale = 1.0f, bool is_python = false )
     {
+        // Line comment starting at line_str[i]: Lua --, C++ //, Python #
+        auto is_comment_at = [&]( size_t i ) {
+            if( i >= line_str.length() ) return false;
+            if( is_python ) return line_str[i] == '#';
+            if( i + 1 >= line_str.length() ) return false;
+            return ( is_lua && line_str[i] == '-' && line_str[i + 1] == '-' ) ||
+                   ( is_cpp && line_str[i] == '/' && line_str[i + 1] == '/' );
+        };
         if( line_str.empty() )
         {
             ImGui::NewLine();
@@ -1786,7 +1794,7 @@ namespace ImGui
         float line_start_x = ImGui::GetCursorScreenPos().x;
         const bool has_wrap = ( wrap_screen_x > line_start_x );
 
-        if( !is_lua && !is_cpp )
+        if( !is_lua && !is_cpp && !is_python )
         {
             ImGui::PushStyleColor( ImGuiCol_Text, IM_COL32( 220, 225, 235, 255 ) );
             if( has_wrap )
@@ -1817,8 +1825,7 @@ namespace ImGui
 
         if( first_non_space != std::string::npos )
         {
-            if( ( is_lua && first_non_space + 1 < line_str.length() && line_str[first_non_space] == '-' && line_str[first_non_space + 1] == '-' ) ||
-                ( is_cpp && first_non_space + 1 < line_str.length() && line_str[first_non_space] == '/' && line_str[first_non_space + 1] == '/' ) )
+            if( is_comment_at( first_non_space ) )
             {
                 ImGui::PushStyleColor( ImGuiCol_Text, IM_COL32( 106, 153, 85, 255 ) ); // Comment green
                 if( has_wrap )
@@ -1919,8 +1926,7 @@ namespace ImGui
         while( pos < len )
         {
             // 1. Comments:
-            if( ( is_lua && pos + 1 < len && line_str[pos] == '-' && line_str[pos + 1] == '-' ) ||
-                ( is_cpp && pos + 1 < len && line_str[pos] == '/' && line_str[pos + 1] == '/' ) )
+            if( is_comment_at( pos ) )
             {
                 renderToken( line_str.c_str() + pos, line_str.c_str() + len, IM_COL32( 106, 153, 85, 255 ), true );
                 break;
@@ -1962,6 +1968,14 @@ namespace ImGui
                     static const char* kws[] = { "int", "float", "double", "bool", "void", "char", "auto", "const", "class", "struct", "if", "else", "return", "for", "while", "true", "false", "nullptr", nullptr };
                     for( int k = 0; kws[k]; ++k ) { if( word == kws[k] ) { is_kw = true; break; } }
                 }
+                else if( is_python )
+                {
+                    static const char* kws[] = { "False", "None", "True", "and", "as", "assert", "async", "await", "break", "class",
+                                                 "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global",
+                                                 "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+                                                 "return", "try", "while", "with", "yield", nullptr };
+                    for( int k = 0; kws[k]; ++k ) { if( word == kws[k] ) { is_kw = true; break; } }
+                }
 
                 ImU32 col = is_kw ? IM_COL32( 198, 120, 221, 255 ) : IM_COL32( 220, 225, 235, 255 );
                 renderToken( word.c_str(), word.c_str() + word.length(), col, w_end >= len );
@@ -1973,8 +1987,7 @@ namespace ImGui
             size_t other_end = pos;
             while( other_end < len && !isalpha( (unsigned char)line_str[other_end] ) && line_str[other_end] != '_' &&
                    line_str[other_end] != '\"' && line_str[other_end] != '\'' &&
-                   !( is_lua && other_end + 1 < len && line_str[other_end] == '-' && line_str[other_end + 1] == '-' ) &&
-                   !( is_cpp && other_end + 1 < len && line_str[other_end] == '/' && line_str[other_end + 1] == '/' ) )
+                   !is_comment_at( other_end ) )
             {
                 ++other_end;
             }
@@ -2427,9 +2440,10 @@ namespace ImGui
         bool is_markdown = ( lang_tag == "markdown" || lang_tag == "md" );
         bool is_lua = ( lang_tag == "lua" || lang_tag == "lua51" );
         bool is_cpp = ( lang_tag == "cpp" || lang_tag == "c" || lang_tag == "h" || lang_tag == "hpp" );
+        bool is_python = ( lang_tag == "python" || lang_tag == "py" || lang_tag == "python3" );
         bool is_plaintext = ( lang_tag == "text" || lang_tag == "plaintext" || lang_tag == "txt" );
         bool is_custom = ( mdConfig_.codeBlockCallback != nullptr );
-        bool is_recognized = is_markdown || is_lua || is_cpp || is_plaintext || is_custom;
+        bool is_recognized = is_markdown || is_lua || is_cpp || is_python || is_plaintext || is_custom;
 
         // Generate unique, scroll-stable ID combining content hash and block index:
         ImU32 content_hash = ImHashData( code_, codeLength_ );
@@ -2536,7 +2550,7 @@ namespace ImGui
                 }
 
                 ExpandTabs( line_start, line_end, line_buf, mdConfig_.tabSize > 0 ? mdConfig_.tabSize : 4 );
-                DefaultRenderCodeLine( line_buf, is_lua, is_cpp, wrap_screen_x, scale );
+                DefaultRenderCodeLine( line_buf, is_lua, is_cpp, wrap_screen_x, scale, is_python );
 
                 if( p < end && *p == '\r' ) ++p;
                 if( p < end && *p == '\n' ) ++p;
@@ -2647,6 +2661,7 @@ namespace ImGui
                 {
                     if( is_cpp ) tip_text = "C++ format (Syntax highlighted)";
                     else if( is_lua ) tip_text = "Lua format (Syntax highlighted)";
+                    else if( is_python ) tip_text = "Python format (Syntax highlighted)";
                     else if( is_markdown ) tip_text = "Markdown format (Supports live Preview)";
                     else if( is_plaintext ) tip_text = "Plain text format (Unformatted)";
                     else if( is_custom ) tip_text = "Custom host language syntax";
@@ -2672,6 +2687,12 @@ namespace ImGui
                     chip_bg = IM_COL32( 40, 60, 140, 230 );
                     chip_bg_hover = IM_COL32( 52, 78, 175, 245 );
                     chip_fg = IM_COL32( 220, 230, 255, 255 );
+                }
+                else if( is_python )
+                {
+                    chip_bg = IM_COL32( 52, 101, 164, 230 );       // Python blue, with its yellow as the text
+                    chip_bg_hover = IM_COL32( 64, 122, 196, 245 );
+                    chip_fg = IM_COL32( 255, 222, 87, 255 );
                 }
                 else if( is_markdown )
                 {

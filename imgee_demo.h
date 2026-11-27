@@ -39,6 +39,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
@@ -820,37 +821,37 @@ inline void RenderTabDocumentViewer(ImGeeDemoState& st) {
 inline bool LoadDemoFilePreview(const std::string& path, std::string& out_content) {
     out_content.clear();
     if (path.empty()) return false;
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
-    if (!fp) return false;
+    std::ifstream ifs(path, std::ios::binary);
+    if (!ifs.is_open()) return false;
     char buf[4096];
     const size_t kMaxBytes = 8192u;
     size_t total = 0;
-    while (total < kMaxBytes) {
+    while (total < kMaxBytes && ifs) {
         const size_t want = (std::min)(sizeof(buf), kMaxBytes - total);
-        const size_t got = std::fread(buf, 1, want, fp);
-        if (got == 0) break;
+        ifs.read(buf, static_cast<std::streamsize>(want));
+        const std::streamsize got_signed = ifs.gcount();
+        if (got_signed <= 0) break;
+        const size_t got = static_cast<size_t>(got_signed);
         out_content.append(buf, got);
         total += got;
     }
     if (total >= kMaxBytes) {
         out_content.append("\n... (truncated at 8 KB)");
     }
-    std::fclose(fp);
     return true;
 }
 
 inline bool WriteDemoSampleFile(const std::string& path) {
     if (path.empty()) return false;
-    std::FILE* fp = std::fopen(path.c_str(), "wb");
-    if (!fp) return false;
+    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    if (!ofs.is_open()) return false;
     const char* body =
         "# ImGee Sample Saved Note\n\n"
         "Created live by ImGee Interactive Showcase (v" IMGEE_VERSION ").\n"
         "Re-open this file from FilePickerCombo or OpenFileDialog to verify round-trip I/O.\n";
     const size_t len = std::strlen(body);
-    const size_t wrote = std::fwrite(body, 1, len, fp);
-    std::fclose(fp);
-    return (wrote == len);
+    ofs.write(body, static_cast<std::streamsize>(len));
+    return ofs.good();
 }
 
 inline void RenderTabFileDialogAndDiagnostics(ImGeeDemoState& st) {

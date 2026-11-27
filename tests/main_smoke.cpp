@@ -3879,6 +3879,52 @@ int main(int argc, char** argv) {
                     }
                     ImGui::TimedTooltip::ClearActiveTooltip();
                 }
+
+                // 4. Python fenced code block syntax highlighting (python / py / python3):
+                {
+                    io.DeltaTime = 1.0f / 60.0f;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(520.0f, 280.0f), ImGuiCond_Always);
+                    ImGui::Begin("V151PythonCodeWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    const int vtxBefore = dl->VtxBuffer.Size;
+                    const char* pyMd =
+                        "```python\n"
+                        "# Heading comment\n"
+                        "def greet(name):\n"
+                        "    return \"hi\"  # trailing comment\n"
+                        "```\n"
+                        "```py\n"
+                        "if True:\n"
+                        "    pass\n"
+                        "```\n"
+                        "```python3\n"
+                        "async def run():\n"
+                        "    yield None\n"
+                        "```\n";
+                    ImGui::Markdown::Text(pyMd);
+                    // Also smoke-test DefaultRenderCodeLine with is_python = true directly:
+                    ImGui::DefaultRenderCodeLine("for x in items:  # loop", false, false, -FLT_MAX, 1.0f, true);
+                    bool sawPyKeyword = false;
+                    bool sawPyComment = false;
+                    bool sawPyChipBg = false;
+                    bool sawPyChipFg = false;
+                    for (int i = vtxBefore; i < dl->VtxBuffer.Size; ++i) {
+                        const ImU32 c = dl->VtxBuffer[i].col;
+                        if (c == IM_COL32(198, 120, 221, 255)) sawPyKeyword = true;
+                        if (c == IM_COL32(106, 153, 85, 255)) sawPyComment = true;
+                        if (c == IM_COL32(52, 101, 164, 230)) sawPyChipBg = true;
+                        if (c == IM_COL32(255, 222, 87, 255)) sawPyChipFg = true;
+                    }
+                    IMGEE_TEST_CHECK(sawPyKeyword);
+                    IMGEE_TEST_CHECK(sawPyComment);
+                    IMGEE_TEST_CHECK(sawPyChipBg);
+                    IMGEE_TEST_CHECK(sawPyChipFg);
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
             }
         }
     }
