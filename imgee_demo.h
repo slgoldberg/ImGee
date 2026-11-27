@@ -768,7 +768,8 @@ inline void RenderTabMarkdownAndTables(ImGeeDemoState& st) {
     }
 
     if (BeginChildCompat("##md_preview_pane", ImVec2(0.0f, avail_h), true)) {
-        ImGui::MarkdownConfig md_cfg;
+        const ImGui::MarkdownConfig* base_md = ImGui::GetDefaultMarkdownConfig();
+        ImGui::MarkdownConfig md_cfg = base_md ? *base_md : ImGui::MarkdownConfig();
         md_cfg.userData = &st;
         md_cfg.tableStateCallback = [](const ImGui::MarkdownTableState& tblState, void* ud) {
             ImGeeDemoState* dst = static_cast<ImGeeDemoState*>(ud);

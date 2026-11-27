@@ -4097,6 +4097,80 @@ int main(int argc, char** argv) {
                     // Reset modifiers & mouse state cleanly
                     renderModFrame(ImVec2(10.0f, 10.0f), 0.0f, false, false, false, false);
                 }
+
+                // -------------------------------------------------------------
+                // 7o. v1.5.2 MarkdownExt Font-Role & Default Config Inheritance
+                // -------------------------------------------------------------
+                {
+                    struct FontSpy {
+                        ImFont* seenRegular    = nullptr;
+                        ImFont* seenBold       = nullptr;
+                        ImFont* seenItalic     = nullptr;
+                        ImFont* seenBoldItalic = nullptr;
+                        ImFont* seenMono       = nullptr;
+                        ImFont* seenH1         = nullptr;
+                        ImFont* seenH1Fmt      = nullptr;
+                    };
+                    FontSpy spyA;
+                    ImGui::ClearFontRoles();
+                    ImGui::SetDefaultMarkdownConfig(nullptr);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Regular,    atlasFonts.regular16);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Bold,       atlasFonts.bold16);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Italic,     atlasFonts.small9);
+                    ImGui::SetFontRole(ImGui::ImFontRole::BoldItalic, atlasFonts.wideBold24);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Monospace,  atlasFonts.compact12);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Heading1,   atlasFonts.wideBold24);
+
+                    io.DeltaTime = 1.0f / 60.0f;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(420.0f, 200.0f), ImGuiCond_Always);
+                    ImGui::Begin("V152MdFontRoleWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+                    // Case 1: Blank MarkdownConfig inherits all font slots from ImFontRole
+                    ImGui::MarkdownConfig blankMdCfg;
+                    blankMdCfg.userData = &spyA;
+                    blankMdCfg.formatCallback = [](const ImGui::MarkdownFormatInfo& info, bool start) {
+                        if (start && info.config && info.config->userData) {
+                            FontSpy* s = static_cast<FontSpy*>(info.config->userData);
+                            s->seenRegular    = info.config->regularFont;
+                            s->seenBold       = info.config->boldFont;
+                            s->seenItalic     = info.config->italicFont;
+                            s->seenBoldItalic = info.config->boldItalicFont;
+                            s->seenMono       = info.config->monoFont;
+                            s->seenH1         = info.config->h1Font;
+                            s->seenH1Fmt      = info.config->headingFormats[0].font;
+                        }
+                        ImGui::defaultMarkdownFormatCallback(info, start);
+                    };
+                    const char* mdFontSample = "# H1\n_hello_ **bold** ***bi*** `mono`";
+                    ImGui::MarkdownExt(mdFontSample, std::strlen(mdFontSample), &blankMdCfg, true);
+                    IMGEE_TEST_CHECK(spyA.seenRegular    == atlasFonts.regular16);
+                    IMGEE_TEST_CHECK(spyA.seenBold       == atlasFonts.bold16);
+                    IMGEE_TEST_CHECK(spyA.seenItalic     == atlasFonts.small9);
+                    IMGEE_TEST_CHECK(spyA.seenBoldItalic == atlasFonts.wideBold24);
+                    IMGEE_TEST_CHECK(spyA.seenMono       == atlasFonts.compact12);
+                    IMGEE_TEST_CHECK(spyA.seenH1         == atlasFonts.wideBold24);
+                    IMGEE_TEST_CHECK(spyA.seenH1Fmt      == atlasFonts.wideBold24);
+
+                    // Case 2: GetDefaultMarkdownConfig() takes priority over ImFontRole, while null slots still fall back to ImFontRole
+                    ImGui::MarkdownConfig defaultOverrideCfg;
+                    defaultOverrideCfg.italicFont = atlasFonts.baseline14;
+                    ImGui::SetDefaultMarkdownConfig(&defaultOverrideCfg);
+                    FontSpy spyB;
+                    blankMdCfg.userData = &spyB;
+                    ImGui::MarkdownExt(mdFontSample, std::strlen(mdFontSample), &blankMdCfg, true);
+                    IMGEE_TEST_CHECK(spyB.seenItalic     == atlasFonts.baseline14);
+                    IMGEE_TEST_CHECK(spyB.seenBold       == atlasFonts.bold16);
+                    IMGEE_TEST_CHECK(spyB.seenBoldItalic == atlasFonts.wideBold24);
+
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+
+                    ImGui::SetDefaultMarkdownConfig(nullptr);
+                    ImGui::ClearFontRoles();
+                }
             }
         }
     }

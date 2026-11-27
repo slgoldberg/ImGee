@@ -192,6 +192,22 @@ static void LoadCrispFonts(float dpr) {
         ImGui::SetFontRole(ImGui::ImFontRole::Heading2,        fTitle     ? fTitle     : fRegular);
         ImGui::SetFontRole(ImGui::ImFontRole::Heading3,        fBold      ? fBold      : fRegular);
         ImGui::SetFontRole(ImGui::ImFontRole::Tiny,            fSmall     ? fSmall     : fRegular);
+
+        static ImGui::MarkdownConfig s_WasmMdCfg;
+        s_WasmMdCfg = ImGui::MarkdownConfig();
+        s_WasmMdCfg.regularFont             = fRegular;
+        s_WasmMdCfg.boldFont                = fBold;
+        s_WasmMdCfg.italicFont              = fItalic;
+        s_WasmMdCfg.boldItalicFont          = fBoldItal;
+        s_WasmMdCfg.monoFont                = fMono;
+        s_WasmMdCfg.h1Font                  = fBoldLarge ? fBoldLarge : fBold;
+        s_WasmMdCfg.h2Font                  = fTitle     ? fTitle     : fBold;
+        s_WasmMdCfg.h3Font                  = fBold;
+        s_WasmMdCfg.headingFormats[0].font  = s_WasmMdCfg.h1Font;
+        s_WasmMdCfg.headingFormats[1].font  = s_WasmMdCfg.h2Font;
+        s_WasmMdCfg.headingFormats[2].font  = s_WasmMdCfg.h3Font;
+        s_WasmMdCfg.linkCallback            = &WasmMarkdownLinkCallback;
+        ImGui::SetDefaultMarkdownConfig(&s_WasmMdCfg);
     } else {
         io.Fonts->AddFontDefault();
     }

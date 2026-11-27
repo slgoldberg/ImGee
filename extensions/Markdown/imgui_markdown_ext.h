@@ -3190,6 +3190,48 @@ namespace ImGui {
     }
 
     // 4. Core Markdown Extension Engine (Unified Single-Pass Pipeline)
+    inline void ResolveMarkdownConfigFonts(MarkdownConfig& cfg) {
+        // 1. Inherit any unset font slots from GetDefaultMarkdownConfig()
+        const MarkdownConfig* def = GetDefaultMarkdownConfig();
+        if (def && def != &cfg) {
+            if (!cfg.regularFont)    cfg.regularFont    = def->regularFont;
+            if (!cfg.boldFont)       cfg.boldFont       = def->boldFont;
+            if (!cfg.italicFont)     cfg.italicFont     = def->italicFont;
+            if (!cfg.boldItalicFont) cfg.boldItalicFont = def->boldItalicFont;
+            if (!cfg.monoFont)       cfg.monoFont       = def->monoFont;
+            if (!cfg.h1Font)         cfg.h1Font         = def->h1Font;
+            if (!cfg.h2Font)         cfg.h2Font         = def->h2Font;
+            if (!cfg.h3Font)         cfg.h3Font         = def->h3Font;
+            for (int hi = 0; hi < MarkdownConfig::NUMHEADINGS; ++hi) {
+                if (!cfg.headingFormats[hi].font) {
+                    cfg.headingFormats[hi].font = def->headingFormats[hi].font;
+                }
+            }
+        }
+        // 2. Auto-wire remaining unset font slots from ImFontRole when Typography is enabled
+#if defined(IMGUI_FONT_ROLES_H) && !defined(IMGEE_DISABLE_TYPOGRAPHY) && !defined(CONTRIB_DISABLE_TYPOGRAPHY)
+        ImFont* ambient = ImGui::GetCurrentContext() ? ImGui::GetFont() : nullptr;
+        auto resolveRole = [&](ImFontRole role) -> ImFont* {
+            ImFont* explicit_slot = Detail::GetFontRoleSlot(role);
+            if (explicit_slot) return explicit_slot;
+            ImFont* resolved = ImGui::GetFont(role);
+            if (role == ImFontRole::Regular) return resolved;
+            return (resolved && resolved != ambient) ? resolved : nullptr;
+        };
+        if (!cfg.regularFont)    cfg.regularFont    = resolveRole(ImFontRole::Regular);
+        if (!cfg.boldFont)       cfg.boldFont       = resolveRole(ImFontRole::Bold);
+        if (!cfg.italicFont)     cfg.italicFont     = resolveRole(ImFontRole::Italic);
+        if (!cfg.boldItalicFont) cfg.boldItalicFont = resolveRole(ImFontRole::BoldItalic);
+        if (!cfg.monoFont)       cfg.monoFont       = resolveRole(ImFontRole::Monospace);
+        if (!cfg.h1Font)         cfg.h1Font         = resolveRole(ImFontRole::Heading1);
+        if (!cfg.h2Font)         cfg.h2Font         = resolveRole(ImFontRole::Heading2);
+        if (!cfg.h3Font)         cfg.h3Font         = resolveRole(ImFontRole::Heading3);
+        if (!cfg.headingFormats[0].font && cfg.h1Font) cfg.headingFormats[0].font = cfg.h1Font;
+        if (!cfg.headingFormats[1].font && cfg.h2Font) cfg.headingFormats[1].font = cfg.h2Font;
+        if (!cfg.headingFormats[2].font && cfg.h3Font) cfg.headingFormats[2].font = cfg.h3Font;
+#endif
+    }
+
     inline void MarkdownExt(const char* markdown_text, size_t markdown_len, const MarkdownConfig* config_override, bool create_float_scope) {
         if (!markdown_text) return;
         const MarkdownConfig* config = config_override ? config_override : GetDefaultMarkdownConfig();
@@ -3198,8 +3240,11 @@ namespace ImGui {
             config = &s_FallbackConfig;
         }
 
+        MarkdownConfig local_config = *config;
+        ResolveMarkdownConfigFonts(local_config);
+
         std::string processed_quotes;
-        bool has_quotes = PreprocessMarkdownBlockquotesAndAlerts(markdown_text, markdown_len, processed_quotes, config);
+        bool has_quotes = PreprocessMarkdownBlockquotesAndAlerts(markdown_text, markdown_len, processed_quotes, &local_config);
         const char* text_q = has_quotes ? processed_quotes.c_str() : markdown_text;
         size_t len_q = has_quotes ? processed_quotes.length() : markdown_len;
 
@@ -3213,7 +3258,6 @@ namespace ImGui {
         const char* actual_text = has_icons ? processed_icons.c_str() : text_mid;
         size_t actual_len = has_icons ? processed_icons.length() : len_mid;
 
-        MarkdownConfig local_config = *config;
         const MarkdownConfig* prev_active = GetActiveMarkdownConfig();
         GetActiveMarkdownConfig() = &local_config;
 
