@@ -3887,8 +3887,8 @@ int main(int argc, char** argv) {
                     ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
                     ImGui::SetNextWindowSize(ImVec2(520.0f, 280.0f), ImGuiCond_Always);
                     ImGui::Begin("V151PythonCodeWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
-                    ImDrawList* dl = ImGui::GetWindowDrawList();
-                    const int vtxBefore = dl->VtxBuffer.Size;
+                    ImDrawList* pyDl = ImGui::GetWindowDrawList();
+                    const int pyVtxBefore = pyDl->VtxBuffer.Size;
                     const char* pyMd =
                         "```python\n"
                         "# Heading comment\n"
@@ -3910,12 +3910,12 @@ int main(int argc, char** argv) {
                     bool sawPyComment = false;
                     bool sawPyChipBg = false;
                     bool sawPyChipFg = false;
-                    for (int i = vtxBefore; i < dl->VtxBuffer.Size; ++i) {
-                        const ImU32 c = dl->VtxBuffer[i].col;
-                        if (c == IM_COL32(198, 120, 221, 255)) sawPyKeyword = true;
-                        if (c == IM_COL32(106, 153, 85, 255)) sawPyComment = true;
-                        if (c == IM_COL32(52, 101, 164, 230)) sawPyChipBg = true;
-                        if (c == IM_COL32(255, 222, 87, 255)) sawPyChipFg = true;
+                    for (int pyIdx = pyVtxBefore; pyIdx < pyDl->VtxBuffer.Size; ++pyIdx) {
+                        const ImU32 pyCol = pyDl->VtxBuffer[pyIdx].col;
+                        if (pyCol == IM_COL32(198, 120, 221, 255)) sawPyKeyword = true;
+                        if (pyCol == IM_COL32(106, 153, 85, 255)) sawPyComment = true;
+                        if (pyCol == IM_COL32(52, 101, 164, 230)) sawPyChipBg = true;
+                        if (pyCol == IM_COL32(255, 222, 87, 255)) sawPyChipFg = true;
                     }
                     IMGEE_TEST_CHECK(sawPyKeyword);
                     IMGEE_TEST_CHECK(sawPyComment);
