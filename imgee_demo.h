@@ -68,6 +68,16 @@ inline int& GetForcedTabIndex() {
     return s_ForcedTab;
 }
 
+inline int& GetPendingTabIndex() {
+    static int s_PendingTab = -1;
+    return s_PendingTab;
+}
+
+inline int& GetPendingThemeIndex() {
+    static int s_PendingTheme = -1;
+    return s_PendingTheme;
+}
+
 inline const char* DefaultMarkdownPlaygroundText() {
     return
         "# ImGee Markdown & GFM Table Playground\n\n"
@@ -135,11 +145,12 @@ struct ImGeeDemoState {
     ImGuiStyle host_style_snapshot;
 
     // Shared theme & UX settings
-    int   theme_index            = 0; // 0=Charcoal, 1=Rusty, 2=Dark, 3=Classic, 4=Paper Light
-    bool  wheel_auto_defeat      = true;
-    int   tooltip_delay_frames   = 18;
-    bool  dynamic_cursors        = true;
-    std::string last_action_note = "Ready -- hover controls or switch tabs to explore ImGee.";
+    int   theme_index                 = 0; // 0=Charcoal, 1=Rusty, 2=Dark, 3=Classic, 4=Paper Light
+    bool  wheel_auto_defeat           = true;
+    int   tooltip_delay_frames        = 18;
+    int   tooltip_max_display_frames  = 504;
+    bool  dynamic_cursors             = true;
+    std::string last_action_note      = "Ready -- hover controls or switch tabs to explore ImGee.";
 
     // Tab 2: Sliders, Toggles & Knobs
     float slider_gamma      = 2.20f;
@@ -155,6 +166,7 @@ struct ImGeeDemoState {
 
     // Tab 3: Menus, Pulldowns & Links
     int   pulldown_cam      = 0;
+    int   strip_anchor_below = 0; // 0 = AboveItem (status bar), 1 = BelowItem (menu bar)
     bool  chk_link_val      = true;
     int   radio_link_val    = 1;
     int   strip_action_cnt  = 0;
@@ -438,9 +450,17 @@ inline void RenderTabMenusPulldownsLinks(ImGeeDemoState& st) {
 
     ImGui::Spacing();
     ImGui::TextUnformatted("Hover-Latching Menu Strip (v1.3.0 -- Click Once, Glide Across Siblings)");
+    ImGui::SameLine(0.0f, 16.0f);
+    ImGui::TextDisabled("Anchor:");
+    ImGui::SameLine(0.0f, 6.0f);
+    ImGui::RadioButton("AboveItem##strip_dir", &st.strip_anchor_below, 0);
+    if (ImGui::IsItemHovered() && st.dynamic_cursors) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    ImGui::SameLine(0.0f, 8.0f);
+    ImGui::RadioButton("BelowItem##strip_dir", &st.strip_anchor_below, 1);
+    if (ImGui::IsItemHovered() && st.dynamic_cursors) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     ImGui::Separator();
     ImGui::MenuStripConfig stripCfg;
-    stripCfg.anchor         = ImGuiPopupAnchor_AboveItem;
+    stripCfg.anchor         = st.strip_anchor_below ? ImGuiPopupAnchor_BelowItem : ImGuiPopupAnchor_AboveItem;
     stripCfg.align          = ImGuiPopupAlign_Left;
     stripCfg.dynamicCursors = st.dynamic_cursors;
 
@@ -510,8 +530,25 @@ inline void RenderTabMenusPulldownsLinks(ImGeeDemoState& st) {
 }
 
 inline void RenderTabTooltipsBadgesSpinners(ImGeeDemoState& st) {
-    ImGui::TextUnformatted("Stationary TimedTooltips (Anti-Distraction Dwell)");
+    ImGui::TextUnformatted("Stationary TimedTooltips (Anti-Distraction Dwell & Timing Controls)");
     ImGui::Separator();
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP)
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::SliderInt("Dwell (frames)##tt_dwell", &st.tooltip_delay_frames, 0, 90);
+    ImGui::SameLine(0.0f, 14.0f);
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::SliderInt("Max Display (frames)##tt_max", &st.tooltip_max_display_frames, 60, 1800);
+    ImGui::SameLine(0.0f, 12.0f);
+    if (ImGui::Button("Reset Defaults##tt_reset")) {
+        st.tooltip_delay_frames       = 18;
+        st.tooltip_max_display_frames = 504;
+        ImGui::TimedTooltip::ClearActiveTooltip();
+        st.last_action_note = "Reset TimedTooltip dwell (18f) and max display (504f) defaults.";
+    }
+    if (ImGui::IsItemHovered() && st.dynamic_cursors) {
+        ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+#endif
     ImGui::Button("Hover for Rich Markdown TimedTooltip");
     if (ImGui::IsItemHovered() && st.dynamic_cursors) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -520,17 +557,31 @@ inline void RenderTabTooltipsBadgesSpinners(ImGeeDemoState& st) {
     {
         ImGui::TimedTooltip::TooltipConfig demoTipCfg = ImGui::TimedTooltip::GetConfig();
         demoTipCfg.hover_delay_cycles = st.tooltip_delay_frames;
+        demoTipCfg.max_display_cycles = st.tooltip_max_display_frames;
         ImGui::TimedTooltip::TextMD(&demoTipCfg,
             "**Stationary TimedTooltip**\n\n"
-            "Waits for a brief dwell (%d frames) before appearing, anchors cleanly without cursor-chasing jitter, "
-            "clamps inside viewport bounds, and supports <badge=info>Markdown</badge> formatting.",
+            "Waits for a brief dwell (`%d` frames) before appearing, auto-dismisses after `%d` frames, "
+            "anchors cleanly without cursor-chasing jitter, clamps inside viewport bounds, "
+            "and supports <badge=info>Markdown</badge> formatting.",
+            st.tooltip_delay_frames, st.tooltip_max_display_frames);
+
+        ImGui::SameLine(0.0f, 14.0f);
+        ImGui::Button("(i) Click-to-Toggle Tooltip Chaser");
+        if (ImGui::IsItemHovered() && st.dynamic_cursors) {
+            ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+        }
+        ImGui::TimedTooltip::TextMDLink(&demoTipCfg,
+            "**Click-to-Toggle (`TextMDLink`)**\n\n"
+            "Hovering shows after dwell (`%d` frames); clicking shows immediately or dismisses cleanly.",
             st.tooltip_delay_frames);
     }
 #elif defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP)
     {
         ImGui::TimedTooltip::TooltipConfig demoTipCfg = ImGui::TimedTooltip::GetConfig();
         demoTipCfg.hover_delay_cycles = st.tooltip_delay_frames;
-        ImGui::TimedTooltip::Text(&demoTipCfg, "Stationary TimedTooltip (%d-frame dwell, plain text mode).", st.tooltip_delay_frames);
+        demoTipCfg.max_display_cycles = st.tooltip_max_display_frames;
+        ImGui::TimedTooltip::Text(&demoTipCfg, "Stationary TimedTooltip (%d-frame dwell, %d-frame max, plain text mode).",
+                                  st.tooltip_delay_frames, st.tooltip_max_display_frames);
     }
 #else
     ImGui::SameLine();
@@ -836,6 +887,22 @@ inline void RenderTabFileDialogAndDiagnostics(ImGeeDemoState& st) {
 
 namespace ImGui {
 
+/// Programmatically selects a 0-based tab (0..7) on the next ShowImGeeDemoWindow/Content frame
+/// without locking out subsequent manual tab clicks. Ideal for deep-links (e.g. ?tab=1..8).
+inline void SetImGeeDemoTab(int tab_index_0_based) {
+    if (tab_index_0_based >= 0 && tab_index_0_based < 8) {
+        ImGeeDemoDetail::GetPendingTabIndex() = tab_index_0_based;
+    }
+}
+
+/// Programmatically applies a Demo theme preset (0=Charcoal, 1=Rusty, 2=Dark, 3=Classic, 4=Paper Light)
+/// on the next ShowImGeeDemoWindow/Content frame (synchronized with embedded DocumentViewer).
+inline void SetImGeeDemoTheme(int theme_index) {
+    if (theme_index >= 0 && theme_index <= 4) {
+        ImGeeDemoDetail::GetPendingThemeIndex() = theme_index;
+    }
+}
+
 /// Renders the interactive ImGee showcase body directly inside the caller's active window.
 /// Ideal for hosts that already own ImGui::Begin()/End() (e.g. X-Plane ImgWindow / FlyWithLua).
 inline void ShowImGeeDemoContent(const char* str_id = "##ImGeeDemo") {
@@ -844,6 +911,11 @@ inline void ShowImGeeDemoContent(const char* str_id = "##ImGeeDemo") {
     ImGui::PushID(static_cast<int>(demo_id));
 
     ImGeeDemoDetail::ImGeeDemoState& st = ImGeeDemoDetail::GetOrCreateDemoState(demo_id);
+    if (ImGeeDemoDetail::GetPendingThemeIndex() >= 0) {
+        const int target_theme = ImGeeDemoDetail::GetPendingThemeIndex();
+        ImGeeDemoDetail::GetPendingThemeIndex() = -1;
+        ImGeeDemoDetail::ApplyDemoTheme(st, target_theme);
+    }
 
     // 1. Top Strip: Live Hover-Latching Menu Strip + Theme Picker + Version Pill
 #if defined(IMGUI_POPUP_MENUS_H) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(IMGEE_DISABLE_POPUP_MENUS)
@@ -942,12 +1014,17 @@ inline void ShowImGeeDemoContent(const char* str_id = "##ImGeeDemo") {
     const float footer_h = ImGui::GetTextLineHeightWithSpacing() + 6.0f;
     const float tabs_h   = (std::max)(200.0f, ImGui::GetContentRegionAvail().y - footer_h);
     const int forced_tab = ImGeeDemoDetail::GetForcedTabIndex();
+    const int pending_tab = ImGeeDemoDetail::GetPendingTabIndex();
+    const int select_tab  = (forced_tab >= 0) ? forced_tab : pending_tab;
 
     if (ImGeeDemoDetail::BeginChildCompat("##imgee_demo_tabs_region", ImVec2(0.0f, tabs_h), false)) {
         if (ImGui::BeginTabBar("##imgee_demo_tabbar", ImGuiTabBarFlags_FittingPolicyScroll)) {
             auto tabFlags = [&](int idx) -> ImGuiTabItemFlags {
-                return (forced_tab == idx) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+                return (select_tab == idx) ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
             };
+            if (pending_tab >= 0) {
+                ImGeeDemoDetail::GetPendingTabIndex() = -1;
+            }
             if (ImGui::BeginTabItem("Overview & Themes", nullptr, tabFlags(0))) {
                 ImGeeDemoDetail::RenderTabOverviewAndThemes(st);
                 ImGui::EndTabItem();

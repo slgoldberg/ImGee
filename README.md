@@ -14,7 +14,8 @@ Where vanilla Dear ImGui flashes cursor-chasing plain-text tooltips, ignores the
 
 ## 📖 Documentation & Guides
 
-* **[At-a-Glance Visual Dashboard (GitHub Pages)](https://slgoldberg.github.io/ImGee/)** • **[(Offline Local Copy)](docs/index.html)**: Self-contained visual browser covering all 20 feature headers, live repo metrics, Dark Studio / Paper Light switching, and an interactive 8-tab `imgee_demo.h` showcase viewer.
+* **[Live Interactive Browser Playground (WebAssembly)](https://slgoldberg.github.io/ImGee/playground/)**: Try the real C++ `imgee_demo.h` at 60fps directly in Chrome/Safari/Firefox (`?tab=1..8`, `?theme=dark|light`) with zero install.
+* **[At-a-Glance Visual Dashboard (GitHub Pages)](https://slgoldberg.github.io/ImGee/)** • **[(Offline Local Copy)](docs/index.html)**: Self-contained visual browser covering all 20 feature headers, live repo metrics, Dark Studio / Paper Light switching, and direct deep links into the Live Playground.
 * **[Comprehensive ImGee User Manual (Markdown)](docs/ImGee_User_Guide.md)** • **[(PDF Manual)](docs/ImGee_User_Guide.pdf)**: Full API reference, copy-pasteable C++ examples, typography tables, and architectural details.
 * **[The ImGee UX Design Manifesto (Markdown)](docs/ImGee_UX_Design_Manifesto.md)** • **[(PDF Standard)](docs/ImGee_UX_Design_Manifesto.pdf)**: Human-factors principles, cursor & wheel affordance laws, "Lens UI" focus latching, and developer checklists.
 * **Component Reference Guides:** [Extensions Suite](extensions/README.md) • [Immediate-Mode UI Widgets](widgets/README.md) • [Curated Color Themes](themes/README.md)

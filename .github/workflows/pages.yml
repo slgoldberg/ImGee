@@ -1,0 +1,85 @@
+name: Deploy GitHub Pages (Dashboard + WASM Playground)
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Dashboard & Live WASM Playground
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ImGee
+        uses: actions/checkout@v4
+        with:
+          path: imgee
+
+      - name: Checkout pure upstream Dear ImGui (v1.92.8)
+        uses: actions/checkout@v4
+        with:
+          repository: ocornut/imgui
+          ref: v1.92.8
+          path: imgui
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build ImGee WebAssembly Playground
+        shell: bash
+        run: |
+          chmod +x imgee/tools/wasm_playground/build_wasm.sh
+          imgee/tools/wasm_playground/build_wasm.sh "$(cd imgui && pwd)" "$(pwd)/site/playground"
+
+      - name: Stage combined Pages artifact (docs/ + playground/)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          cp -R imgee/docs/. site/
+          touch site/.nojekyll
+          # Sanity-check required site assets
+          for f in \
+            site/index.html \
+            site/ImGee_User_Guide.pdf \
+            site/ImGee_UX_Design_Manifesto.pdf \
+            site/playground/index.html \
+            site/playground/index.js \
+            site/playground/index.wasm \
+            site/playground/index.data; do
+            if [ ! -s "$f" ]; then
+              echo "[ERROR] Missing staged GitHub Pages asset: $f" >&2
+              exit 1
+            fi
+          done
+          echo "[OK] Staged GitHub Pages site:"
+          ls -lh site/ site/playground/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

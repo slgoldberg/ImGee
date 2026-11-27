@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ImGee Live Interactive Playground (WebAssembly)</title>
+<meta name="description" content="Live 60fps C++ WebAssembly playground for ImGee: test-drive rotary knobs, hover-latching menu strips, stationary TimedTooltips, sortable GFM tables, and DocumentViewer directly in your browser.">
+<style>
+:root {
+  --bar-bg: #1e2128;
+  --bar-border: #323846;
+  --bar-text: #e8ecf4;
+  --bar-muted: #9aa5ba;
+  --btn-bg: #2b303c;
+  --btn-hover: #373e4f;
+  --accent: #4c9aff;
+  --stage-bg: #181a1f;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+html[data-theme="light"] {
+  --bar-bg: #f7f9fc;
+  --bar-border: #d5deec;
+  --bar-text: #18202c;
+  --bar-muted: #526076;
+  --btn-bg: #e8eef7;
+  --btn-hover: #dae3f1;
+  --accent: #2563eb;
+  --stage-bg: #f4f6fa;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--stage-bg);
+  color: var(--bar-text);
+  font-family: var(--sans);
+}
+.pg-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+}
+.pg-bar {
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 14px;
+  background: var(--bar-bg);
+  border-bottom: 1px solid var(--bar-border);
+  font-size: 13px;
+  user-select: none;
+}
+.pg-left, .pg-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pg-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.pg-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(76, 154, 255, 0.18);
+  color: var(--accent);
+}
+.pg-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bar-border);
+  background: var(--btn-bg);
+  color: var(--bar-text);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.14s ease;
+}
+.pg-link:hover {
+  background: var(--btn-hover);
+}
+.pg-stage {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  background: var(--stage-bg);
+}
+#canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+.pg-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--stage-bg);
+  z-index: 20;
+  transition: opacity 0.2s ease;
+}
+.pg-loader.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--bar-border);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.pg-loader-msg {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--bar-text);
+}
+.pg-loader-sub {
+  font-size: 12px;
+  color: var(--bar-muted);
+}
+.pg-error {
+  max-width: 520px;
+  padding: 16px 20px;
+  border-radius: 10px;
+  border: 1px solid #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--bar-text);
+  font-size: 13px;
+  text-align: center;
+  display: none;
+}
+@media (max-width: 700px) {
+  .pg-hide-sm { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="pg-shell">
+  <header class="pg-bar">
+    <div class="pg-left">
+      <a class="pg-link" href="../" title="Return to ImGee Visual Dashboard">&larr; Dashboard</a>
+      <span class="pg-title">ImGee Live Playground</span>
+      <span class="pg-pill">WebAssembly &middot; 60fps C++</span>
+    </div>
+    <div class="pg-right">
+      <a class="pg-link pg-hide-sm" href="../ImGee_User_Guide.pdf" target="_blank" rel="noopener">User Guide PDF</a>
+      <a class="pg-link pg-hide-sm" href="../ImGee_UX_Design_Manifesto.pdf" target="_blank" rel="noopener">UX Manifesto</a>
+      <a class="pg-link" href="https://github.com/slgoldberg/ImGee" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main class="pg-stage">
+    <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+    <div id="loader" class="pg-loader">
+      <div class="spinner" id="loaderSpin"></div>
+      <div class="pg-loader-msg" id="loaderMsg">Loading ImGee C++ WebAssembly Playground...</div>
+      <div class="pg-loader-sub" id="loaderSub">Compiling shaders &amp; preloading Retina TrueType fonts</div>
+      <div class="pg-error" id="loaderErr"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var initTheme = (params.get("theme") || "").toLowerCase();
+  if (initTheme === "light" || initTheme === "paper" || initTheme === "paperlight") {
+    document.documentElement.setAttribute("data-theme", "light");
+  }
+
+  window.imgeeSyncShellTheme = function(isLight) {
+    document.documentElement.setAttribute("data-theme", isLight ? "light" : "dark");
+  };
+
+  window.imgeeHideLoader = function() {
+    var el = document.getElementById("loader");
+    if (el) el.classList.add("hidden");
+  };
+
+  var canvas = document.getElementById("canvas");
+
+  // Keep wheel gestures inside ImGee widgets (SelectPulldown, knobs, sliders, DocumentViewer)
+  canvas.addEventListener("wheel", function(e) {
+    e.preventDefault();
+  }, { passive: false });
+
+  // Forward Ctrl+F / Cmd+F to DocumentViewer's live Find bar instead of browser page search
+  window.addEventListener("keydown", function(e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+    }
+  });
+
+  // Focus canvas on click so keyboard shortcuts work cleanly
+  canvas.addEventListener("mousedown", function() {
+    canvas.focus();
+  });
+
+  function showError(msg) {
+    var spin = document.getElementById("loaderSpin");
+    var err = document.getElementById("loaderErr");
+    var sub = document.getElementById("loaderSub");
+    if (spin) spin.style.display = "none";
+    if (sub) sub.style.display = "none";
+    if (err) {
+      err.style.display = "block";
+      err.textContent = msg;
+    }
+  }
+
+  // Verify WebGL2 availability before booting WASM
+  try {
+    var testGl = canvas.getContext("webgl2");
+    if (!testGl) {
+      showError("WebGL2 is required to run the live ImGee Playground, but your browser did not provide a WebGL2 context.");
+    }
+  } catch (e) {}
+
+  window.Module = {
+    canvas: canvas,
+    printErr: function(txt) {
+      console.error("[ImGee WASM]", txt);
+    },
+    setStatus: function(text) {
+      if (!text) return;
+      var sub = document.getElementById("loaderSub");
+      if (sub) sub.textContent = text;
+    },
+    onAbort: function(what) {
+      showError("WebAssembly playground failed to initialize: " + what);
+    }
+  };
+})();
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

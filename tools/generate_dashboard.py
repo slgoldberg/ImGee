@@ -32,8 +32,9 @@ FEATURE_CATALOG = [
         "path": "imgee_demo.h",
         "title": "Interactive Showcase Window",
         "category": "Showcase",
-        "summary": "Opt-in single-header interactive playground mirroring ImGui::ShowDemoWindow with 8 live tabs, synced DocumentViewer theme, and 1-click Restore Host Style.",
-        "apis": ["ShowImGeeDemoWindow", "ShowImGeeDemoContent", "IMGEE_INCLUDE_DEMO"],
+        "demoTab": 1,
+        "summary": "Opt-in single-header interactive playground mirroring ImGui::ShowDemoWindow with 8 live tabs, programmatic tab/theme helpers, synced DocumentViewer theme, and 1-click Restore Host Style.",
+        "apis": ["ShowImGeeDemoWindow", "ShowImGeeDemoContent", "SetImGeeDemoTab", "SetImGeeDemoTheme", "IMGEE_INCLUDE_DEMO"],
         "figures": [
             {"label": "1: Overview", "short": "1", "file": "fig_demo_tab1.png"},
             {"label": "2: Sliders & Knobs", "short": "2", "file": "fig_demo_tab2.png"},
@@ -50,6 +51,7 @@ FEATURE_CATALOG = [
         "path": "extensions/DocViewer/imgui_doc_viewer.h",
         "title": "Standalone Markdown DocumentViewer",
         "category": "Extensions",
+        "demoTab": 7,
         "summary": "Turnkey in-app documentation viewer with 1.0x two-row chrome, auto-parsed ATX TOC jumper, 1-click scroll return, live Find in Doc (Ctrl+F), opacity slider, and 5-theme picker.",
         "apis": ["DocumentViewer", "DocumentViewerConfig", "DocumentViewerState", "OpenDocumentSearch", "StepDocumentSearchMatch", "ParseMarkdownToc"],
         "figures": [
@@ -60,6 +62,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown.h",
         "title": "CommonMark Parser, GFM Tables & Code Blocks",
         "category": "Extensions",
+        "demoTab": 6,
         "summary": "Core Markdown renderer with tristate sortable and drag-resizable GFM tables, per-table tooltip metadata overrides, syntax-tinted code blocks with 1-click Copy, and typographic word wrapping.",
         "apis": ["Markdown", "MarkdownConfig", "MarkdownTableState", "table-preset"],
         "figures": [
@@ -71,6 +74,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown_ext.h",
         "title": "Markdown Extensions: Callouts, Floats & Style Tags",
         "category": "Extensions",
+        "demoTab": 6,
         "summary": "High-level Markdown engine adding GFM alert callout cards ([!NOTE]..[!CAUTION]), mid-paragraph text-wrapping image floats, click-to-zoom lightboxes, semantic style tags, and ButtonMD.",
         "apis": ["Markdown::Text", "TextMD", "ButtonMD", "RegisterMarkdownStyleTag", "RegisterMarkdownTagAlias"],
         "figures": [
@@ -82,6 +86,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown_image_service.h",
         "title": "3-Tier Async Markdown Image Service",
         "category": "Extensions",
+        "demoTab": 6,
         "summary": "Non-blocking image resolver and GPU texture cache supporting named in-memory assets, local disk images with subfolder fallbacks, and off-thread HTTP/HTTPS downloads via HostBackend.",
         "apis": ["MarkdownImageService", "ImGee::HostBackend", "ImGee::Shutdown"],
         "figures": [
@@ -92,6 +97,7 @@ FEATURE_CATALOG = [
         "path": "extensions/TimedTooltip/imgui_tooltip_ext.h",
         "title": "Stationary Delayed TimedTooltips",
         "category": "Extensions",
+        "demoTab": 4,
         "summary": "Replaces cursor-chasing stock tooltips with dwell-verified stationary cards featuring viewport clamping, base-font isolation, damped zoom scaling, Markdown rendering, and zero-arg EndStationaryTooltip().",
         "apis": ["TimedTooltip::Text", "TimedTooltip::TextMD", "TimedTooltip::TextMDLink", "BeginStationaryTooltip", "EndStationaryTooltip"],
         "figures": [
@@ -102,6 +108,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Typography/imgui_font_roles.h",
         "title": "Semantic Typography & ImFontRole Registry",
         "category": "Extensions",
+        "demoTab": 1,
         "summary": "9-slot semantic font role registry (Regular, Title, Small, Bold, BoldLarge, Monospace, Italic, MonospaceMedium, BoldItalic, plus Heading1..3 and Tiny) with 4-tier fallbacks and RAII guards.",
         "apis": ["ImFontRole", "SetFontRole", "GetFont", "ScopedFontRole", "PushFontRole"],
         "figures": [
@@ -112,6 +119,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Typography/imgui_styled_text.h",
         "title": "Inline Baseline-Aligned StyledText Engine",
         "category": "Extensions",
+        "demoTab": 1,
         "summary": "Lightweight inline XML-style rich text (<b>, <i>, <mono>, <huge>, <small>, <color=#hex>, <badge>, <pill>, <kbd>) with continuous TrueType baseline alignment and printf formatting.",
         "apis": ["StyledText", "StyledTextUnformatted", "StyledTextWrapped"],
         "figures": [
@@ -122,6 +130,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Viewport/imgui_zoomable_viewport.h",
         "title": "Two-Layer Zoomable Document Viewport",
         "category": "Extensions",
+        "demoTab": 7,
         "summary": "Separates crisp 1.0x window chrome from smoothly zoomed scrollable inner content (50%-250%) with proportional font scaling and 1-click zoom reset controls.",
         "apis": ["ZoomableViewportState", "BeginZoomedViewport", "EndZoomedViewport", "ZoomViewportControls"],
         "figures": [
@@ -133,6 +142,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_popup_menus.h",
         "title": "Anchored Popups, SelectPulldown & Menu Strips",
         "category": "Widgets",
+        "demoTab": 3,
         "summary": "Item-anchored directional popups (AboveItem/BelowItem), 1-line SelectPulldown with scroll pass-through and Lens UI wheel latching, and zero-callback Hover-Latching Menu Strips.",
         "apis": ["BeginMenuStrip", "BeginStripMenu", "EndStripMenu", "IsMenuStripOpen", "SelectPulldown", "SelectPulldownMD", "BeginAnchoredPopup"],
         "figures": [
@@ -143,6 +153,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_mouse_wheel_controls.h",
         "title": "Mouse-Wheel Sliders, Combos & Reset-with-Undo",
         "category": "Widgets",
+        "demoTab": 2,
         "summary": "Tactile sliders, drags, and combos with Natural List Order wheel stepping, scrollable-container auto-defeat, and abutting 1-click Reset-with-Undo (A/B compare) chasers.",
         "apis": ["SliderWithReset", "PercentSliderWithReset", "MouseWheelCombo", "ComboWithReset", "ResetButton"],
         "figures": [
@@ -153,6 +164,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_knobs.h",
         "title": "270-Degree Rotary Knobs & OFF Dimmer Dials",
         "category": "Widgets",
+        "demoTab": 2,
         "summary": "Compact vector potentiometers with 270-degree Omega arcs, perimeter ticks, wheel fine/coarse modifiers, two-step tactile OFF detents, and 1-click Reset-with-Undo.",
         "apis": ["Knob", "KnobWithReset", "DimmerKnob", "ImGuiKnobFlags_ShowTicks"],
         "figures": [
@@ -163,6 +175,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_toggle_buttons.h",
         "title": "Animated Toggle Switches & Segmented Controls",
         "category": "Widgets",
+        "demoTab": 2,
         "summary": "DeltaTime-animated pill switches and joined two-way segmented selectors with clamped wheel toggling, parent scroll protection on labels, and per-state Markdown tooltips.",
         "apis": ["ToggleButton", "ToggleButtons"],
         "figures": [
@@ -173,6 +186,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_icons.h",
         "title": "Zero-Font Procedural Vector Icon Engine",
         "category": "Widgets",
+        "demoTab": 5,
         "summary": "Draws 24 antialiased procedural vector icons directly to ImDrawList with zero icon fonts or textures, paired with turnkey IconButton and ButtonIcon pushbuttons.",
         "apis": ["DrawVectorIcon", "IconButton", "ButtonIcon", "RenderIcon"],
         "figures": [
@@ -183,6 +197,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_badges.h",
         "title": "Badges, Pills, Icon Capsules & 3D Keycaps",
         "category": "Widgets",
+        "demoTab": 4,
         "summary": "Auto-contrasting ITU-R BT.601 luminance status badges, rounded pills, named-icon capsules (PillNamed), and beveled 3D keyboard shortcut chips (<kbd>).",
         "apis": ["Badge", "Pill", "PillNamed", "Kbd"],
         "figures": [
@@ -193,6 +208,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_spinners.h",
         "title": "Activity Spinners & Radial Countdown Dials",
         "category": "Widgets",
+        "demoTab": 4,
         "summary": "Frame-rate independent ImDrawList activity spinners, progress rings, and 12-o'clock radial countdown timers that scale automatically with ambient font size.",
         "apis": ["Spinner", "ProgressDial", "RadialTimer", "CountdownTimer"],
         "figures": [
@@ -203,6 +219,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_clickable_links.h",
         "title": "Active-Cursor Clickable Links & Info Triggers",
         "category": "Widgets",
+        "demoTab": 3,
         "summary": "Zero-inert-arrow drop-in wrappers (ButtonLink, TextLink, CheckboxLink, RadioButtonLink, MenuItemLink) returning LinkClickResult with automatic click-to-toggle tooltip support.",
         "apis": ["ButtonLink", "TextLink", "CheckboxLink", "RadioButtonLink", "MenuItemLink"],
         "figures": [
@@ -213,6 +230,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_copy_button.h",
         "title": "Anti-Twitch Clipboard Copy Buttons",
         "category": "Widgets",
+        "demoTab": 3,
         "summary": "One-click clipboard buttons (CopyButton and automatic InputText chaser CopyLastItemButton) with procedural icons and 1.5s transient Copied! visual feedback.",
         "apis": ["CopyButton", "CopyLastItemButton"],
         "figures": [
@@ -223,6 +241,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_file_dialog.h",
         "title": "Non-Blocking In-Viewport File Dialogs & Pickers",
         "category": "Widgets",
+        "demoTab": 8,
         "summary": "Pure C++11 non-blocking Open/Save modals and inline FilePickerCombo using native POSIX/Win32 directory APIs -- VR-safe, zero console spawning, and overwrite-guarded.",
         "apis": ["OpenFileDialog", "SaveFileDialog", "FilePickerCombo"],
         "figures": [
@@ -234,10 +253,12 @@ FEATURE_CATALOG = [
         "path": "themes/imgui_styles.h",
         "title": "Curated Color Themes & Typography Palettes",
         "category": "Themes",
+        "demoTab": 1,
         "summary": "Balanced studio and publication themes replacing stock Dear ImGui neon blue: Charcoal (canonical default), Rusty (warm low-glare bronze), and high-contrast Paper Light.",
         "apis": ["ApplyDefaultTheme", "StyleColorsCharcoal", "StyleColorsRusty", "StyleColorsPaperLight"],
         "figures": [
-            {"label": "Curated Color Themes", "short": "Themes", "file": "fig_themes_comparison.png"},
+            {"label": "Charcoal & Rusty", "short": "Charcoal & Rusty", "file": "fig_themes_comparison.png", "fixedPath": "images/fig_themes_comparison.png"},
+            {"label": "Paper Light", "short": "Paper Light", "file": "fig_themes_comparison.png", "fixedPath": "images/light/fig_themes_comparison.png"},
         ],
     },
 ]
@@ -337,21 +358,31 @@ def collect_repo_data(repo_root: str) -> dict:
         all_figs_present = True
         for fig in entry["figures"]:
             fn = fig["file"]
-            dark_rel = f"images/{fn}"
-            light_rel = f"images/light/{fn}"
-            dark_ok = os.path.exists(os.path.join(docs_dir, dark_rel))
-            light_ok = os.path.exists(os.path.join(docs_dir, light_rel))
-            if not dark_ok:
-                all_figs_present = False
-                missing_assets.append(dark_rel)
-            if not light_ok:
-                all_figs_present = False
-                missing_assets.append(light_rel)
+            fixed_path = fig.get("fixedPath")
+            if fixed_path:
+                dark_rel = fixed_path
+                light_rel = fixed_path
+                if not os.path.exists(os.path.join(docs_dir, fixed_path)):
+                    all_figs_present = False
+                    missing_assets.append(fixed_path)
+            else:
+                dark_rel = f"images/{fn}"
+                light_rel = f"images/light/{fn}"
+                dark_ok = os.path.exists(os.path.join(docs_dir, dark_rel))
+                light_ok = os.path.exists(os.path.join(docs_dir, light_rel))
+                if not dark_ok:
+                    all_figs_present = False
+                    missing_assets.append(dark_rel)
+                if not light_ok:
+                    all_figs_present = False
+                    missing_assets.append(light_rel)
+                if not light_ok:
+                    light_rel = dark_rel
             figs.append({
                 "label": fig["label"],
                 "short": fig["short"],
                 "dark": dark_rel,
-                "light": light_rel if light_ok else dark_rel,
+                "light": light_rel,
             })
 
         if all_figs_present and figs:
@@ -367,6 +398,7 @@ def collect_repo_data(repo_root: str) -> dict:
             "filename": os.path.basename(rel_path),
             "title": entry["title"],
             "category": cat,
+            "demoTab": entry.get("demoTab", 1),
             "summary": entry["summary"],
             "apis": entry["apis"],
             "loc": loc,
@@ -932,6 +964,38 @@ select.sort-select {{
   border: 1px solid var(--border);
   color: var(--text);
 }}
+.btn-live {{
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}}
+.btn-live:hover {{
+  background: #15803d;
+  border-color: #15803d;
+  color: #fff;
+}}
+.card-foot {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}}
+.try-live-link {{
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--wid-col);
+  text-decoration: none;
+  white-space: nowrap;
+}}
+.try-live-link:hover {{
+  text-decoration: underline;
+}}
 
 .empty-state {{
   text-align: center;
@@ -1056,6 +1120,7 @@ footer {{
       <span class="ver-pill">v{ver}</span>
     </div>
     <div class="top-actions">
+      <a id="livePlaygroundTopBtn" class="btn btn-live" href="{PAGES_URL}playground/" target="_blank" rel="noopener">&#9654; Try Live Playground</a>
       <a class="btn" href="ImGee_User_Guide.pdf" target="_blank" rel="noopener">User Guide PDF ({ug["pages"]}p)</a>
       <a class="btn" href="ImGee_UX_Design_Manifesto.pdf" target="_blank" rel="noopener">UX Manifesto PDF ({ux["pages"]}p)</a>
       <a class="btn" href="{REPO_URL}" target="_blank" rel="noopener">GitHub Repo</a>
@@ -1140,6 +1205,7 @@ footer {{
         <span class="lb-sub" id="lbSub"></span>
       </div>
       <div class="lb-controls">
+        <a class="btn btn-live" id="lbLiveLink" href="{PAGES_URL}playground/" target="_blank" rel="noopener">&#9654; Try Live</a>
         <button class="btn" id="lbThemeBtn" type="button">Dark Studio</button>
         <button class="btn" id="lbPrevBtn" type="button" title="Previous figure (Left arrow)">&larr;</button>
         <button class="btn" id="lbNextBtn" type="button" title="Next figure (Right arrow)">&rarr;</button>
@@ -1185,6 +1251,7 @@ const DASHBOARD_DATA = {data_json};
 
   const htmlEl = document.documentElement;
   const themeBtn = document.getElementById("themeToggleBtn");
+  const liveTopBtn = document.getElementById("livePlaygroundTopBtn");
   const pillsWrap = document.getElementById("categoryPills");
   const searchInput = document.getElementById("searchInput");
   const searchClear = document.getElementById("searchClear");
@@ -1198,6 +1265,7 @@ const DASHBOARD_DATA = {data_json};
   const lbTabs = document.getElementById("lbTabs");
   const lbImg = document.getElementById("lbImg");
   const lbCaption = document.getElementById("lbCaption");
+  const lbLiveLink = document.getElementById("lbLiveLink");
   const lbThemeBtn = document.getElementById("lbThemeBtn");
   const lbPrevBtn = document.getElementById("lbPrevBtn");
   const lbNextBtn = document.getElementById("lbNextBtn");
@@ -1205,10 +1273,25 @@ const DASHBOARD_DATA = {data_json};
 
   const cardById = new Map(DASHBOARD_DATA.cards.map(c => [c.id, c]));
 
+  function playgroundUrl(tabNum, themeMode) {{
+    const isFile = window.location.protocol === "file:";
+    const base = isFile ? (DASHBOARD_DATA.pagesUrl + "playground/") : "playground/";
+    const params = [];
+    if (tabNum >= 1 && tabNum <= 8) params.push("tab=" + tabNum);
+    params.push("theme=" + (themeMode === "light" ? "light" : "dark"));
+    return base + "?" + params.join("&");
+  }}
+
+  function cardDemoTab(card, figIdx) {{
+    if (card.path === "imgee_demo.h") return (figIdx || 0) + 1;
+    return card.demoTab || 1;
+  }}
+
   function applyGlobalTheme(mode) {{
     state.theme = mode;
     htmlEl.setAttribute("data-theme", mode);
     themeBtn.textContent = mode === "dark" ? "Theme: Dark Studio" : "Theme: Paper Light";
+    if (liveTopBtn) liveTopBtn.href = playgroundUrl(0, mode);
     try {{ localStorage.setItem("imgee_dashboard_theme", mode); }} catch (e) {{}}
     renderCards();
   }}
@@ -1269,6 +1352,8 @@ const DASHBOARD_DATA = {data_json};
       }}
 
       const apisHtml = c.apis.map(a => `<span class="api-chip">${{escHtml(a)}}</span>`).join("");
+      const liveTab = cardDemoTab(c, figIdx);
+      const liveHref = playgroundUrl(liveTab, state.theme);
 
       return `
         <article class="card" data-card-id="${{c.id}}">
@@ -1288,6 +1373,10 @@ const DASHBOARD_DATA = {data_json};
             </div>
             <p class="card-summary">${{escHtml(c.summary)}}</p>
             <div class="api-chips">${{apisHtml}}</div>
+            <div class="card-foot">
+              <span style="color:var(--text-dim);">Demo Tab ${{liveTab}}</span>
+              <a class="try-live-link" href="${{escHtml(liveHref)}}" target="_blank" rel="noopener" title="Open Tab ${{liveTab}} in the live 60fps C++ WebAssembly Playground">&#9654; Try Live</a>
+            </div>
           </div>
         </article>`;
     }});
@@ -1304,6 +1393,7 @@ const DASHBOARD_DATA = {data_json};
 
     lbTitle.textContent = `${{c.title}} -- ${{fig.label}}`;
     lbSub.textContent = `${{c.path}}  |  ${{c.loc.toLocaleString()}} LOC  |  ${{state.lbTheme === "dark" ? "Dark Studio" : "Paper Light"}} (2x Retina)`;
+    if (lbLiveLink) lbLiveLink.href = playgroundUrl(cardDemoTab(c, state.lbFigIdx), state.lbTheme);
     lbThemeBtn.textContent = state.lbTheme === "dark" ? "Switch to Paper Light" : "Switch to Dark Studio";
     lbImg.src = src;
     lbImg.alt = `${{c.title}} -- ${{fig.label}}`;

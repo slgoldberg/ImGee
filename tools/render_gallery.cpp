@@ -2275,7 +2275,7 @@ int main(int argc, char** argv) {
             395.0f, // Tab 1: Overview & Themes
             425.0f, // Tab 2: Sliders, Toggles & Knobs
             395.0f, // Tab 3: Menus, Pulldowns & Links
-            375.0f, // Tab 4: Tooltips, Badges & Spinners
+            415.0f, // Tab 4: Tooltips, Badges & Spinners (includes live dwell/max sliders + TextMDLink)
             355.0f, // Tab 5: Vector Icons (8 cols x 3 rows at 1140px)
             565.0f, // Tab 6: Markdown & GFM Tables (shows full preview + fenced code block)
             500.0f, // Tab 7: DocumentViewer & Find

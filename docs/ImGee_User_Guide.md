@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.4.2)
+## Comprehensive Developer & User Manual (v1.5.0)
 
 ---
 
@@ -222,6 +222,8 @@ ImGui::End();
 
 **Non-Destructive Theme Testing (`Restore Host Style`):** When the showcase first opens in an `ImGuiContext*`, it captures a snapshot of your host application's current `ImGuiStyle`. You can freely test-drive `Charcoal`, `Rusty`, or `Paper Light` live and click **`Demo -> Restore Host Style`** at any time to put your application's original palette and metrics back untouched.
 
+**Programmatic Tab & Theme Helpers (`v1.5.0`) & Live Browser Playground:** Call `ImGui::SetImGeeDemoTab(int tab_index_0_based)` or `ImGui::SetImGeeDemoTheme(int theme_index)` to jump straight to a specific tab (`0..7`) or palette (`0..4`) on the next frame without locking out manual tab switching. You can also test-drive the exact C++ showcase at 60fps right in your web browser (WebAssembly + WebGL2, zero install) at [`https://slgoldberg.github.io/ImGee/playground/`](https://slgoldberg.github.io/ImGee/playground/) (supporting `?tab=1..8` and `?theme=dark|light` deep links).
+
 #### Visual Tour of All 8 Interactive Tabs
 
 <img src="images/fig_demo_tab1.png" align="right" width="310" alt="Tab 1: Overview & Themes"/>
@@ -238,13 +240,13 @@ ImGui::End();
 
 <img src="images/fig_demo_tab3.png" align="right" width="310" alt="Tab 3: Menus, Pulldowns & Links"/>
 
-**3. Menus, Pulldowns & Links:** Try `SelectPulldownMD` (scroll pass-through when closed, Lens UI wheel tooltips when open), an upward-anchored Hover-Latching Menu Strip (`BeginMenuStrip` / `BeginStripMenu`), `*Link` hand-cursor controls, and `CopyButton` / `CopyLastItemButton`.
+**3. Menus, Pulldowns & Links:** Try `SelectPulldownMD` (scroll pass-through when closed, Lens UI wheel tooltips when open), a Hover-Latching Menu Strip (`BeginMenuStrip` / `BeginStripMenu`) with live `AboveItem` / `BelowItem` anchor direction switching, `*Link` hand-cursor controls, and `CopyButton` / `CopyLastItemButton`.
 
 <br clear="all"/>
 
 <img src="images/fig_demo_tab4.png" align="right" width="310" alt="Tab 4: Tooltips, Badges & Spinners"/>
 
-**4. Tooltips, Badges & Spinners:** Experiment with dwell-timed stationary Markdown `TimedTooltip`s, auto-contrasting `Badge` and `Pill` / `PillNamed` capsules, 3D `<kbd>` keycaps, procedural `Spinner`s, and live `RadialTimer` / `CountdownTimer` dials.
+**4. Tooltips, Badges & Spinners:** Experiment with live-tweakable `TimedTooltip` dwell delay and max-display timeout sliders (plus 1-click Reset Defaults and a `TextMDLink` click-to-toggle chaser), auto-contrasting `Badge` and `Pill` / `PillNamed` capsules, 3D `<kbd>` keycaps, procedural `Spinner`s, and live `RadialTimer` / `CountdownTimer` dials.
 
 <br clear="all"/>
 
@@ -874,4 +876,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.4.2 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.5.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

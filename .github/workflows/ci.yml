@@ -195,3 +195,28 @@ jobs:
             fi
           done
           echo "[PASS] Zero libwinpthread / wininet / shell32 DLL dependencies verified."
+
+  wasm-playground:
+    name: WebAssembly Playground (Emscripten + ImGui v1.92.8)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ImGee
+        uses: actions/checkout@v4
+        with:
+          path: imgee
+
+      - name: Checkout pure upstream Dear ImGui (v1.92.8)
+        uses: actions/checkout@v4
+        with:
+          repository: ocornut/imgui
+          ref: v1.92.8
+          path: imgui
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Build ImGee WebAssembly Playground
+        shell: bash
+        run: |
+          chmod +x imgee/tools/wasm_playground/build_wasm.sh
+          imgee/tools/wasm_playground/build_wasm.sh "$(cd imgui && pwd)" "$(pwd)/wasm-out"

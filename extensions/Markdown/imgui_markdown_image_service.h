@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 #include <map>
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 #include <mutex>
 #include <thread>
 #endif
@@ -49,7 +49,7 @@
         #define NOMINMAX
     #endif
     #include <windows.h>
-#else
+#elif !defined(__EMSCRIPTEN__)
     #include <dlfcn.h>
 #endif
 
@@ -203,6 +203,16 @@ struct CompletedLockGuard {
     CompletedLockGuard(const CompletedLockGuard&) = delete;
     CompletedLockGuard& operator=(const CompletedLockGuard&) = delete;
 };
+#elif defined(__EMSCRIPTEN__)
+// Single-threaded WebAssembly build (zero SharedArrayBuffer / COOP / COEP requirements)
+struct CompletedMutex {
+    void lock() {}
+    void unlock() {}
+};
+
+struct CompletedLockGuard {
+    explicit CompletedLockGuard(CompletedMutex&) {}
+};
 #else
 using CompletedMutex = std::mutex;
 using CompletedLockGuard = std::lock_guard<std::mutex>;
@@ -333,7 +343,7 @@ inline void ProcessPendingTextures() {
     }
 }
 
-#if !defined(_WIN32)
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
 typedef void CURL;
 typedef int CURLcode;
 typedef int CURLoption;
@@ -487,6 +497,9 @@ inline bool FetchRemoteBytesWin(const std::string& url, std::vector<uint8_t>& ou
 inline bool FetchRemoteBytesDefault(const std::string& url, std::vector<uint8_t>& outBuffer) {
 #if defined(_WIN32)
     if (FetchRemoteBytesWin(url, outBuffer)) return true;
+#elif defined(__EMSCRIPTEN__)
+    (void)url;
+    (void)outBuffer;
 #else
     if (FetchRemoteBytesCurl(url, outBuffer)) return true;
     if (FetchRemoteBytesCLI(url, outBuffer)) return true;
@@ -610,6 +623,12 @@ inline bool SpawnDetachedFetchWorker(const std::string& url, uint64_t currentGen
     }
     CloseHandle(hThread);
     return true;
+}
+#elif defined(__EMSCRIPTEN__)
+inline bool SpawnDetachedFetchWorker(const std::string& url, uint64_t currentGen) {
+    (void)url;
+    (void)currentGen;
+    return false;
 }
 #else
 inline bool SpawnDetachedFetchWorker(const std::string& url, uint64_t currentGen) {

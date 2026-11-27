@@ -3613,6 +3613,25 @@ int main(int argc, char** argv) {
                 }
 
                 ImGeeDemoDetail::GetForcedTabIndex() = -1;
+                // Verify v1.5.0 one-shot SetImGeeDemoTab & SetImGeeDemoTheme helpers
+                {
+                    ImGui::SetImGeeDemoTab(3);
+                    ImGui::SetImGeeDemoTheme(4); // Paper Light
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(820.0f, 560.0f), ImGuiCond_Always);
+                    ImGui::Begin("ImGeeOneShotDemoWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+                    const ImGuiID s13OneShotId = ImGui::GetID("##s13_oneshot_demo");
+                    ImGui::ShowImGeeDemoContent("##s13_oneshot_demo");
+                    ImGeeDemoDetail::ImGeeDemoState& s13OneShotSt = ImGeeDemoDetail::GetOrCreateDemoState(s13OneShotId);
+                    IMGEE_TEST_CHECK(s13OneShotSt.theme_index == 4);
+                    IMGEE_TEST_CHECK(s13OneShotSt.doc_state.theme_index == 4);
+                    IMGEE_TEST_CHECK(ImGeeDemoDetail::GetPendingTabIndex() == -1);
+                    IMGEE_TEST_CHECK(ImGeeDemoDetail::GetPendingThemeIndex() == -1);
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
                 ImGui::StyleColorsDark();
             }
 
