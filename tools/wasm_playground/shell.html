@@ -232,9 +232,10 @@ html, body {
     }
   }
 
-  // Verify WebGL2 availability before booting WASM
+  // Verify WebGL2 availability on a throwaway canvas so #canvas stays untouched for SDL2
   try {
-    var testGl = canvas.getContext("webgl2");
+    var probeCanvas = document.createElement("canvas");
+    var testGl = probeCanvas.getContext("webgl2");
     if (!testGl) {
       showError("WebGL2 is required to run the live ImGee Playground, but your browser did not provide a WebGL2 context.");
     }

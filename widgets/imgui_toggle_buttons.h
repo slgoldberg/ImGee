@@ -214,10 +214,9 @@ namespace ImGui {
 #elif defined(IMGUI_TOOLTIP_EXT_H)
             TimedTooltip::TextProxy(id, is_hovered, "%s", text);
 #else
+            // Strict silent fallback when TimedTooltip is disabled (UX Manifesto Tenet VI)
             (void)id;
-            if (is_hovered) {
-                SetTooltip("%s", text);
-            }
+            (void)is_hovered;
 #endif
         }
     } // namespace ToggleButtonDetail

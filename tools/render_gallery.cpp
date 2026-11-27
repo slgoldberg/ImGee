@@ -2267,9 +2267,9 @@ int main(int argc, char** argv) {
             "Tab 3: Menus, Pulldowns & Links",
             "Tab 4: Tooltips, Badges & Spinners",
             "Tab 5: Vector Icons",
-            "Tab 6: Markdown & GFM Tables",
+            "Tab 6: File & Diagnostics",
             "Tab 7: DocumentViewer & Find",
-            "Tab 8: File Dialog & Diagnostics"
+            "Tab 8: Markdown & GFM Tables"
         };
         static const float kDemoTabHeights[8] = {
             395.0f, // Tab 1: Overview & Themes
@@ -2277,9 +2277,9 @@ int main(int argc, char** argv) {
             395.0f, // Tab 3: Menus, Pulldowns & Links
             415.0f, // Tab 4: Tooltips, Badges & Spinners (includes live dwell/max sliders + TextMDLink)
             355.0f, // Tab 5: Vector Icons (8 cols x 3 rows at 1140px)
-            565.0f, // Tab 6: Markdown & GFM Tables (shows full preview + fenced code block)
+            465.0f, // Tab 6: File & Diagnostics (with live file preview pane)
             500.0f, // Tab 7: DocumentViewer & Find
-            345.0f  // Tab 8: File Dialog & Diagnostics
+            565.0f  // Tab 8: Markdown & GFM Tables (shows full preview + fenced code block)
         };
 
         const int targetDemoTheme = s_GalleryLightPass ? 4 : 0; // 4 = Paper Light, 0 = Charcoal
@@ -2305,6 +2305,14 @@ int main(int argc, char** argv) {
                     const ImGuiID demoId = ImGui::GetID(demoScopeId);
                     ImGeeDemoDetail::ImGeeDemoState& demoSt = ImGeeDemoDetail::GetOrCreateDemoState(demoId);
                     ImGeeDemoDetail::ApplyDemoTheme(demoSt, targetDemoTheme);
+                    if (tabIdx == 5 && f == 0) {
+                        demoSt.picker_file = "imgee.h";
+                        demoSt.file_preview_path = "imgee.h";
+                        demoSt.file_preview_content =
+                            "// ImGee: Master Suite Umbrella Header (imgee.h)\n"
+                            "#define IMGEE_VERSION     \"" IMGEE_VERSION "\"\n"
+                            "// Single-header ergonomic UI toolkit for Dear ImGui (v1.84-v1.92+)";
+                    }
                     if (tabIdx == 6 && f == 0) {
                         std::snprintf(demoSt.doc_state.search_query, sizeof(demoSt.doc_state.search_query), "%s", "ImGee");
                         ImGui::OpenDocumentSearch(demoSt.doc_state);

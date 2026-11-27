@@ -41,9 +41,9 @@ FEATURE_CATALOG = [
             {"label": "3: Menus & Links", "short": "3", "file": "fig_demo_tab3.png"},
             {"label": "4: Tooltips & Badges", "short": "4", "file": "fig_demo_tab4.png"},
             {"label": "5: Vector Icons", "short": "5", "file": "fig_demo_tab5.png"},
-            {"label": "6: Markdown & Tables", "short": "6", "file": "fig_demo_tab6.png"},
+            {"label": "6: File & Diagnostics", "short": "6", "file": "fig_demo_tab6.png"},
             {"label": "7: DocViewer & Find", "short": "7", "file": "fig_demo_tab7.png"},
-            {"label": "8: File & Diagnostics", "short": "8", "file": "fig_demo_tab8.png"},
+            {"label": "8: Markdown & Tables", "short": "8", "file": "fig_demo_tab8.png"},
         ],
     },
     # --- Flagship Extensions (8) ---
@@ -62,7 +62,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown.h",
         "title": "CommonMark Parser, GFM Tables & Code Blocks",
         "category": "Extensions",
-        "demoTab": 6,
+        "demoTab": 8,
         "summary": "Core Markdown renderer with tristate sortable and drag-resizable GFM tables, per-table tooltip metadata overrides, syntax-tinted code blocks with 1-click Copy, and typographic word wrapping.",
         "apis": ["Markdown", "MarkdownConfig", "MarkdownTableState", "table-preset"],
         "figures": [
@@ -74,7 +74,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown_ext.h",
         "title": "Markdown Extensions: Callouts, Floats & Style Tags",
         "category": "Extensions",
-        "demoTab": 6,
+        "demoTab": 8,
         "summary": "High-level Markdown engine adding GFM alert callout cards ([!NOTE]..[!CAUTION]), mid-paragraph text-wrapping image floats, click-to-zoom lightboxes, semantic style tags, and ButtonMD.",
         "apis": ["Markdown::Text", "TextMD", "ButtonMD", "RegisterMarkdownStyleTag", "RegisterMarkdownTagAlias"],
         "figures": [
@@ -86,7 +86,7 @@ FEATURE_CATALOG = [
         "path": "extensions/Markdown/imgui_markdown_image_service.h",
         "title": "3-Tier Async Markdown Image Service",
         "category": "Extensions",
-        "demoTab": 6,
+        "demoTab": 8,
         "summary": "Non-blocking image resolver and GPU texture cache supporting named in-memory assets, local disk images with subfolder fallbacks, and off-thread HTTP/HTTPS downloads via HostBackend.",
         "apis": ["MarkdownImageService", "ImGee::HostBackend", "ImGee::Shutdown"],
         "figures": [
@@ -241,7 +241,7 @@ FEATURE_CATALOG = [
         "path": "widgets/imgui_file_dialog.h",
         "title": "Non-Blocking In-Viewport File Dialogs & Pickers",
         "category": "Widgets",
-        "demoTab": 8,
+        "demoTab": 6,
         "summary": "Pure C++11 non-blocking Open/Save modals and inline FilePickerCombo using native POSIX/Win32 directory APIs -- VR-safe, zero console spawning, and overwrite-guarded.",
         "apis": ["OpenFileDialog", "SaveFileDialog", "FilePickerCombo"],
         "figures": [

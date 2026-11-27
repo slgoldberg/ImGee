@@ -348,28 +348,40 @@ namespace ImGui
     typedef void                MarkdownLinkCallback( MarkdownLinkCallbackData data );    
     typedef void                MarkdownTooltipCallback( MarkdownTooltipCallbackData data );
 
+    namespace MarkdownDetail {
+        inline bool ShowMarkdownTooltip( ImGuiID id, bool hovered, const char* text, float wrap_width = 400.0f, int delay_frames = -1, bool is_clicked = false );
+    }
+
     inline void defaultMarkdownTooltipCallback( MarkdownTooltipCallbackData data_ )
     {
+        std::string link( data_.linkData.link ? data_.linkData.link : "",
+                          data_.linkData.linkLength > 0 ? (size_t)data_.linkData.linkLength : 0u );
+        std::string tip;
         if( data_.linkData.isImage )
         {
-            ImGui::SetTooltip( "%.*s", data_.linkData.linkLength, data_.linkData.link );
+            tip = link;
+        }
+        else if( !link.empty() && link[0] == '#' )
+        {
+            tip = "Jump to section\n" + link;
+        }
+        else if( link.rfind( "file:", 0 ) == 0 || link.rfind( "local:", 0 ) == 0 || link.find( ".pdf" ) != std::string::npos )
+        {
+            tip = "Open document\n" + link;
         }
         else
         {
-            std::string link(data_.linkData.link, (size_t)data_.linkData.linkLength);
-            if (!link.empty() && link[0] == '#')
+            if( data_.linkIcon && data_.linkIcon[0] != '\0' )
             {
-                ImGui::SetTooltip( "Jump to section\n%.*s", data_.linkData.linkLength, data_.linkData.link );
-            }
-            else if (link.rfind("file:", 0) == 0 || link.rfind("local:", 0) == 0 || link.find(".pdf") != std::string::npos)
-            {
-                ImGui::SetTooltip( "Open document\n%.*s", data_.linkData.linkLength, data_.linkData.link );
+                tip = std::string( data_.linkIcon ) + " Open in browser\n" + link;
             }
             else
             {
-                ImGui::SetTooltip( "%s Open in browser\n%.*s", data_.linkIcon ? data_.linkIcon : "", data_.linkData.linkLength, data_.linkData.link );
+                tip = "Open in browser\n" + link;
             }
         }
+        ImGuiID tip_id = ImGui::GetID( link.empty() ? "##md_link_tip" : link.c_str() );
+        (void)MarkdownDetail::ShowMarkdownTooltip( tip_id, true, tip.c_str(), 400.0f, -1, false );
     }
 
     typedef MarkdownImageData   MarkdownImageCallback( MarkdownLinkCallbackData data );
@@ -498,10 +510,10 @@ namespace ImGui
         if( str == "gold" )    { out_col = ImVec4( 1.0f,  0.84f, 0.0f,  1.0f ); return true; }
         if( str == "dark" )    { out_col = ImVec4( 0.18f, 0.18f, 0.22f, 1.0f ); return true; }
         if( str == "light" )   { out_col = ImVec4( 0.90f, 0.90f, 0.92f, 1.0f ); return true; }
-        if( str == "danger" )  { out_col = ImVec4( 0.85f, 0.15f, 0.15f, 1.0f ); return true; }
-        if( str == "warning" ) { out_col = ImVec4( 0.95f, 0.75f, 0.10f, 1.0f ); return true; }
-        if( str == "success" ) { out_col = ImVec4( 0.15f, 0.70f, 0.25f, 1.0f ); return true; }
-        if( str == "info" )    { out_col = ImVec4( 0.20f, 0.55f, 0.90f, 1.0f ); return true; }
+        if( str == "danger" || str == "error" || str == "critical" ) { out_col = ImVec4( 0.85f, 0.15f, 0.15f, 1.0f ); return true; }
+        if( str == "warning" || str == "warn" )                      { out_col = ImVec4( 0.95f, 0.75f, 0.10f, 1.0f ); return true; }
+        if( str == "success" || str == "ok" )                        { out_col = ImVec4( 0.15f, 0.70f, 0.25f, 1.0f ); return true; }
+        if( str == "info" )                                          { out_col = ImVec4( 0.20f, 0.55f, 0.90f, 1.0f ); return true; }
 
         // Hex formats: #RRGGBB, #RRGGBBAA, 0xRRGGBB, 0xRRGGBBAA
         size_t start = 0;
@@ -2305,16 +2317,17 @@ namespace ImGui
             // Intentional silent fallback when TimedTooltip is omitted and no custom callback is supplied (UX Rule #6).
         }
 
-        inline bool ShowMarkdownTooltip( ImGuiID id, bool hovered, const char* text, float wrap_width = 400.0f, int delay_frames = -1, bool is_clicked = false ) {
+        inline bool ShowMarkdownTooltip( ImGuiID id, bool hovered, const char* text, float wrap_width, int delay_frames, bool is_clicked ) {
             if( GetMarkdownTooltipFn() ) {
                 return GetMarkdownTooltipFn()( id, hovered, text, wrap_width, delay_frames, is_clicked );
             }
-            if( hovered && text && text[0] != '\0' ) {
-                ImGui::BeginTooltip();
-                ImGui::TextWrapped( "%s", text );
-                ImGui::EndTooltip();
-                return true;
-            }
+            // Strict silent fallback when TimedTooltip is omitted (UX Manifesto Tenet VI)
+            (void)id;
+            (void)hovered;
+            (void)text;
+            (void)wrap_width;
+            (void)delay_frames;
+            (void)is_clicked;
             return false;
         }
     }
@@ -2784,9 +2797,10 @@ namespace ImGui
                     {
                         MarkdownDetail::GetDisabledCopyTooltipFn()( ImGui::GetItemID(), btn_hovered );
                     }
-                    else if( btn_hovered )
+                    else
                     {
-                        ImGui::SetTooltip( "System clipboard integration is not enabled on this platform build." );
+                        MarkdownDetail::ShowCodeBlockTooltip( ImGui::GetItemID(), btn_hovered,
+                                                              "System clipboard integration is not enabled on this platform build.", false );
                     }
                 }
 

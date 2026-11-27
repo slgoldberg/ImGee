@@ -194,12 +194,14 @@ struct ImGeeDemoState {
     ImGui::DocumentViewerState doc_state;
 #endif
 
-    // Tab 8: File Dialog
+    // Tab 6: File Dialog & Diagnostics
     std::string picker_file;
     bool        open_dlg_visible = false;
     bool        save_dlg_visible = false;
     std::string chosen_open_path;
     std::string chosen_save_path;
+    std::string file_preview_path;
+    std::string file_preview_content;
 
     void ResetDemoValues(bool preserve_host_snapshot) {
         ImGuiStyle saved_host = host_style_snapshot;
@@ -212,6 +214,13 @@ struct ImGeeDemoState {
             host_style_snapshot     = saved_host;
             has_host_style_snapshot = true;
         }
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP)
+        {
+            const ImGui::TimedTooltip::TooltipConfig& defTip = ImGui::TimedTooltip::GetCurrentTooltipConfig();
+            tooltip_delay_frames       = defTip.hover_delay_cycles;
+            tooltip_max_display_frames = defTip.max_display_cycles;
+        }
+#endif
         std::snprintf(copy_input_buf, sizeof(copy_input_buf), "%s", "KSFO DCT RBL J1 KSEA");
         std::snprintf(md_editor_buf, sizeof(md_editor_buf), "%s", DefaultMarkdownPlaygroundText());
 #if defined(IMGUI_DOC_VIEWER_H) && !defined(IMGEE_DISABLE_DOC_VIEWER) && !defined(CONTRIB_DISABLE_DOC_VIEWER)
@@ -534,16 +543,17 @@ inline void RenderTabTooltipsBadgesSpinners(ImGeeDemoState& st) {
     ImGui::Separator();
 #if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP)
     ImGui::SetNextItemWidth(150.0f);
-    ImGui::SliderInt("Dwell (frames)##tt_dwell", &st.tooltip_delay_frames, 0, 90);
+    ImGui::SliderInt("Dwell (-1=Click Only)##tt_dwell", &st.tooltip_delay_frames, -1, 90);
     ImGui::SameLine(0.0f, 14.0f);
     ImGui::SetNextItemWidth(160.0f);
     ImGui::SliderInt("Max Display (frames)##tt_max", &st.tooltip_max_display_frames, 60, 1800);
     ImGui::SameLine(0.0f, 12.0f);
     if (ImGui::Button("Reset Defaults##tt_reset")) {
-        st.tooltip_delay_frames       = 18;
-        st.tooltip_max_display_frames = 504;
+        const ImGui::TimedTooltip::TooltipConfig& defTip = ImGui::TimedTooltip::GetCurrentTooltipConfig();
+        st.tooltip_delay_frames       = defTip.hover_delay_cycles;
+        st.tooltip_max_display_frames = defTip.max_display_cycles;
         ImGui::TimedTooltip::ClearActiveTooltip();
-        st.last_action_note = "Reset TimedTooltip dwell (18f) and max display (504f) defaults.";
+        st.last_action_note = "Reset TimedTooltip dwell and max display to active host defaults.";
     }
     if (ImGui::IsItemHovered() && st.dynamic_cursors) {
         ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -807,34 +817,98 @@ inline void RenderTabDocumentViewer(ImGeeDemoState& st) {
 #endif
 }
 
+inline bool LoadDemoFilePreview(const std::string& path, std::string& out_content) {
+    out_content.clear();
+    if (path.empty()) return false;
+    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    if (!fp) return false;
+    char buf[4096];
+    const size_t kMaxBytes = 8192u;
+    size_t total = 0;
+    while (total < kMaxBytes) {
+        const size_t want = (std::min)(sizeof(buf), kMaxBytes - total);
+        const size_t got = std::fread(buf, 1, want, fp);
+        if (got == 0) break;
+        out_content.append(buf, got);
+        total += got;
+    }
+    if (total >= kMaxBytes) {
+        out_content.append("\n... (truncated at 8 KB)");
+    }
+    std::fclose(fp);
+    return true;
+}
+
+inline bool WriteDemoSampleFile(const std::string& path) {
+    if (path.empty()) return false;
+    std::FILE* fp = std::fopen(path.c_str(), "wb");
+    if (!fp) return false;
+    const char* body =
+        "# ImGee Sample Saved Note\n\n"
+        "Created live by ImGee Interactive Showcase (v" IMGEE_VERSION ").\n"
+        "Re-open this file from FilePickerCombo or OpenFileDialog to verify round-trip I/O.\n";
+    const size_t len = std::strlen(body);
+    const size_t wrote = std::fwrite(body, 1, len, fp);
+    std::fclose(fp);
+    return (wrote == len);
+}
+
 inline void RenderTabFileDialogAndDiagnostics(ImGeeDemoState& st) {
     (void)st;
     ImGui::TextUnformatted("Non-Blocking File Picker & In-Viewport Dialogs");
     ImGui::Separator();
 #if defined(IMGUI_FILE_DIALOG_H) && !defined(IMGEE_DISABLE_WIDGETS) && !defined(IMGEE_DISABLE_FILE_DIALOG)
+    ImGui::TextDisabled("Browse local files (or the virtual /assets/samples sandbox in the browser playground). Picking or saving updates the live preview below.");
     ImGui::SetNextItemWidth(240.0f);
-    if (ImGui::FilePickerCombo("Header Picker (.)", &st.picker_file, ".", ".h;.md")) {
-        st.last_action_note = std::string("FilePickerCombo selected: ") + st.picker_file;
+    if (ImGui::FilePickerCombo("File Picker (.)", &st.picker_file, ".", ".h;.md;.txt")) {
+        st.chosen_open_path = st.picker_file;
+        st.file_preview_path = st.picker_file;
+        if (!LoadDemoFilePreview(st.picker_file, st.file_preview_content)) {
+            st.file_preview_content = "(Unable to read selected file.)";
+        }
+        st.last_action_note = std::string("FilePickerCombo loaded: ") + st.picker_file;
     }
+    ImGui::SameLine(0.0f, 10.0f);
     if (ImGui::Button("Open File Dialog...")) {
         st.open_dlg_visible = true;
     }
-    ImGui::SameLine();
+    if (ImGui::IsItemHovered() && st.dynamic_cursors) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    ImGui::SameLine(0.0f, 8.0f);
     if (ImGui::Button("Save File Dialog...")) {
         st.save_dlg_visible = true;
     }
+    if (ImGui::IsItemHovered() && st.dynamic_cursors) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
     if (ImGui::OpenFileDialog("ImGee Open File Demo", &st.open_dlg_visible, &st.chosen_open_path, ".", ".h;.md;.txt")) {
+        st.file_preview_path = st.chosen_open_path;
+        if (!LoadDemoFilePreview(st.chosen_open_path, st.file_preview_content)) {
+            st.file_preview_content = "(Unable to read opened file.)";
+        }
         st.last_action_note = std::string("Opened: ") + st.chosen_open_path;
     }
-    if (ImGui::SaveFileDialog("ImGee Save File Demo", &st.save_dlg_visible, &st.chosen_save_path, ".", "sample.md", ".md;.txt")) {
-        st.last_action_note = std::string("Save path: ") + st.chosen_save_path;
+    if (ImGui::SaveFileDialog("ImGee Save File Demo", &st.save_dlg_visible, &st.chosen_save_path, ".", "sample_note.md", ".md;.txt")) {
+        if (WriteDemoSampleFile(st.chosen_save_path)) {
+            st.file_preview_path = st.chosen_save_path;
+            (void)LoadDemoFilePreview(st.chosen_save_path, st.file_preview_content);
+            st.last_action_note = std::string("Saved sample file: ") + st.chosen_save_path;
+        } else {
+            st.last_action_note = std::string("Save failed (read-only path?): ") + st.chosen_save_path;
+        }
     }
-    if (!st.chosen_open_path.empty()) {
-        ImGui::TextDisabled("Last Open: %s", st.chosen_open_path.c_str());
+
+    // Live scrollable preview of picked/saved file
+    if (st.file_preview_path.empty()) {
+        ImGui::TextDisabled("Live File Preview: (choose a file above or click Save File Dialog... to create one)");
+    } else {
+        ImGui::TextDisabled("Live File Preview: %s", st.file_preview_path.c_str());
     }
-    if (!st.chosen_save_path.empty()) {
-        ImGui::TextDisabled("Last Save: %s", st.chosen_save_path.c_str());
+    if (BeginChildCompat("##demo_file_preview", ImVec2(0.0f, 96.0f), true)) {
+        if (st.file_preview_content.empty()) {
+            ImGui::TextDisabled("No file loaded yet.");
+        } else {
+            ImGui::TextUnformatted(st.file_preview_content.c_str());
+        }
     }
+    ImGui::EndChild();
 #else
     RenderDisabledBanner("File Dialog", "IMGEE_DISABLE_FILE_DIALOG");
 #endif
@@ -1025,36 +1099,43 @@ inline void ShowImGeeDemoContent(const char* str_id = "##ImGeeDemo") {
             if (pending_tab >= 0) {
                 ImGeeDemoDetail::GetPendingTabIndex() = -1;
             }
-            if (ImGui::BeginTabItem("Overview & Themes", nullptr, tabFlags(0))) {
+            auto beginDemoTab = [&](const char* label, int idx) -> bool {
+                const bool open = ImGui::BeginTabItem(label, nullptr, tabFlags(idx));
+                if (ImGui::IsItemHovered() && st.dynamic_cursors) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                }
+                return open;
+            };
+            if (beginDemoTab("Overview & Themes", 0)) {
                 ImGeeDemoDetail::RenderTabOverviewAndThemes(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Sliders, Toggles & Knobs", nullptr, tabFlags(1))) {
+            if (beginDemoTab("Sliders, Toggles & Knobs", 1)) {
                 ImGeeDemoDetail::RenderTabSlidersTogglesKnobs(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Menus, Pulldowns & Links", nullptr, tabFlags(2))) {
+            if (beginDemoTab("Menus, Pulldowns & Links", 2)) {
                 ImGeeDemoDetail::RenderTabMenusPulldownsLinks(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Tooltips, Badges & Spinners", nullptr, tabFlags(3))) {
+            if (beginDemoTab("Tooltips, Badges & Spinners", 3)) {
                 ImGeeDemoDetail::RenderTabTooltipsBadgesSpinners(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Vector Icons", nullptr, tabFlags(4))) {
+            if (beginDemoTab("Vector Icons", 4)) {
                 ImGeeDemoDetail::RenderTabVectorIcons(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Markdown & GFM Tables", nullptr, tabFlags(5))) {
-                ImGeeDemoDetail::RenderTabMarkdownAndTables(st);
+            if (beginDemoTab("File & Diagnostics", 5)) {
+                ImGeeDemoDetail::RenderTabFileDialogAndDiagnostics(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("DocumentViewer & Find", nullptr, tabFlags(6))) {
+            if (beginDemoTab("DocumentViewer & Find", 6)) {
                 ImGeeDemoDetail::RenderTabDocumentViewer(st);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("File Dialog & Diagnostics", nullptr, tabFlags(7))) {
-                ImGeeDemoDetail::RenderTabFileDialogAndDiagnostics(st);
+            if (beginDemoTab("Markdown & GFM Tables", 7)) {
+                ImGeeDemoDetail::RenderTabMarkdownAndTables(st);
                 ImGui::EndTabItem();
             }
             ImGui::EndTabBar();

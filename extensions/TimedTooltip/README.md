@@ -82,7 +82,7 @@ The `TooltipConfig` (aliased as `ImGui::TimedTooltip::Config`) controls timing, 
 
 | Field | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `hover_delay_cycles` | `int` | `25` | Frame cycles the mouse must hover before the tooltip appears (~0.4s at 60fps). |
+| `hover_delay_cycles` | `int` | `25` | Frame cycles the mouse must hover before the tooltip appears (~0.4s at 60fps). Set negative (e.g. `-1`) to disable hover auto-triggering for click-only tooltips (`TextMDLink` / `ToggleOnClick`). |
 | `max_display_cycles` | `int` | `504` | Frame cycles before the tooltip auto-dismisses. Set negative to disable auto-hide. |
 | `grace_period_cycles`| `int` | `12` | Allowable frame cycles off the widget before cancelling hover state. |
 | `size_skew_multiplier`| `float` | `0.5f` | Extra cycles added to display timeout per pixel of vertical height. |

@@ -34,6 +34,11 @@ jobs:
       - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
 
+      - name: Install TrueType sans font family (Regular/Bold/Italic/BoldItalic)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-liberation2
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 

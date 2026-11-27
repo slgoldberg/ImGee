@@ -33,13 +33,58 @@ OBJ_DIR="$WORK_DIR/obj"
 STAGE_ASSETS="$WORK_DIR/assets"
 mkdir -p "$OBJ_DIR" "$STAGE_ASSETS/fonts" "$STAGE_ASSETS/samples"
 
-# Stage TrueType fonts (zero new binaries committed in ImGee)
-if [ -f "$IMGUI_DIR/misc/fonts/Roboto-Medium.ttf" ]; then
-    cp "$IMGUI_DIR/misc/fonts/Roboto-Medium.ttf" "$STAGE_ASSETS/fonts/Roboto-Medium.ttf"
-else
-    echo "[ERROR] Expected $IMGUI_DIR/misc/fonts/Roboto-Medium.ttf not found." >&2
+# Stage authentic Regular, Bold, Italic, and BoldItalic sans TrueType fonts
+# (prefers installed system Roboto or Liberation Sans 2; falls back to ImGui's Roboto-Medium.ttf)
+pick_first_existing() {
+    for candidate in "$@"; do
+        if [ -f "$candidate" ]; then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+FALLBACK_SANS="$IMGUI_DIR/misc/fonts/Roboto-Medium.ttf"
+if [ ! -f "$FALLBACK_SANS" ]; then
+    echo "[ERROR] Expected fallback font $FALLBACK_SANS not found." >&2
     exit 1
 fi
+
+FONT_REG="$(pick_first_existing \
+    /usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Regular.ttf \
+    /usr/share/fonts/truetype/roboto/hinted/Roboto-Regular.ttf \
+    /usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf \
+    /usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf \
+    "$FALLBACK_SANS")"
+FONT_BOLD="$(pick_first_existing \
+    /usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Bold.ttf \
+    /usr/share/fonts/truetype/roboto/hinted/Roboto-Bold.ttf \
+    /usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf \
+    /usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf \
+    "$FALLBACK_SANS")"
+FONT_ITAL="$(pick_first_existing \
+    /usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Italic.ttf \
+    /usr/share/fonts/truetype/roboto/hinted/Roboto-Italic.ttf \
+    /usr/share/fonts/truetype/liberation2/LiberationSans-Italic.ttf \
+    /usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf \
+    "$FALLBACK_SANS")"
+FONT_BI="$(pick_first_existing \
+    /usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-BoldItalic.ttf \
+    /usr/share/fonts/truetype/roboto/hinted/Roboto-BoldItalic.ttf \
+    /usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf \
+    /usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf \
+    "$FALLBACK_SANS")"
+
+echo "[WASM] Staging TrueType fonts:"
+echo "  Regular:    $FONT_REG"
+echo "  Bold:       $FONT_BOLD"
+echo "  Italic:     $FONT_ITAL"
+echo "  BoldItalic: $FONT_BI"
+cp "$FONT_REG"  "$STAGE_ASSETS/fonts/Sans-Regular.ttf"
+cp "$FONT_BOLD" "$STAGE_ASSETS/fonts/Sans-Bold.ttf"
+cp "$FONT_ITAL" "$STAGE_ASSETS/fonts/Sans-Italic.ttf"
+cp "$FONT_BI"   "$STAGE_ASSETS/fonts/Sans-BoldItalic.ttf"
 cp "$REPO_ROOT/tools/fonts/RobotoMono-Medium.ttf" "$STAGE_ASSETS/fonts/RobotoMono-Medium.ttf"
 cp "$REPO_ROOT/tools/fonts/RobotoMono-Bold.ttf"   "$STAGE_ASSETS/fonts/RobotoMono-Bold.ttf"
 

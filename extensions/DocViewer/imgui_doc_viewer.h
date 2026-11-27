@@ -387,10 +387,9 @@ namespace DocViewerDetail {
 #elif defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP)
         ImGui::TimedTooltip::TextProxy(item_id, hovered, "%s", md_fmt);
 #else
+        // Strict silent fallback when TimedTooltip is disabled (UX Manifesto Tenet VI)
         (void)item_id;
-        if (hovered) {
-            ImGui::SetTooltip("%s", md_fmt);
-        }
+        (void)hovered;
 #endif
     }
 

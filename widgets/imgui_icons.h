@@ -802,6 +802,25 @@ namespace ImGui {
     // 4. Immediate-Mode Procedural Vector Push-Buttons
     // -------------------------------------------------------------------------
 
+    namespace Detail {
+        typedef void (*IconTooltipHandlerFn)(const char* tooltip);
+        inline IconTooltipHandlerFn& GetIconTooltipHandler() {
+            static IconTooltipHandlerFn s_Fn = nullptr;
+            return s_Fn;
+        }
+
+        inline void AttachIconTooltip(const char* tooltip) {
+            if (!tooltip || !*tooltip) return;
+            if (IconTooltipHandlerFn fn = GetIconTooltipHandler()) {
+                fn(tooltip);
+                return;
+            }
+#if defined(IMGUI_TOOLTIP_EXT_READY) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            TimedTooltip::Text("%s", tooltip);
+#endif
+        }
+    } // namespace Detail
+
 #if !defined(IMGEE_DISABLE_ICON_BUTTON) && !defined(CONTRIB_DISABLE_ICON_BUTTON) && !defined(IMGUI_DISABLE_ICON_BUTTON)
 
     /// Renders a push button containing a centered procedural vector icon.
@@ -840,10 +859,8 @@ namespace ImGui {
         bool clicked = Button(invisible_label.c_str(), btn_sz);
         if (IsItemHovered()) {
             SetMouseCursor(ImGuiMouseCursor_Hand);
-            if (tooltip && *tooltip) {
-                SetTooltip("%s", tooltip);
-            }
         }
+        Detail::AttachIconTooltip(tooltip);
 
         ImVec2 p_min = GetItemRectMin();
         ImVec2 p_max = GetItemRectMax();
@@ -880,8 +897,8 @@ namespace ImGui {
             bool clicked = Button(label, size);
             if (IsItemHovered()) {
                 SetMouseCursor(ImGuiMouseCursor_Hand);
-                if (tooltip && *tooltip) SetTooltip("%s", tooltip);
             }
+            Detail::AttachIconTooltip(tooltip);
             return clicked;
         }
 
@@ -918,8 +935,8 @@ namespace ImGui {
         bool clicked = Button(invisible_label.c_str(), btn_sz);
         if (IsItemHovered()) {
             SetMouseCursor(ImGuiMouseCursor_Hand);
-            if (tooltip && *tooltip) SetTooltip("%s", tooltip);
         }
+        Detail::AttachIconTooltip(tooltip);
 
         ImVec2 p_min = GetItemRectMin();
         ImVec2 p_max = GetItemRectMax();

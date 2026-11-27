@@ -209,10 +209,10 @@ namespace ImGui {
             else if (name == "black")   outColor = IM_COL32(0, 0, 0, 255);
             else if (name == "gray" || name == "grey") outColor = IM_COL32(149, 165, 166, 255);
             else if (name == "dim" || name == "dimmed") outColor = IM_COL32(127, 140, 141, 255);
-            else if (name == "danger")                  outColor = IM_COL32(231, 76, 60, 255);
-            else if (name == "warning")                 outColor = IM_COL32(241, 196, 15, 255);
-            else if (name == "success")                 outColor = IM_COL32(46, 204, 113, 255);
-            else if (name == "info")                    outColor = IM_COL32(52, 152, 219, 255);
+            else if (name == "danger" || name == "error" || name == "critical") outColor = IM_COL32(231, 76, 60, 255);
+            else if (name == "warning" || name == "warn")                       outColor = IM_COL32(241, 196, 15, 255);
+            else if (name == "success" || name == "ok")                         outColor = IM_COL32(46, 204, 113, 255);
+            else if (name == "info")                                            outColor = IM_COL32(52, 152, 219, 255);
             else if (name == "primary")                 outColor = IM_COL32(52, 152, 219, 255);
             else return ParseHexColor(s, len, outColor);
 

@@ -2844,13 +2844,22 @@ namespace ImGui {
             s_CustomTags["sans"]    = [sizedTextHandler](const std::string& inner, const std::string& param) { sizedTextHandler(inner, param, ImFontRole::Regular); };
 #endif
 
-            // Inline formatting tags: <b>, <strong>, <i>, <em>, <bi>, <u>, <ins>, <s>, <strike>, <del>
+            // Inline formatting tags: <b>, <strong>, <i>, <em>, <bi>
+            // (<u>/<ins> and <s>/<del>/<strike> are already registered above with color/font-aware underlineHandler & strikeHandler)
             auto bHandler = [](const std::string& inner_text, const std::string& param) {
                 auto style = ParseMarkdownTagStyle(inner_text, param);
                 style.is_bold = true;
                 const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
                 PushMarkdownTagFont(config, style);
+                ImVec4 col = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                bool has_col = false;
+                std::string col_str = !style.fg_color.empty() ? style.fg_color : style.color_param;
+                if (!col_str.empty()) {
+                    has_col = ParseMarkdownColor(col_str, col);
+                    if (has_col) ImGui::PushStyleColor(ImGuiCol_Text, col);
+                }
                 RenderInlineTaggedText(style.clean_text, config);
+                if (has_col) ImGui::PopStyleColor();
                 PopMarkdownTagFont(config, style);
             };
             s_CustomTags["b"]      = bHandler;
@@ -2861,7 +2870,15 @@ namespace ImGui {
                 style.is_italic = true;
                 const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
                 PushMarkdownTagFont(config, style);
+                ImVec4 col = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                bool has_col = false;
+                std::string col_str = !style.fg_color.empty() ? style.fg_color : style.color_param;
+                if (!col_str.empty()) {
+                    has_col = ParseMarkdownColor(col_str, col);
+                    if (has_col) ImGui::PushStyleColor(ImGuiCol_Text, col);
+                }
                 RenderInlineTaggedText(style.clean_text, config);
+                if (has_col) ImGui::PopStyleColor();
                 PopMarkdownTagFont(config, style);
             };
             s_CustomTags["i"]  = iHandler;
@@ -2873,29 +2890,18 @@ namespace ImGui {
                 style.is_italic = true;
                 const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
                 PushMarkdownTagFont(config, style);
+                ImVec4 col = ImGui::GetStyle().Colors[ImGuiCol_Text];
+                bool has_col = false;
+                std::string col_str = !style.fg_color.empty() ? style.fg_color : style.color_param;
+                if (!col_str.empty()) {
+                    has_col = ParseMarkdownColor(col_str, col);
+                    if (has_col) ImGui::PushStyleColor(ImGuiCol_Text, col);
+                }
                 RenderInlineTaggedText(style.clean_text, config);
+                if (has_col) ImGui::PopStyleColor();
                 PopMarkdownTagFont(config, style);
             };
             s_CustomTags["bi"] = biHandler;
-
-            auto uHandler = [](const std::string& inner_text, const std::string& param) {
-                auto style = ParseMarkdownTagStyle(inner_text, param);
-                const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
-                RenderInlineTaggedText(style.clean_text, config);
-                DrawTextDecorationLine(ImGui::GetColorU32(ImGuiCol_Text), false);
-            };
-            s_CustomTags["u"]   = uHandler;
-            s_CustomTags["ins"] = uHandler;
-
-            auto sHandler = [](const std::string& inner_text, const std::string& param) {
-                auto style = ParseMarkdownTagStyle(inner_text, param);
-                const MarkdownConfig* config = GetActiveMarkdownConfig() ? GetActiveMarkdownConfig() : GetDefaultMarkdownConfig();
-                RenderInlineTaggedText(style.clean_text, config);
-                DrawTextDecorationLine(ImGui::GetColorU32(ImGuiCol_Text), true);
-            };
-            s_CustomTags["s"]      = sHandler;
-            s_CustomTags["strike"] = sHandler;
-            s_CustomTags["del"]    = sHandler;
         }
         return s_CustomTags;
     }
@@ -4832,6 +4838,13 @@ namespace MarkdownDetail {
     struct CodeBlockTooltipBridgeRunner {
         CodeBlockTooltipBridgeRunner() {
             InitializeCodeBlockTooltipBridge();
+#if defined(CONTRIB_ICONS_AVAILABLE)
+            ImGui::Detail::GetIconTooltipHandler() = [](const char* tooltip) {
+                if (tooltip && *tooltip) {
+                    ImGui::TimedTooltip::TextMD("%s", tooltip);
+                }
+            };
+#endif
         }
     };
     static CodeBlockTooltipBridgeRunner s_CodeBlockTooltipBridgeRunner;

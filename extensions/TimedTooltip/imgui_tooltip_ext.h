@@ -159,8 +159,8 @@ namespace TimedTooltip {
     }
 
     struct TooltipConfig {
-        int hover_delay_cycles = 25;      // Low Watermark: Cycles before appearing (~0.4s at 60fps)
-        int max_display_cycles = 504;     // High Watermark: Cycles before auto-hiding
+        int hover_delay_cycles = 25;      // Low Watermark: Cycles before appearing (~0.4s at 60fps; < 0 disables hover trigger for click-only tooltips)
+        int max_display_cycles = 504;     // High Watermark: Cycles before auto-hiding (< 0 disables auto-hide)
         int grace_period_cycles = 12;     // Forgiveness cycles for slipping off the widget
         float size_skew_multiplier = 0.5f;// Add extra cycles per pixel of height for massive manuals
         bool enable_wiggle_latch = true;  // Keep alive if mouse wiggles
@@ -328,6 +328,7 @@ namespace TimedTooltip {
         ImGuiID last_text_hash = 0;
         bool is_displayed = false;
         bool is_cooldown = false; // Prevents reappearing if they remain perfectly still after auto-hide
+        bool manual_trigger = false; // Set by click-to-toggle so hover_delay_cycles < 0 (click-only) opens cleanly
         bool font_pushed = false;
         int last_frame_updated = 0;
         ImGuiContext* last_context_updated = nullptr;
@@ -443,6 +444,7 @@ namespace TimedTooltip {
             // User input active (spinning wheel or dragging) -> slam low-water timer back to 0!
             state.hover_cycles = 0;
             state.unhover_grace_cycles = 0;
+            state.manual_trigger = false;
             if (state.is_displayed) {
                 state.is_displayed = false;
                 if (GetActiveTooltipID() == hash_id) GetActiveTooltipID() = 0;
@@ -451,9 +453,11 @@ namespace TimedTooltip {
         } else if (is_hovered) {
             state.unhover_grace_cycles = 0;
             if (!state.is_cooldown) {
-                state.hover_cycles++;
-            } else {
-                // If in cooldown, wiggling the mouse wakes it back up instantly!
+                if (config->hover_delay_cycles >= 0) {
+                    state.hover_cycles++;
+                }
+            } else if (config->hover_delay_cycles >= 0) {
+                // If in cooldown, wiggling the mouse wakes it back up instantly (skip in click-only mode)
                 ImVec2 current_mouse = ImGui::GetMousePos();
                 if (std::abs(current_mouse.x - state.last_mouse_pos.x) > 1.0f || std::abs(current_mouse.y - state.last_mouse_pos.y) > 1.0f) {
                     state.is_cooldown = false;
@@ -468,10 +472,12 @@ namespace TimedTooltip {
                     if (GetActiveTooltipID() == hash_id) GetActiveTooltipID() = 0;
                     state.hover_cycles = 0;
                     state.is_cooldown = false;
+                    state.manual_trigger = false;
                 }
             } else {
                 state.hover_cycles = 0;
                 state.is_cooldown = false;
+                state.manual_trigger = false;
             }
         }
 
@@ -488,11 +494,13 @@ namespace TimedTooltip {
             }
         }
 
-        // Trigger Display (With Global Mutex)
-        if (!state.is_displayed && state.hover_cycles >= config->hover_delay_cycles) {
+        // Trigger Display (With Global Mutex; hover_delay_cycles < 0 disables hover auto-trigger for click-only tooltips)
+        const bool hover_ready = (config->hover_delay_cycles >= 0) && (state.hover_cycles >= config->hover_delay_cycles);
+        if (!state.is_displayed && (state.manual_trigger || hover_ready)) {
             if (GetActiveTooltipID() == 0 || GetActiveTooltipID() == hash_id) {
                 GetActiveTooltipID() = hash_id; // CLAIM THE MUTEX!
                 state.is_displayed = true;
+                state.manual_trigger = false;
                 state.display_cycles = 0;
             // Lock anchor position (Offset slightly so the cursor doesn't cover the text)
             state.locked_pos = ImVec2(ImGui::GetMousePos().x + 15.0f * scale, ImGui::GetMousePos().y + 15.0f * scale);
@@ -851,17 +859,20 @@ namespace TimedTooltip {
             state.hover_cycles = 0;
             state.unhover_grace_cycles = 0;
             state.is_cooldown = false;
+            state.manual_trigger = false;
         } else if (toggle_on_click) {
             if (GetActiveTooltipID() != 0 && GetActiveTooltipID() != hash_id) {
                 ClearActiveTooltip();
             }
             state.is_cooldown = false;
             state.unhover_grace_cycles = 0;
+            state.manual_trigger = true;
             state.hover_cycles = 1000000; // Satisfies hover_delay_cycles immediately in BeginStationaryTooltipProxy!
         } else {
             state.hover_cycles = 0;
             state.unhover_grace_cycles = 0;
             state.is_cooldown = false;
+            state.manual_trigger = false;
         }
     }
 

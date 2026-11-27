@@ -3734,6 +3734,152 @@ int main(int argc, char** argv) {
                 runS14Case("s14_str_test", false);
                 runS14Case("s14_zero_arg_test", true);
             }
+
+            // 7m. ImGee v1.5.1 Regression Suite:
+            //     1. Semantic color aliases (error, critical, warn, ok) in both Markdown & StyledText.
+            //     2. Color-aware <u>, <s>, <b>, <i>, <bi> tags (confirming duplicate stub overwrite is gone).
+            //     3. Click-only TimedTooltip mode (hover_delay_cycles < 0 never pops on hover/wiggle, opens on click).
+            {
+                // 1. Semantic color aliases in ParseMarkdownColor & Detail::ParseColor
+                ImVec4 colDanger, colError, colCritical, colWarning, colWarn, colSuccess, colOk;
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("danger", colDanger));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("error", colError));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("critical", colCritical));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("warning", colWarning));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("warn", colWarn));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("success", colSuccess));
+                IMGEE_TEST_CHECK(ImGui::ParseMarkdownColor("ok", colOk));
+                IMGEE_TEST_CHECK(std::fabs(colError.x - colDanger.x) < 0.001f && std::fabs(colError.y - colDanger.y) < 0.001f);
+                IMGEE_TEST_CHECK(std::fabs(colCritical.x - colDanger.x) < 0.001f && std::fabs(colCritical.y - colDanger.y) < 0.001f);
+                IMGEE_TEST_CHECK(std::fabs(colWarn.x - colWarning.x) < 0.001f && std::fabs(colWarn.y - colWarning.y) < 0.001f);
+                IMGEE_TEST_CHECK(std::fabs(colOk.x - colSuccess.x) < 0.001f && std::fabs(colOk.y - colSuccess.y) < 0.001f);
+
+                ImU32 stDanger = 0, stError = 0, stCritical = 0, stWarning = 0, stWarn = 0, stSuccess = 0, stOk = 0;
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("danger", 6, stDanger));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("error", 5, stError));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("critical", 8, stCritical));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("warning", 7, stWarning));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("warn", 4, stWarn));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("success", 7, stSuccess));
+                IMGEE_TEST_CHECK(ImGui::Detail::ParseColor("ok", 2, stOk));
+                IMGEE_TEST_CHECK(stError == stDanger);
+                IMGEE_TEST_CHECK(stCritical == stDanger);
+                IMGEE_TEST_CHECK(stWarn == stWarning);
+                IMGEE_TEST_CHECK(stOk == stSuccess);
+
+                // 2. Color-aware <u>, <s>, and <b> tags in MarkdownExt
+                {
+                    io.DeltaTime = 1.0f / 60.0f;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(520.0f, 180.0f), ImGuiCond_Always);
+                    ImGui::Begin("V151TagColorTestWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    StackSnapshot s15Snap = StackSnapshot::Capture();
+                    ImDrawList* dl = ImGui::GetWindowDrawList();
+                    const int vtx0 = dl->VtxBuffer.Size;
+                    const char* kTagMd = "<u #F39C12>Amber Underline</u> <s #22AA55>Green Strike</s> <b #E74C3C>Red Bold</b>";
+                    ImGui::MarkdownExt(kTagMd, std::strlen(kTagMd), nullptr, true);
+                    const int vtx1 = dl->VtxBuffer.Size;
+                    const ImU32 cAmber = IM_COL32(0xF3, 0x9C, 0x12, 0xFF);
+                    const ImU32 cGreen = IM_COL32(0x22, 0xAA, 0x55, 0xFF);
+                    const ImU32 cRed   = IM_COL32(0xE7, 0x4C, 0x3C, 0xFF);
+                    bool sawAmber = false, sawGreen = false, sawRed = false;
+                    for (int vi = vtx0; vi < vtx1; ++vi) {
+                        if (dl->VtxBuffer[vi].col == cAmber) sawAmber = true;
+                        if (dl->VtxBuffer[vi].col == cGreen) sawGreen = true;
+                        if (dl->VtxBuffer[vi].col == cRed)   sawRed   = true;
+                    }
+                    IMGEE_TEST_CHECK(sawAmber);
+                    IMGEE_TEST_CHECK(sawGreen);
+                    IMGEE_TEST_CHECK(sawRed);
+                    s15Snap.VerifyBalanced("V151TagColorTestWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+                }
+
+                // 3. Click-only TimedTooltip (hover_delay_cycles = -1)
+                {
+                    ImGui::TimedTooltip::ClearActiveTooltip();
+                    ImGui::TimedTooltip::Config s15ClickOnlyCfg = ImGui::TimedTooltip::GetConfig();
+                    s15ClickOnlyCfg.hover_delay_cycles = -1;
+                    s15ClickOnlyCfg.max_display_cycles = 600;
+
+                    auto s15SetMouse = [&](float mx, float my, bool down) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18700)
+                        io.AddMousePosEvent(mx, my);
+                        io.AddMouseButtonEvent(0, down);
+#else
+                        io.MousePos = ImVec2(mx, my);
+                        io.MouseDown[0] = down;
+#endif
+                    };
+
+                    ImGuiID s15Id = 0;
+                    // Hover for 35 frames (including micro-wiggles) -> must NEVER auto-display
+                    for (int f = 0; f < 35; ++f) {
+                        s15SetMouse(100.0f + static_cast<float>(f % 4) * 3.0f, 100.0f, false);
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                        ImGui::Begin("V151ClickOnlyTipWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        s15Id = ImGui::GetID("##s15_click_only_tip");
+                        const bool shown = ImGui::TimedTooltip::TextMDProxy(s15Id, true, &s15ClickOnlyCfg, "%s", "Click-only tooltip.");
+                        IMGEE_TEST_CHECK(!shown);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                    IMGEE_TEST_CHECK(!ImGui::TimedTooltip::GetTooltipStateMap().at(s15Id).is_displayed);
+
+                    // Simulate click-to-toggle ON -> must open immediately
+                    {
+                        s15SetMouse(100.0f, 100.0f, false);
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                        ImGui::Begin("V151ClickOnlyTipWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        ImGui::TimedTooltip::HandleTooltipClick(s15Id, true, true);
+                        const bool shown = ImGui::TimedTooltip::TextMDProxy(s15Id, true, &s15ClickOnlyCfg, "%s", "Click-only tooltip.");
+                        IMGEE_TEST_CHECK(shown);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+
+                    // Simulate click-to-toggle OFF, then hover + wiggle 20 frames -> must stay hidden
+                    {
+                        s15SetMouse(100.0f, 100.0f, false);
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                        ImGui::Begin("V151ClickOnlyTipWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        ImGui::TimedTooltip::HandleTooltipClick(s15Id, true, true);
+                        const bool shown = ImGui::TimedTooltip::TextMDProxy(s15Id, true, &s15ClickOnlyCfg, "%s", "Click-only tooltip.");
+                        IMGEE_TEST_CHECK(!shown);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                    for (int f = 0; f < 20; ++f) {
+                        s15SetMouse(100.0f + static_cast<float>(f % 5) * 4.0f, 100.0f, false);
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(30.0f, 30.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 120.0f), ImGuiCond_Always);
+                        ImGui::Begin("V151ClickOnlyTipWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        const bool shown = ImGui::TimedTooltip::TextMDProxy(s15Id, true, &s15ClickOnlyCfg, "%s", "Click-only tooltip.");
+                        IMGEE_TEST_CHECK(!shown);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                    ImGui::TimedTooltip::ClearActiveTooltip();
+                }
+            }
         }
     }
 

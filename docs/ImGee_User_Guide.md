@@ -1,5 +1,5 @@
 # ImGee: Modern Ergonomic UI Toolkit for Dear ImGui
-## Comprehensive Developer & User Manual (v1.5.0)
+## Comprehensive Developer & User Manual (v1.5.1)
 
 ---
 
@@ -256,9 +256,9 @@ ImGui::End();
 
 <br clear="all"/>
 
-<img src="images/fig_demo_tab6.png" align="right" width="310" alt="Tab 6: Markdown & GFM Tables"/>
+<img src="images/fig_demo_tab6.png" align="right" width="310" alt="Tab 6: File & Diagnostics"/>
 
-**6. Markdown & GFM Tables:** Edit live CommonMark side-by-side with rendered output featuring inline `<badge>` / `<pill>` / `<kbd>` / `:icon:` tags, GFM alert callout cards, tristate sortable and drag-resizable tables with delayed column tooltips, and copyable fenced code blocks.
+**6. File & Diagnostics:** Exercise non-blocking `FilePickerCombo`, `OpenFileDialog`, and `SaveFileDialog` modals with a live scrollable file preview (and sample file saving in the local directory or `/assets/samples` browser sandbox) alongside live `IMGEE_VERSION`, `IMGUI_VERSION`, `HostBackend` callback status, and active subsystem compile-time flags.
 
 <br clear="all"/>
 
@@ -268,9 +268,9 @@ ImGui::End();
 
 <br clear="all"/>
 
-<img src="images/fig_demo_tab8.png" align="right" width="310" alt="Tab 8: File Dialog & Diagnostics"/>
+<img src="images/fig_demo_tab8.png" align="right" width="310" alt="Tab 8: Markdown & GFM Tables"/>
 
-**8. File Dialog & Diagnostics:** Exercise non-blocking `FilePickerCombo`, `OpenFileDialog`, and `SaveFileDialog` modals alongside live `IMGEE_VERSION`, `IMGUI_VERSION`, `HostBackend` callback status, and active subsystem compile-time flags.
+**8. Markdown & GFM Tables:** Edit live CommonMark side-by-side with rendered output featuring inline `<badge>` / `<pill>` / `<kbd>` / `:icon:` tags, GFM alert callout cards, tristate sortable and drag-resizable tables with delayed column tooltips, and copyable fenced code blocks.
 
 <br clear="all"/>
 
@@ -335,7 +335,7 @@ if (ImGui::TimedTooltip::BeginStationaryTooltip("EngineMonitorTip")) {
 
 <img src="images/fig_timed_tooltips.png" align="right" width="385" alt="Stationary TimedTooltip with dwell delay and embedded status pills"/>
 
-* **Initial Dwell Delay:** Prevents accidental popup flashing while sweeping the mouse across dense control panels.
+* **Initial Dwell Delay & Click-Only Mode (`v1.5.1`):** Prevents accidental popup flashing while sweeping the mouse across dense control panels (`hover_delay_cycles`, default `25` frames). Set `hover_delay_cycles < 0` (for example `-1`) to disable hover auto-triggering completely for **click-only tooltips** driven via `TimedTooltip::TextMDLink` or `TimedTooltip::ToggleOnClick()`.
 * **Stationary Anchor:** Freezes in position once visible, allowing effortless, relaxed reading.
 * **Smart Screen Clamping:** Automatically nudges inside the display or host window boundaries.
 * **Wheel-Defeat Dismissal:** Rolling the mouse wheel immediately closes the tooltip so it never blocks scrolling views.
@@ -876,4 +876,4 @@ ImGui::StyleColorsPaperLight(); // Crisp, high-contrast publication light theme
 > **Backward-Compatible Alias Bridge:** For projects written against earlier pre-v1.0 builds, legacy `CONTRIB_*` switches are automatically mapped to their canonical `IMGEE_*` counterparts with zero build warnings.
 
 ---
-*Document Version: 1.5.0 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*
+*Document Version: 1.5.1 • Author: Steven L. Goldberg (@slgoldberg) and the Rogers • ImGee Suite*

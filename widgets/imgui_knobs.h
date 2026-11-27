@@ -730,9 +730,8 @@ namespace Detail {
 #elif defined(IMGUI_TOOLTIP_EXT_H)
         TimedTooltip::Text("%s", default_buf);
 #else
-        if (reset_hovered) {
-            SetTooltip("%s", default_buf);
-        }
+        // Strict silent fallback when TimedTooltip is disabled (UX Manifesto Tenet VI)
+        (void)reset_hovered;
 #endif
 #endif
 

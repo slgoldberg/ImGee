@@ -305,10 +305,9 @@ namespace ImGui {
             TimedTooltip::TextProxy(id, is_hovered, "%s", text);
     #endif
 #else
+            // Strict silent fallback when TimedTooltip is disabled (UX Manifesto Tenet VI)
             (void)id;
-            if (is_hovered) {
-                SetTooltip("%s", text);
-            }
+            (void)is_hovered;
 #endif
         }
 

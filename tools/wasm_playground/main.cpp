@@ -160,19 +160,22 @@ static void LoadCrispFonts(float dpr) {
         return io.Fonts->AddFontFromFileTTF(path, pxSize, &cfg);
     };
 
-    const char* sansPath     = "/assets/fonts/Roboto-Medium.ttf";
+    const char* regPath      = "/assets/fonts/Sans-Regular.ttf";
+    const char* boldPath     = "/assets/fonts/Sans-Bold.ttf";
+    const char* italicPath   = "/assets/fonts/Sans-Italic.ttf";
+    const char* boldItalPath = "/assets/fonts/Sans-BoldItalic.ttf";
     const char* monoPath     = "/assets/fonts/RobotoMono-Medium.ttf";
     const char* monoBoldPath = "/assets/fonts/RobotoMono-Bold.ttf";
 
-    ImFont* fRegular   = loadFont(sansPath, 15.0f);
-    ImFont* fTitle     = loadFont(sansPath, 17.0f);
-    ImFont* fSmall     = loadFont(sansPath, 13.0f);
-    ImFont* fBold      = loadFont(sansPath, 15.5f);
-    ImFont* fBoldLarge = loadFont(sansPath, 19.0f);
+    ImFont* fRegular   = loadFont(regPath, 15.0f);
+    ImFont* fTitle     = loadFont(boldPath, 17.0f);
+    ImFont* fSmall     = loadFont(regPath, 13.0f);
+    ImFont* fBold      = loadFont(boldPath, 15.0f);
+    ImFont* fBoldLarge = loadFont(boldPath, 19.0f);
     ImFont* fMono      = loadFont(monoPath, 14.0f);
-    ImFont* fItalic    = loadFont(sansPath, 15.0f);
+    ImFont* fItalic    = loadFont(italicPath, 15.0f);
     ImFont* fMonoMed   = loadFont(monoBoldPath, 15.0f);
-    ImFont* fBoldItal  = loadFont(sansPath, 15.5f);
+    ImFont* fBoldItal  = loadFont(boldItalPath, 15.0f);
 
     if (fRegular) {
         io.FontDefault = fRegular;
@@ -384,6 +387,13 @@ int main(int, char**) {
 
     // Apply canonical Charcoal default before taking the Demo's host-style snapshot
     ImGui::ApplyDefaultTheme();
+
+    // Calibrate default TimedTooltip timing for smooth 60fps browser interaction
+    static ImGui::TimedTooltip::TooltipConfig s_WasmTooltipCfg = ImGui::TimedTooltip::GetConfig();
+    s_WasmTooltipCfg.hover_delay_cycles  = 50;  // ~0.83s deliberate hover dwell at 60fps
+    s_WasmTooltipCfg.max_display_cycles  = 900; // ~15s reading time before auto-dismiss
+    s_WasmTooltipCfg.grace_period_cycles = 24;  // ~0.4s slip forgiveness
+    ImGui::TimedTooltip::SetDefaultTooltipConfig(&s_WasmTooltipCfg);
 
     ImGui_ImplSDL2_InitForOpenGL(g_App.window, g_App.glContext);
     ImGui_ImplOpenGL3_Init("#version 300 es");

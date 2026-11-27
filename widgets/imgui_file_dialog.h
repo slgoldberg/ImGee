@@ -384,9 +384,9 @@ namespace ImGui {
 
         if (can_fit_same_line) {
             ImGui::TextUnformatted(state.current_dir.c_str());
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", state.current_dir.c_str());
-            }
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            ImGui::TimedTooltip::Text("%s", state.current_dir.c_str());
+#endif
             ImGui::SameLine(win_w - search_box_w - ImGui::GetStyle().WindowPadding.x);
             ImGui::SetNextItemWidth(search_box_w);
             if (ImGui::InputTextWithHint("##search", "Search...", state.filter_buf, sizeof(state.filter_buf))) {
@@ -394,9 +394,9 @@ namespace ImGui {
             }
         } else {
             ImGui::TextUnformatted(state.current_dir.c_str());
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", state.current_dir.c_str());
-            }
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            ImGui::TimedTooltip::Text("%s", state.current_dir.c_str());
+#endif
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::InputTextWithHint("##search", "Search...", state.filter_buf, sizeof(state.filter_buf))) {
                 // Filter string updated
@@ -613,9 +613,9 @@ namespace ImGui {
 
         if (can_fit_same_line) {
             ImGui::TextUnformatted(state.current_dir.c_str());
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", state.current_dir.c_str());
-            }
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            ImGui::TimedTooltip::Text("%s", state.current_dir.c_str());
+#endif
             ImGui::SameLine(win_w - search_box_w - ImGui::GetStyle().WindowPadding.x);
             ImGui::SetNextItemWidth(search_box_w);
             if (ImGui::InputTextWithHint("##save_search", "Search...", state.filter_buf, sizeof(state.filter_buf))) {
@@ -623,9 +623,9 @@ namespace ImGui {
             }
         } else {
             ImGui::TextUnformatted(state.current_dir.c_str());
-            if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("%s", state.current_dir.c_str());
-            }
+#if defined(IMGUI_TOOLTIP_EXT_H) && !defined(IMGEE_DISABLE_TIMED_TOOLTIP) && !defined(CONTRIB_DISABLE_TIMED_TOOLTIP) && !defined(IMGUI_CONTRIB_DISABLE_TIMED_TOOLTIP)
+            ImGui::TimedTooltip::Text("%s", state.current_dir.c_str());
+#endif
             ImGui::SetNextItemWidth(-1.0f);
             if (ImGui::InputTextWithHint("##save_search", "Search...", state.filter_buf, sizeof(state.filter_buf))) {
                 // Filter updated

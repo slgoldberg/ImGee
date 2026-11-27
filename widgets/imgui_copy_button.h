@@ -109,9 +109,8 @@ namespace ImGui {
             (void)is_hovered;
             TimedTooltip::Text("%s", text);
 #else
-            if (is_hovered) {
-                SetTooltip("%s", text);
-            }
+            // Strict silent fallback when TimedTooltip is disabled (UX Manifesto Tenet VI)
+            (void)is_hovered;
 #endif
         }
     } // namespace Detail

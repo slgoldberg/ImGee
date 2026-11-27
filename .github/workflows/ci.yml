@@ -87,6 +87,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # UX Manifesto Tenet VI Guard: zero stock SetTooltip/BeginTooltip outside TimedTooltip
+          if grep -rnE '(SetTooltip|BeginTooltip)\s*\(' imgee/widgets imgee/extensions imgee/imgee_demo.h \
+              | grep -v 'extensions/TimedTooltip/imgui_tooltip_ext.h'; then
+            echo "[FAIL] Rogue stock ImGui::SetTooltip/BeginTooltip found outside TimedTooltip!"
+            exit 1
+          fi
+          echo "[PASS] Zero rogue stock SetTooltip/BeginTooltip calls across widgets, extensions, and imgee_demo.h"
+
           if [ "${{ matrix.toolchain }}" = "gcc" ]; then
             CXX_BIN="g++"
           elif [ "${{ matrix.toolchain }}" = "clang" ]; then
@@ -214,6 +222,11 @@ jobs:
 
       - name: Setup Emscripten SDK
         uses: mymindstorm/setup-emsdk@v14
+
+      - name: Install TrueType sans font family (Regular/Bold/Italic/BoldItalic)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fonts-liberation2
 
       - name: Build ImGee WebAssembly Playground
         shell: bash
