@@ -100,6 +100,7 @@ ImGui::CycleItemOnMouseWheel(&s_DensityIdx, 5 /* count */, false /* wrap */);
 Drop-in replacements overloaded for both `float*` and `int*` (`MouseWheelSlider`, `PercentSlider`, `MouseWheelDrag`), plus compound `*WithReset` variants with a flush abutting vector reset/undo button (`0`-gap shared frame border):
 
 * **1-Click A/B Comparison ("Reset with Undo"):** When modified (`*v != v_default`), clicking `↺` saves your custom value into per-ID session memory (or an optional `float* v_last` pointer), resets `*v = v_default`, and flips the glyph to **`↻`**. Clicking **`↻`** swaps right back to your custom setting so you can A/B test changes in one click.
+* **Precision Wheel Modifiers:** Hold `Shift` (`0.25x` fine step) or `Ctrl` / `Cmd` (`io.KeyCtrl || io.KeySuper`, `4.0x` coarse step) while rolling the mouse wheel over any slider or drag box -- matching rotary knob wheel precision across Windows, Linux, macOS, and WebAssembly.
 * **Automatic 3-State Tooltips:** Formats `"Click to revert to default (85%)."`, `"At default (85%). Click to restore previous (42%)."`, and `"Already at default (85%)."` automatically from your `format` string.
 
 ```cpp
@@ -252,7 +253,7 @@ ImGui::Knob("Input Trim", &s_InputTrim, 0.0f, 1.0f, "%.2f", 20.0f, 0.01f,
 ![Rotary Knobs & Dimmer Dials: 270-degree Omega arc, two-step OFF detente, and 1-click Reset](../docs/images/fig_rotary_knobs.png)
 
 * **Two-Step `OFF` Detente Safety:** Rotating counter-clockwise stops cleanly at the minimum active floor (`5%`) so users never cut lighting or output power by accident during rapid adjustments. One deliberate extra downward wheel notch (or drag) snaps across the detente into amber `"OFF"`; rotating clockwise from `"OFF"` restores active power immediately.
-* **Precision Modifiers & Double-Click Reset:** Hold `Shift` (`0.1x` fine) or `Ctrl` (`2.0x` coarse), hover for `ResizeEW` cursor feedback, or double-click to restore baseline default.
+* **Precision Modifiers & Double-Click Reset:** Hold `Shift` (`0.25x` fine wheel / `0.1x` fine drag) or `Ctrl` / `Cmd` (`io.KeyCtrl || io.KeySuper`, `4.0x` coarse wheel / `2.0x` coarse drag), hover for `ResizeEW` cursor feedback, or double-click to restore baseline default.
 
 ---
 

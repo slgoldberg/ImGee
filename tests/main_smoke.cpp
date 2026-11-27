@@ -3925,6 +3925,178 @@ int main(int argc, char** argv) {
                     ImGui::Render();
                     CompleteHeadlessRenderTextures();
                 }
+
+                // -------------------------------------------------------------
+                // 7n. v1.5.2 Precision Modifier Tests (Shift / KeyCtrl / KeySuper)
+                //     on Rotary Knobs (wheel & drag) and Mouse-Wheel Sliders (float & int)
+                // -------------------------------------------------------------
+                {
+                    bool prevModMouseDown = false;
+                    auto setModsAndWheel = [&](ImVec2 pos, float wheelY, bool mouseDown) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                        io.AddMousePosEvent(pos.x, pos.y);
+                        if (mouseDown != prevModMouseDown) {
+                            io.AddMouseButtonEvent(0, mouseDown);
+                            prevModMouseDown = mouseDown;
+                        }
+                        if (wheelY != 0.0f) io.AddMouseWheelEvent(0.0f, wheelY);
+#else
+                        io.MousePos = pos;
+                        io.MouseDown[0] = mouseDown;
+                        prevModMouseDown = mouseDown;
+                        io.MouseWheel = wheelY;
+#endif
+                    };
+
+                    // 1. Capture exact screen centers of Knob, Float Slider, and Int Sliders
+                    ImVec2 knobCenter(0.0f, 0.0f);
+                    ImVec2 sliderFloatCenter(0.0f, 0.0f);
+                    ImVec2 sliderInt4Center(0.0f, 0.0f);
+                    ImVec2 sliderInt1Center(0.0f, 0.0f);
+                    float modKnobVal = 0.50f;
+                    float modSliderF = 0.50f;
+                    int modSliderI4 = 50;
+                    int modSliderI1 = 50;
+
+                    auto renderModFrame = [&](ImVec2 pos, float wheelY, bool shiftOn, bool ctrlOn, bool superOn, bool mouseDown = false, float dt = 1.0f / 60.0f) {
+                        setModsAndWheel(pos, wheelY, mouseDown);
+                        io.DeltaTime = dt;
+                        ImGui::NewFrame();
+                        // Populate live modifier flags directly (matching host XPLMGetModifierKeys() / ImGuiIO contract)
+                        io.KeyShift = shiftOn;
+                        io.KeyCtrl = ctrlOn;
+                        io.KeySuper = superOn;
+                        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Always);
+                        ImGui::Begin("V152ModifierTestWin", nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+
+                        ImGui::Knob("ModKnob##v152", &modKnobVal, 0.0f, 1.0f, "%.3f", 20.0f, 0.04f);
+                        {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            knobCenter = ImVec2((rMin.x + rMax.x) * 0.5f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        ImGui::SetNextItemWidth(200.0f);
+                        ImGui::MouseWheelSlider("ModSliderF##v152", &modSliderF, 0.0f, 1.0f, "%.3f", 0, 0.04f);
+                        {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            sliderFloatCenter = ImVec2(rMin.x + 100.0f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        ImGui::SetNextItemWidth(200.0f);
+                        ImGui::MouseWheelSlider("ModSliderI4##v152", &modSliderI4, 0, 100, "%d", 0, 4.0f);
+                        {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            sliderInt4Center = ImVec2(rMin.x + 100.0f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        ImGui::SetNextItemWidth(200.0f);
+                        ImGui::MouseWheelSlider("ModSliderI1##v152", &modSliderI1, 0, 100, "%d", 0, 1.0f);
+                        {
+                            ImVec2 rMin = ImGui::GetItemRectMin();
+                            ImVec2 rMax = ImGui::GetItemRectMax();
+                            sliderInt1Center = ImVec2(rMin.x + 100.0f, (rMin.y + rMax.y) * 0.5f);
+                        }
+
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    };
+
+                    // Warm up layout to learn exact hit rectangles
+                    renderModFrame(ImVec2(10.0f, 10.0f), 0.0f, false, false, false);
+                    renderModFrame(ImVec2(10.0f, 10.0f), 0.0f, false, false, false);
+
+                    // 2. Knob wheel scaling: normal (1x = +0.04), Shift (0.25x = +0.01), Ctrl (4x = +0.16), Super (4x = +0.16)
+                    modKnobVal = 0.50f;
+                    renderModFrame(knobCenter, 0.0f, false, false, false);
+                    renderModFrame(knobCenter, 1.0f, false, false, false);
+                    IMGEE_TEST_CHECK(std::fabs(modKnobVal - 0.54f) < 0.001f);
+
+                    modKnobVal = 0.50f;
+                    renderModFrame(knobCenter, 1.0f, true, false, false);
+                    IMGEE_TEST_CHECK(std::fabs(modKnobVal - 0.51f) < 0.001f);
+
+                    modKnobVal = 0.50f;
+                    renderModFrame(knobCenter, 1.0f, false, true, false);
+                    IMGEE_TEST_CHECK(std::fabs(modKnobVal - 0.66f) < 0.001f);
+
+                    modKnobVal = 0.50f;
+                    renderModFrame(knobCenter, 1.0f, false, false, true);
+                    IMGEE_TEST_CHECK(std::fabs(modKnobVal - 0.66f) < 0.001f);
+
+                    // 3. Knob drag scaling: normal (+0.10) vs Shift (0.1x = +0.01) vs Ctrl/Super (2.0x = +0.20)
+                    // Press with neutral modifiers so macOS ConfigMacOSXBehaviors does not remap Super+LeftClick to RightClick.
+                    auto runKnobDrag = [&](bool shiftOn, bool ctrlOn, bool superOn) -> float {
+                        modKnobVal = 0.50f;
+                        renderModFrame(knobCenter, 0.0f, false, false, false, false, 0.5f);
+                        renderModFrame(knobCenter, 0.0f, false, false, false, true, 1.0f / 60.0f);
+                        renderModFrame(ImVec2(knobCenter.x + 12.0f, knobCenter.y), 0.0f, shiftOn, ctrlOn, superOn, true, 1.0f / 60.0f);
+                        const float deltaVal = modKnobVal - 0.50f;
+                        renderModFrame(ImVec2(knobCenter.x + 12.0f, knobCenter.y), 0.0f, false, false, false, false, 0.5f);
+                        return deltaVal;
+                    };
+                    const float knobDragNormal = runKnobDrag(false, false, false);
+                    const float knobDragShift  = runKnobDrag(true,  false, false);
+                    const float knobDragCtrl   = runKnobDrag(false, true,  false);
+                    const float knobDragSuper  = runKnobDrag(false, false, true);
+                    IMGEE_TEST_CHECK(std::fabs(knobDragNormal - 0.10f) < 0.002f);
+                    IMGEE_TEST_CHECK(std::fabs(knobDragShift  - 0.01f) < 0.002f);
+                    IMGEE_TEST_CHECK(std::fabs(knobDragCtrl   - 0.20f) < 0.002f);
+                    IMGEE_TEST_CHECK(std::fabs(knobDragSuper  - 0.20f) < 0.002f);
+
+                    // 4. Float MouseWheelSlider scaling: normal (+0.04), Shift (+0.01), Ctrl (+0.16), Super (+0.16)
+                    modSliderF = 0.50f;
+                    renderModFrame(sliderFloatCenter, 0.0f, false, false, false);
+                    renderModFrame(sliderFloatCenter, 1.0f, false, false, false);
+                    IMGEE_TEST_CHECK(std::fabs(modSliderF - 0.54f) < 0.001f);
+
+                    modSliderF = 0.50f;
+                    renderModFrame(sliderFloatCenter, 1.0f, true, false, false);
+                    IMGEE_TEST_CHECK(std::fabs(modSliderF - 0.51f) < 0.001f);
+
+                    modSliderF = 0.50f;
+                    renderModFrame(sliderFloatCenter, 1.0f, false, true, false);
+                    IMGEE_TEST_CHECK(std::fabs(modSliderF - 0.66f) < 0.001f);
+
+                    modSliderF = 0.50f;
+                    renderModFrame(sliderFloatCenter, 1.0f, false, false, true);
+                    IMGEE_TEST_CHECK(std::fabs(modSliderF - 0.66f) < 0.001f);
+
+                    // 5. Int MouseWheelSlider (step=4): normal (+4), Shift (+1), Ctrl (+16), Super (+16)
+                    modSliderI4 = 50;
+                    renderModFrame(sliderInt4Center, 0.0f, false, false, false);
+                    renderModFrame(sliderInt4Center, 1.0f, false, false, false);
+                    IMGEE_TEST_CHECK(modSliderI4 == 54);
+
+                    modSliderI4 = 50;
+                    renderModFrame(sliderInt4Center, 1.0f, true, false, false);
+                    IMGEE_TEST_CHECK(modSliderI4 == 51);
+
+                    modSliderI4 = 50;
+                    renderModFrame(sliderInt4Center, 1.0f, false, true, false);
+                    IMGEE_TEST_CHECK(modSliderI4 == 66);
+
+                    modSliderI4 = 50;
+                    renderModFrame(sliderInt4Center, 1.0f, false, false, true);
+                    IMGEE_TEST_CHECK(modSliderI4 == 66);
+
+                    // 6. Int MouseWheelSlider (step=1): Shift still steps by +1 (no stall), Super steps by +4
+                    modSliderI1 = 50;
+                    renderModFrame(sliderInt1Center, 0.0f, false, false, false);
+                    renderModFrame(sliderInt1Center, 1.0f, true, false, false);
+                    IMGEE_TEST_CHECK(modSliderI1 == 51);
+
+                    modSliderI1 = 50;
+                    renderModFrame(sliderInt1Center, 1.0f, false, false, true);
+                    IMGEE_TEST_CHECK(modSliderI1 == 54);
+
+                    // Reset modifiers & mouse state cleanly
+                    renderModFrame(ImVec2(10.0f, 10.0f), 0.0f, false, false, false, false);
+                }
             }
         }
     }

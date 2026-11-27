@@ -495,6 +495,14 @@ namespace ImGui {
             return GetMouseWheelEither(consume);
         }
 
+        inline float WheelStepModifier(const ImGuiIO& io)
+        {
+            float speed_mult = 1.0f;
+            if (io.KeyShift) speed_mult = 0.25f;                // Shift    = fine adjustment
+            if (io.KeyCtrl || io.KeySuper) speed_mult = 4.0f;   // Ctrl/Cmd = coarse adjustment
+            return speed_mult;
+        }
+
         inline bool AdjustFloat(float* valRef,
                                 float minVal = 0.0f,
                                 float maxVal = 1.0f,
@@ -529,8 +537,9 @@ namespace ImGui {
 #if defined(IMGUI_TOOLTIP_EXT_H)
                 TimedTooltip::ClearActiveTooltip();
 #endif
+                float eff_scale = scale * WheelStepModifier(io);
                 float prev = *valRef;
-                float next = *valRef + scale * clicks;
+                float next = *valRef + eff_scale * clicks;
                 float lower = (std::min)(minVal, maxVal);
                 float upper = (std::max)(minVal, maxVal);
                 *valRef = (lower < upper) ? Clamp(next, lower, upper) : lower;
@@ -583,7 +592,8 @@ namespace ImGui {
 #if defined(IMGUI_TOOLTIP_EXT_H)
                 TimedTooltip::ClearActiveTooltip();
 #endif
-                int delta = (int)std::round(scale * clicks);
+                float eff_scale = scale * WheelStepModifier(io);
+                int delta = (int)std::round(eff_scale * clicks);
                 if (delta == 0) delta = (clicks < 0.0f) ? -1 : 1;
 
                 int prev = *valRef;
@@ -997,7 +1007,8 @@ namespace ImGui {
     // Attaches to any preceding range item (SliderFloat, SliderInt, DragFloat,
     // DragInt, etc.) via IsItemHovered().
     // Inspects mouse-wheel delta (vertical or horizontal), applies scaled step
-    // increments/decrements with boundary clamping, and consumes the wheel event.
+    // increments/decrements with boundary clamping (Shift = 0.25x fine,
+    // Ctrl/Cmd [io.KeyCtrl || io.KeySuper] = 4.0x coarse), and consumes the wheel event.
     // Option C: Shows the East-West resize cursor (ImGuiMouseCursor_ResizeEW)
     // strictly when the mouse hovers over the physical control box (not label).
     //

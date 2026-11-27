@@ -304,8 +304,8 @@ namespace Detail {
                     input_interacted = true;
                     wheel_interacted = true;
                     float speed_mult = 1.0f;
-                    if (g.IO.KeyShift) speed_mult = 0.25f; // Fine adjustment
-                    if (g.IO.KeyCtrl)  speed_mult = 4.0f;  // Coarse adjustment
+                    if (g.IO.KeyShift) speed_mult = 0.25f;              // Shift    = fine adjustment
+                    if (g.IO.KeyCtrl || g.IO.KeySuper) speed_mult = 4.0f; // Ctrl/Cmd = coarse adjustment
                     step_delta += wheel * wheel_step * speed_mult;
                 }
             }
@@ -319,8 +319,8 @@ namespace Detail {
                 if (drag_dy != 0.0f) {
                     input_interacted = true;
                     float speed_mult = 1.0f;
-                    if (g.IO.KeyShift) speed_mult = 0.1f; // Shift = fine precision
-                    if (g.IO.KeyCtrl)  speed_mult = 2.0f; // Ctrl  = coarse scrub
+                    if (g.IO.KeyShift) speed_mult = 0.1f;               // Shift    = fine precision
+                    if (g.IO.KeyCtrl || g.IO.KeySuper) speed_mult = 2.0f; // Ctrl/Cmd = coarse scrub
                     float drag_sens = (v_max - v_min) / 120.0f;
                     step_delta += drag_dy * drag_sens * speed_mult;
                 }

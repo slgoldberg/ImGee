@@ -608,7 +608,7 @@ Horizontal sliders take up wide column footprints when laying out audio mixers, 
 #### Features:
 1. **270-Degree "Omega" Arc:** An open deadband at 6 o'clock immediately communicates an interactive dial.
 2. **Tactile Two-Step Detente Switch:** Counter-clockwise rotation dims smoothly down to minimum operating value (e.g., 5%). A deliberate extra mouse-wheel click or drag snaps across the detente gap into the powered-down `"OFF"` state. Rotating clockwise from `"OFF"` snaps instantly back to minimum active power.
-3. **Scroll-Wheel Primary:** Hover and roll the wheel with fine-tuning modifiers (`Shift` for `0.1x` fine, `Ctrl` for `2.0x` coarse).
+3. **Scroll-Wheel & Drag Modifiers:** Hover and roll the wheel (`Shift` for `0.25x` fine, `Ctrl` / `Cmd` (`io.KeyCtrl || io.KeySuper`) for `4.0x` coarse) or drag (`Shift` for `0.1x` fine, `Ctrl` / `Cmd` for `2.0x` coarse).
 
 ```cpp
 static float s_PanelLight = 0.75f;
@@ -632,7 +632,7 @@ ImGui::KnobWithReset("Monitor Gain", &s_PanelLight, s_DefaultGain,
 
 Users often hesitate to experiment with calibrated parameters -- whether tuning display gamma, shader curves, audio trim, or simulation physics -- for fear of losing their working baseline.
 
-ImGee solves this with **Inline 1-Click Restore-to-Default Chasers** (with automatic 1-click Undo/Redo A/B comparison):
+ImGee solves this with **Inline 1-Click Restore-to-Default Chasers** (with automatic 1-click Undo/Redo A/B comparison) and matching precision mouse-wheel modifiers (`Shift` for `0.25x` fine steps, `Ctrl` / `Cmd` (`io.KeyCtrl || io.KeySuper`) for `4.0x` coarse steps across all mouse-wheel sliders and drags):
 
 ```cpp
 static float s_Gamma = 2.2f;
