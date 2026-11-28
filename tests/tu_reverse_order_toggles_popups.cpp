@@ -34,7 +34,7 @@ void RunReverseOrderTogglesAndPopupsFrame() {
     (void)ImGui::ToggleButtons("Surface##pair", &s_SurfaceMode, "Solid", "Glass");
     (void)ImGui::SelectPulldownMD("##ViewPulldown", &s_PulldownIdx, kModes, 3, kTips,
                                   120.0f, ImGuiPopupAnchor_BelowItem, ImGuiPopupAlign_Left, true);
-    ImGui::StyledTextWrapped("Reverse-order <b>StyledTextWrapped</b> via Markdown bridge.");
+    ImGui::StyledTextWrapped("Reverse-order <b>StyledTextWrapped</b> native XML wrap.");
     ImGui::TimedTooltip::TextMD("Reverse-order **SelectPulldownMD** verified.");
 }
 

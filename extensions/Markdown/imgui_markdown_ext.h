@@ -4342,23 +4342,6 @@ namespace ImGui {
 
 #endif // IMGUI_MARKDOWN_EXT_H
 
-// Order-independent StyledTextWrapped <-> MarkdownExt bridge:
-#if defined(IMGUI_MARKDOWN_EXT_READY) && defined(IMGUI_STYLED_TEXT_READY) && !defined(IMGUI_STYLED_TEXT_MD_BRIDGE_DEFINED)
-#define IMGUI_STYLED_TEXT_MD_BRIDGE_DEFINED
-namespace ImGui {
-namespace Detail {
-    struct StyledTextMarkdownBridgeRunner {
-        StyledTextMarkdownBridgeRunner() {
-            GetStyledTextMarkdownRenderer() = [](const char* text, size_t len) {
-                ImGui::MarkdownExt(text, len, nullptr);
-            };
-        }
-    };
-    static StyledTextMarkdownBridgeRunner s_StyledTextMarkdownBridgeRunner;
-} // namespace Detail
-} // namespace ImGui
-#endif
-
 // Order-independent TimedTooltip <-> Markdown bridge:
 // Activated automatically regardless of whether imgui_tooltip_ext.h or
 // imgui_markdown_ext.h was #included first!

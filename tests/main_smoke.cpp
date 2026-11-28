@@ -4171,6 +4171,104 @@ int main(int argc, char** argv) {
                     ImGui::SetDefaultMarkdownConfig(nullptr);
                     ImGui::ClearFontRoles();
                 }
+
+                // -------------------------------------------------------------
+                // 7p. v1.5.3 StyledTextWrapped Native XML-Only Wrapping (Zero Markdown Parsing)
+                // -------------------------------------------------------------
+                {
+                    ImGui::ClearFontRoles();
+                    ImGui::SetFontRole(ImGui::ImFontRole::Regular,   atlasFonts.regular16);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Italic,    atlasFonts.small9);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Bold,      atlasFonts.wideBold24);
+                    ImGui::SetFontRole(ImGui::ImFontRole::Monospace, atlasFonts.compact12);
+                    ImGui::MarkdownConfig mdGuardCfg;
+                    mdGuardCfg.regularFont = atlasFonts.regular16;
+                    mdGuardCfg.italicFont  = atlasFonts.small9;
+                    mdGuardCfg.boldFont    = atlasFonts.wideBold24;
+                    ImGui::SetDefaultMarkdownConfig(&mdGuardCfg);
+
+                    io.DeltaTime = 1.0f / 60.0f;
+                    ImGui::NewFrame();
+                    ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(520.0f, 640.0f), ImGuiCond_Always);
+                    ImGui::Begin("V153StyledWrapWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                    StackSnapshot stWrapSnap = StackSnapshot::Capture();
+
+                    // 1. Literal Markdown syntax check: _Styled_ and **Bold** must render literally
+                    //    in regular16 (identical width & height to literal CalcTextSize, NEVER small9 or wideBold24)
+                    const char* litSample = "_Styled_ and **Bold** sim/cockpit2/gauges_0";
+                    const float expectedLitW = ImGui::CalcTextSize(litSample).x;
+                    const float litStartX = ImGui::GetCursorScreenPos().x;
+                    const float litStartY = ImGui::GetCursorScreenPos().y;
+                    ImGui::StyledTextWrapped("%s", litSample);
+                    const float litEndX = ImGui::GetItemRectMax().x;
+                    const float litEndY = ImGui::GetCursorScreenPos().y;
+                    IMGEE_TEST_CHECK(std::fabs((litEndX - litStartX) - expectedLitW) < 1.0f);
+                    // Must stay single line at regular16 height (not blown up to wideBold24)
+                    IMGEE_TEST_CHECK((litEndY - litStartY) < 24.0f);
+
+                    // 2. Native word- and capsule-aware wrapping under PushTextWrapPos(150px)
+                    const float wrapStartY = ImGui::GetCursorScreenPos().y;
+                    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 150.0f);
+                    ImGui::StyledTextWrapped(
+                        "Wrapped _Styled_ and **Bold** with <color=cyan>tag</color> "
+                        "and <b>XMLBold</b> <badge=success>OK</badge> <pill=info>NAV</pill> "
+                        "<kbd>Ctrl+F</kbd> <icon gear />");
+                    ImGui::PopTextWrapPos();
+                    const float wrapEndY = ImGui::GetCursorScreenPos().y;
+                    // Must wrap across multiple lines (>= 3 line heights)
+                    IMGEE_TEST_CHECK((wrapEndY - wrapStartY) >= ImGui::GetTextLineHeight() * 2.5f);
+
+                    // 3. Narrow child window wrapping without explicit PushTextWrapPos
+                    float childWrapHeight = 0.0f;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 19100)
+                    if (ImGui::BeginChild("##v153_narrow_child", ImVec2(140.0f, 120.0f), ImGuiChildFlags_Borders))
+#else
+                    if (ImGui::BeginChild("##v153_narrow_child", ImVec2(140.0f, 120.0f), true))
+#endif
+                    {
+                        const float cStartY = ImGui::GetCursorScreenPos().y;
+                        ImGui::StyledTextWrapped("Wrapped _Styled_ and **Bold** with <color=cyan>tag</color>");
+                        childWrapHeight = ImGui::GetCursorScreenPos().y - cStartY;
+                    }
+                    ImGui::EndChild();
+                    IMGEE_TEST_CHECK(childWrapHeight >= ImGui::GetTextLineHeight() * 2.0f);
+
+                    // 4. Search highlight hook preserved across wrapped lines
+                    ImDrawList* stWrapDl = ImGui::GetWindowDrawList();
+                    const int vtxNoSearchBefore = stWrapDl->VtxBuffer.Size;
+                    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 140.0f);
+                    ImGui::StyledTextWrapped("Find _Styled_ token across wrapped <color=cyan>_Styled_</color> lines.");
+                    ImGui::PopTextWrapPos();
+                    const int vtxNoSearchCount = stWrapDl->VtxBuffer.Size - vtxNoSearchBefore;
+
+                    std::vector<float> stWrapMatchYs;
+                    ImGui::MarkdownDetail::MarkdownSearchContext stWrapSearchCtx;
+                    stWrapSearchCtx.query         = "_Styled_";
+                    stWrapSearchCtx.queryLen      = 8u;
+                    stWrapSearchCtx.caseSensitive = false;
+                    stWrapSearchCtx.activeIndex   = 0;
+                    stWrapSearchCtx.matchLocalYs  = &stWrapMatchYs;
+                    const int vtxWithSearchBefore = stWrapDl->VtxBuffer.Size;
+                    {
+                        ImGui::MarkdownDetail::ScopedMarkdownSearchContext sc(&stWrapSearchCtx);
+                        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 140.0f);
+                        ImGui::StyledTextWrapped("Find _Styled_ token across wrapped <color=cyan>_Styled_</color> lines.");
+                        ImGui::PopTextWrapPos();
+                    }
+                    const int vtxWithSearchCount = stWrapDl->VtxBuffer.Size - vtxWithSearchBefore;
+                    IMGEE_TEST_CHECK(stWrapSearchCtx.matchCount == 2);
+                    IMGEE_TEST_CHECK(stWrapMatchYs.size() == 2u);
+                    IMGEE_TEST_CHECK(vtxWithSearchCount > vtxNoSearchCount);
+
+                    stWrapSnap.VerifyBalanced("V153StyledWrapWin");
+                    ImGui::End();
+                    ImGui::Render();
+                    CompleteHeadlessRenderTextures();
+
+                    ImGui::SetDefaultMarkdownConfig(nullptr);
+                    ImGui::ClearFontRoles();
+                }
             }
         }
     }
