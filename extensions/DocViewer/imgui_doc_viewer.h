@@ -1870,13 +1870,16 @@ inline bool DocumentViewer(
 
         // [Aa] Case-sensitivity toggle
         ImGui::SameLine(0.0f, 6.0f);
-        if (state.search_case_sensitive) {
+        // Push and pop from one snapshot: the click flips search_case_sensitive between them, so testing it
+        // again for the pop would pop one too many (OFF -> ON) or leak the push (ON -> OFF).
+        const bool case_highlighted = state.search_case_sensitive;
+        if (case_highlighted) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         }
         if (ImGui::Button("Aa##dv_search_case", ImVec2(case_btn_w, 0.0f))) {
             state.search_case_sensitive = !state.search_case_sensitive;
         }
-        if (state.search_case_sensitive) {
+        if (case_highlighted) {
             ImGui::PopStyleColor();
         }
         {

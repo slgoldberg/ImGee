@@ -4269,6 +4269,147 @@ int main(int argc, char** argv) {
                     ImGui::SetDefaultMarkdownConfig(nullptr);
                     ImGui::ClearFontRoles();
                 }
+
+                // -------------------------------------------------------------
+                // 7q. v1.5.3 Community Bugfixes (Peter Buckner):
+                //     1. DocViewer [Aa] Match Case toggle balanced PushStyleColor/PopStyleColor
+                //     2. Markdown image tooltip emits alt text ("Radar"), not raw link ("avionics_beacon")
+                // -------------------------------------------------------------
+                {
+                    // 1. DocViewer [Aa] toggle OFF -> ON and ON -> OFF
+                    ImGui::DocumentViewerState dvCaseState;
+                    dvCaseState.search_open           = true;
+                    dvCaseState.search_case_sensitive = false;
+                    std::snprintf(dvCaseState.search_query, sizeof(dvCaseState.search_query), "%s", "Alpha");
+
+                    ImGui::DocumentViewerConfig dvCaseCfg;
+                    dvCaseCfg.showHeaderRow1 = false;
+                    dvCaseCfg.showHeaderRow2 = false;
+                    dvCaseCfg.showFooter     = false;
+                    const char* dvCaseDoc = "# Alpha\nalpha ALPHA";
+                    const size_t dvCaseDocLen = std::strlen(dvCaseDoc);
+
+                    ImVec2 caseBtnCenter(0.0f, 0.0f);
+                    bool dvPrevDown = false;
+                    auto runDvCaseFrame = [&](ImVec2 mousePos, bool mouseDown) {
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                        io.AddMousePosEvent(mousePos.x, mousePos.y);
+                        if (mouseDown != dvPrevDown) {
+                            io.AddMouseButtonEvent(0, mouseDown);
+                            dvPrevDown = mouseDown;
+                        }
+#else
+                        io.MousePos     = mousePos;
+                        io.MouseDown[0] = mouseDown;
+                        dvPrevDown      = mouseDown;
+#endif
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(560.0f, 220.0f), ImGuiCond_Always);
+                        ImGui::Begin("V153DocCaseToggleWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        StackSnapshot dvSnap = StackSnapshot::Capture();
+
+                        // Compute exact screen center of "Aa##dv_search_case" before rendering DocumentViewer
+                        const ImVec2 barPos    = ImGui::GetCursorScreenPos();
+                        const float barAvailW  = ImGui::GetContentRegionAvail().x;
+                        const float counterW   = (std::max)(58.0f, ImGui::CalcTextSize("999 / 999").x + 10.0f);
+                        const float stepBtnW   = 24.0f;
+                        const float caseBtnW   = (std::max)(28.0f, ImGui::CalcTextSize("Aa").x + 10.0f);
+                        const float closeBtnW  = 24.0f;
+                        const float controlsW  = counterW + 4.0f + stepBtnW + 2.0f + stepBtnW + 6.0f + caseBtnW + 4.0f + closeBtnW;
+                        const float inputW     = (barAvailW - controlsW - 8.0f < 96.0f) ? 96.0f
+                                               : ((barAvailW - controlsW - 8.0f > 340.0f) ? 340.0f : (barAvailW - controlsW - 8.0f));
+                        const float caseX      = barPos.x + inputW + 6.0f + counterW + 4.0f + stepBtnW + 2.0f + stepBtnW + 6.0f;
+                        caseBtnCenter = ImVec2(caseX + caseBtnW * 0.5f, barPos.y + ImGui::GetFrameHeight() * 0.5f);
+
+                        (void)ImGui::DocumentViewer("##v153_case_dv", dvCaseDoc, dvCaseDocLen, dvCaseState, &dvCaseCfg, ImVec2(0.0f, 160.0f));
+                        dvSnap.VerifyBalanced("V153DocCaseToggleWin");
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    };
+
+                    // Warm up layout to capture exact [Aa] button center
+                    runDvCaseFrame(ImVec2(10.0f, 10.0f), false);
+                    // Hover -> Click OFF -> ON
+                    runDvCaseFrame(caseBtnCenter, false);
+                    runDvCaseFrame(caseBtnCenter, true);
+                    runDvCaseFrame(caseBtnCenter, false);
+                    IMGEE_TEST_CHECK(dvCaseState.search_case_sensitive == true);
+                    // Hover -> Click ON -> OFF
+                    runDvCaseFrame(caseBtnCenter, true);
+                    runDvCaseFrame(caseBtnCenter, false);
+                    IMGEE_TEST_CHECK(dvCaseState.search_case_sensitive == false);
+
+                    // 2. Markdown image tooltip emits alt text ("Radar"), not raw link ("avionics_beacon")
+                    static std::string s_CapturedImgTip;
+                    s_CapturedImgTip.clear();
+                    auto prevTipFn = ImGui::MarkdownDetail::GetMarkdownTooltipFn();
+                    ImGui::MarkdownDetail::GetMarkdownTooltipFn() = [](ImGuiID, bool, const char* txt, float, int, bool) -> bool {
+                        if (txt) s_CapturedImgTip = txt;
+                        return true;
+                    };
+
+                    ImGui::MarkdownConfig imgTipCfg;
+                    imgTipCfg.enableImageLightbox = false;
+                    imgTipCfg.showImageCaptions   = false;
+                    imgTipCfg.tooltipCallback     = &ImGui::defaultMarkdownTooltipCallback;
+                    imgTipCfg.imageCallback = [](ImGui::MarkdownLinkCallbackData) -> ImGui::MarkdownImageData {
+                        ImGui::MarkdownImageData img;
+                        img.isValid     = true;
+                        img.user_texture_id = (ImTextureID)(uintptr_t)42;
+                        img.size        = ImVec2(48.0f, 48.0f);
+                        return img;
+                    };
+
+                    const char* imgTipMd = "![Radar](avionics_beacon)";
+                    ImVec2 imgCenter(0.0f, 0.0f);
+                    for (int pass = 0; pass < 2; ++pass) {
+                        const ImVec2 mPos = (pass == 0) ? ImVec2(10.0f, 10.0f) : imgCenter;
+#if defined(IMGUI_VERSION_NUM) && (IMGUI_VERSION_NUM >= 18900)
+                        io.AddMousePosEvent(mPos.x, mPos.y);
+#else
+                        io.MousePos = mPos;
+#endif
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(320.0f, 180.0f), ImGuiCond_Always);
+                        ImGui::Begin("V153ImgTipWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        const ImVec2 p0 = ImGui::GetCursorScreenPos();
+                        imgCenter = ImVec2(p0.x + 24.0f, p0.y + 24.0f);
+                        ImGui::MarkdownExt(imgTipMd, std::strlen(imgTipMd), &imgTipCfg, true);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                    IMGEE_TEST_CHECK(s_CapturedImgTip == "Radar");
+
+                    // Also verify empty alt text gracefully falls back to raw link
+                    s_CapturedImgTip.clear();
+                    {
+                        io.DeltaTime = 1.0f / 60.0f;
+                        ImGui::NewFrame();
+                        ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f), ImGuiCond_Always);
+                        ImGui::SetNextWindowSize(ImVec2(240.0f, 100.0f), ImGuiCond_Always);
+                        ImGui::Begin("V153ImgTipFallbackWin", nullptr, ImGuiWindowFlags_NoSavedSettings);
+                        ImGui::MarkdownTooltipCallbackData emptyAltData;
+                        emptyAltData.linkData.text       = "";
+                        emptyAltData.linkData.textLength = 0;
+                        emptyAltData.linkData.link       = "avionics_beacon";
+                        emptyAltData.linkData.linkLength = 15;
+                        emptyAltData.linkData.isImage    = true;
+                        emptyAltData.linkIcon            = nullptr;
+                        ImGui::defaultMarkdownTooltipCallback(emptyAltData);
+                        ImGui::End();
+                        ImGui::Render();
+                        CompleteHeadlessRenderTextures();
+                    }
+                    IMGEE_TEST_CHECK(s_CapturedImgTip == "avionics_beacon");
+
+                    ImGui::MarkdownDetail::GetMarkdownTooltipFn() = prevTipFn;
+                }
             }
         }
     }

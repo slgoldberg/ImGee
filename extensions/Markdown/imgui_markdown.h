@@ -359,7 +359,9 @@ namespace ImGui
         std::string tip;
         if( data_.linkData.isImage )
         {
-            tip = link;
+            std::string alt( data_.linkData.text ? data_.linkData.text : "",
+                             data_.linkData.textLength > 0 ? (size_t)data_.linkData.textLength : 0u );
+            tip = !alt.empty() ? alt : link;
         }
         else if( !link.empty() && link[0] == '#' )
         {
